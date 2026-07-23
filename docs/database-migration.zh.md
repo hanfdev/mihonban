@@ -1,6 +1,10 @@
 # 数据库备份、迁移与恢复
 
+[English](database-migration.md)
+
 本文用于在 Node SQLite、Wrangler 本地 D1 和 Cloudflare 远端 D1 之间搬迁完整曲库。
+
+继续只在本地使用时，应分别备份 `<DATA_DIR>/mihonban.sqlite`、管理后台设置 JSON、运行时密钥和音频。只有真正创建 Cloudflare 部署后，远端步骤才适用。
 
 ## 到底要搬哪些东西
 
@@ -66,6 +70,8 @@ powershell -File tools\migrate-d1.ps1 -ImportRemote
 ```
 
 工具会自动寻找最新的 Node SQLite 或 Wrangler 本地 D1，在已忽略的 `backups/` 下生成带时间戳 SQL。只有显式加 `-ImportRemote` 才写远端；去掉该开关就是只导出。
+
+本机存在多个数据库时，必须显式传入 `-Source`，不要依赖修改时间自动选择。
 
 显式指定源：
 

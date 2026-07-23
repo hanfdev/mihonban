@@ -1,48 +1,73 @@
 # mihonban / 見本盤
 
-A private rare-music library with a Cloudflare-hosted web player and an optional local ingest pipeline.
+[简体中文](README.zh.md)
 
-The current product is the React app in `cloud/web`, backed by the API in `cloud/worker`. Audio stays in storage you control; D1 stores the catalog and user-authored metadata.
+Mihonban is a private, self-hosted music library with a responsive web player. Run it locally with Node and SQLite, use Wrangler's local D1 emulator, or deploy the same application to Cloudflare Workers and D1. Audio remains in storage you control.
 
-## What it includes
+## Highlights
 
-- Responsive album, track, artist, favorite, import, and admin views
-- Password roles for listeners and administrators, plus optional read-only guest access
-- Playback queue, shuffle/repeat, Range streaming, and persistent player state
-- OneDrive, WebDAV, Google Drive, and Node-only local-folder backends
-- R2 image mirroring for covers, galleries, and artist avatars
-- Discogs imports and manual RYM HTML parsing without automated RYM requests
-- Optional Python inbox pipeline for folders and single/nested archives, Japanese encoding repair, tags, and cloud sync
-- Seven UI languages: English, 简体中文, 繁體中文, 日本語, 한국어, Français, Español
-- D1 migration tooling and an optional signed audio proxy Worker
+- Responsive album, track, artist, favorites, import, and administration views
+- Listener and administrator passwords, plus an optional passwordless read-only guest mode
+- Persistent playback queue, shuffle/repeat, Range seeking, Media Session support, and mobile gestures
+- Named OneDrive, WebDAV, Google Drive, and Node-only local-folder storage backends
+- Optional R2 image mirror for covers, galleries, and artist avatars
+- Discogs API imports and manual RYM HTML parsing without automated RYM requests
+- Optional Python companion for inbox folders, single/nested archives, tag repair, and cloud synchronization
+- English, Simplified Chinese, Traditional Chinese, Japanese, Korean, French, and Spanish interfaces
+- SQLite/D1 migration tools and an optional signed audio proxy Worker
 
-## Architecture
+## Runtime choices
 
-```text
-Browser / PWA
-    |
-    v
-Cloudflare Worker + React assets
-    |-- D1: albums, tracks, artists, favorites, notes, storage bindings
-    |-- KV: rate limits and short-lived caches
-    |-- R2: optional image mirror
-    +-- OneDrive / WebDAV / Google Drive: audio and source images
+| Runtime | Metadata database | File backends | Typical use |
+|---|---|---|---|
+| Node | `<DATA_DIR>/mihonban.sqlite` | OneDrive, WebDAV, Google Drive, local folder | Local network, NAS, VPS |
+| Wrangler local | Local D1/KV under `.wrangler/` | OneDrive, WebDAV, Google Drive | Cloudflare-compatible development |
+| Cloudflare | D1 + KV, optional R2 | OneDrive, WebDAV, Google Drive | Always-online serverless deployment |
 
-Optional local Python companion --> metadata API + configured audio storage
-Optional proxy Worker  --> signed, allowlisted audio relay with Range support
-```
-
-The Worker is the recommended production runtime. `cloud/worker/src/node.js` runs the same API on Node with SQLite and also enables local-folder storage. A local desktop player can be used independently but is not part of this repository's runtime.
+The Python companion is optional in every mode. Install it only when you need local inbox watching, archive extraction, tag organization, or local-to-cloud reconciliation.
 
 ## Quick start
 
-### Optional local pipeline
-
-Cloud-only deployments can skip this section. Install it only for inbox watching, archive processing, tag cleanup, or local-to-cloud synchronization.
+Clone the canonical repository:
 
 ```bash
-git clone https://github.com/<you>/mihonban.git
+git clone https://github.com/hanfdev/mihonban.git
 cd mihonban
+```
+
+### Local Wrangler app
+
+On Windows, the helper stages build files outside OneDrive and starts Wrangler on all network interfaces:
+
+```powershell
+tools\cloud-dev.cmd
+```
+
+Open `http://127.0.0.1:8787`. A phone on the same LAN can use `http://<computer-lan-ip>:8787` after the Windows firewall permits Node.js. The helper's first local secrets file uses listener password `mihonban-guest` and administrator password `mihonban-admin`; change both in Admin before sharing the service.
+
+For a manual Wrangler setup, see [Install and deploy](docs/install.md).
+
+### Local Node + SQLite app
+
+```bash
+cd cloud/web
+npm ci
+npm run build
+cd ../worker
+npm ci
+# Copy .env.example to .env, replace every placeholder, and set DEV_INSECURE_COOKIE=1 for local HTTP.
+npm run node
+```
+
+Node listens on `0.0.0.0:8788` by default. Its database is `cloud/worker/data/mihonban.sqlite` unless `DATA_DIR` is set. There are no built-in Node passwords: `.env` must define `APP_PASSWORD`, `ADMIN_PASSWORD`, and a `SESSION_SECRET` of at least 32 characters.
+
+### Cloudflare
+
+Build the web app, create D1 and KV, set Worker secrets, apply `schema.sql`, and deploy. The manual path is canonical; the local Python companion is not required. Follow [Install and deploy](docs/install.md) and read [Database migration](docs/database-migration.md) before moving an existing local catalog.
+
+### Optional Python companion
+
+```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # POSIX:   source .venv/bin/activate
@@ -51,103 +76,73 @@ mihonban setup
 mihonban doctor
 ```
 
-Keep `music_root`, `data_dir`, databases, and temporary files outside OneDrive, Dropbox, or similar sync folders.
+Keep `music_root`, `data_dir`, databases, and temporary files outside OneDrive, Dropbox, iCloud, or any other synchronized directory.
 
-### Local cloud app
+## Data and backups
 
-```bash
-cd cloud/web
-npm ci
-npm run build
-cd ../worker
-npm ci
-npx wrangler d1 execute mihonban --local --file schema.sql
-npm run dev
-```
+| Data | Source of truth | Backup method |
+|---|---|---|
+| Albums, tracks, artists, favorites, notes | Node SQLite or D1 | SQLite-aware backup or logical SQL export |
+| Named storage, R2, and module settings | Database settings | Admin settings JSON; store encrypted |
+| Password bootstrap, session, companion, and proxy secrets | Runtime environment | Record separately in a password manager |
+| Audio and original images | Configured storage backend | Independent storage-level backup |
+| R2 image mirror and KV caches | Rebuildable cache | Re-prewarm; no migration required |
 
-The D1 database resource and Worker product are both named `mihonban`.
-
-Create `cloud/worker/.dev.vars` from `.env.example`. For plain local HTTP, set `DEV_INSECURE_COOKIE=1`. Open the URL printed by Wrangler, normally `http://127.0.0.1:8787`.
-
-### Cloudflare deployment
-
-Windows users who also want the local companion can run the combined wizard:
-
-```powershell
-tools\deploy-cloud.cmd
-```
-
-For a cloud-only deployment without a companion or watcher, follow the manual steps in [docs/install.md](docs/install.md) or [docs/install.zh.md](docs/install.zh.md).
-
-## Database migration
-
-Catalog data and runtime settings are backed up separately:
-
-```powershell
-# Auto-detect the Node SQLite or local Wrangler D1 database and import
-# library data into the remote D1 named mihonban (also keeps a local SQL backup).
-powershell -File tools\migrate-d1.ps1 -ImportRemote
-```
-
-The default SQL contains library data but no settings or storage credentials. Export the settings JSON from Admin before moving, then import it after the D1 data. See [docs/database-migration.md](docs/database-migration.md).
-
-## Optional audio proxy
-
-`cloud/proxy-worker` is a separate standard Cloudflare Worker for audio relay. It supports Range/HEAD, validates a short-lived HMAC signature, restricts upstream hosts, and checks redirects. It is not an open proxy and does not cache private audio.
-
-See [docs/audio-proxy.md](docs/audio-proxy.md). Acceleration is network-dependent; the proxy provides a controlled relay, not guaranteed faster throughput.
+An Admin settings JSON is not a catalog backup, and a database backup is not an audio backup.
 
 ## Repository map
 
 | Path | Purpose |
 |---|---|
-| `cloud/web/` | Main React player and admin UI |
+| `cloud/web/` | React player and administration UI |
 | `cloud/worker/` | Hono API, D1 schema, Node compatibility runtime |
-| `cloud/proxy-worker/` | Optional signed audio proxy |
+| `cloud/proxy-worker/` | Optional signed audio relay |
 | `pipeline/` | Python `mihonban` CLI and ingest/sync pipeline |
 | `config/` | Safe configuration templates |
-| `tools/` | Deployment, watcher, and database migration helpers |
+| `tools/` | Local development, deployment, watcher, and migration helpers |
 | `tests/` | Python regression tests |
 
 ## Common commands
 
 ```text
-mihonban setup                 create portable local config
-mihonban doctor                verify dependencies and paths
-mihonban ingest --apply        process inbox archives or album folders
-mihonban watch                 watch the inbox and periodically reconcile cloud data
-mihonban cloud sync            upload/register local albums
-mihonban cloud pull            pull web imports back to the local library
-mihonban rym parse|match|write parse manually saved RYM HTML and write tags
+mihonban setup                  create local companion config
+mihonban doctor                 verify dependencies and paths
+mihonban ingest --apply         process inbox archives or album folders
+mihonban watch                  watch the inbox and reconcile cloud data
+mihonban cloud sync             upload/register local albums
+mihonban cloud pull             pull web imports back to the local library
+mihonban rym parse|match|write  process manually saved RYM HTML
 
 cd cloud/worker && npm test
 cd cloud/proxy-worker && npm test
-cd cloud/web && npm run build
+cd cloud/web && npm test && npm run build
+python -m pytest -q
 ```
 
-## Security and data ownership
+## Security
 
-- Never commit `.dev.vars`, `.env`, `mihonban.toml`, `rclone.conf`, SQL backups, tokens, or audio.
-- Production cookies require HTTPS. Guest access is disabled unless you enable it.
-- External proxy URLs should always use the shared `STREAM_PROXY_SECRET` / `PROXY_SECRET` signing secret.
-- RYM support parses files saved manually by the user; the project contains no RYM crawler.
-- Keep at least one independent backup of rare audio. D1 metadata backup is not an audio backup.
+- Never commit `.dev.vars`, `.env`, `mihonban.toml`, `rclone.conf`, databases, settings exports, tokens, or audio.
+- Local HTTP requires `DEV_INSECURE_COOKIE=1`; public deployments require HTTPS and must leave it unset.
+- Password changes saved in Admin override bootstrap environment passwords and revoke existing sessions.
+- Keep `STREAM_PROXY_SECRET` and `PROXY_SECRET` identical and private when the external proxy is enabled.
+- RYM support only parses files saved manually by the user; this repository contains no RYM crawler.
+- Keep at least one independent copy of irreplaceable audio.
 
 ## Documentation
 
-| Document | Scope |
+| English | 中文 |
 |---|---|
-| [README.zh.md](README.zh.md) | Chinese overview |
-| [GOAL.md](GOAL.md) | Current product goals and non-negotiable boundaries |
-| [docs/install.md](docs/install.md) / [中文](docs/install.zh.md) | Install and deployment |
-| [docs/database-migration.md](docs/database-migration.md) / [中文](docs/database-migration.zh.md) | D1 backup, migration, and recovery |
-| [docs/audio-proxy.md](docs/audio-proxy.md) / [中文](docs/audio-proxy.zh.md) | Optional audio proxy |
-| [docs/storage.md](docs/storage.md) / [中文](docs/storage.zh.md) | Multi-backend storage |
-| [docs/manual.md](docs/manual.md) | Daily operator guide (Chinese) |
-| [docs/github-publish.md](docs/github-publish.md) / [中文](docs/github-publish.zh.md) | Publishing the code safely |
+| [Install and deploy](docs/install.md) | [安装与部署](docs/install.zh.md) |
+| [Architecture and runtime](docs/cloud.md) | [云端架构与运行模型](docs/cloud.zh.md) |
+| [Daily operation](docs/manual.md) | [日常使用手册](docs/manual.zh.md) |
+| [Database migration](docs/database-migration.md) | [数据库迁移](docs/database-migration.zh.md) |
+| [Storage and file migration](docs/storage.md) | [多存储与文件迁移](docs/storage.zh.md) |
+| [Serverless hosting](docs/serverless-hosting.md) | [纯 Cloudflare 托管](docs/serverless-hosting.zh.md) |
+| [Optional audio proxy](docs/audio-proxy.md) | [可选音源代理](docs/audio-proxy.zh.md) |
+| [Publishing safely](docs/github-publish.md) | [安全发布代码](docs/github-publish.zh.md) |
 
 ## License
 
 Mihonban is licensed under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`). If you modify the software and make it available over a network, the AGPL requires you to offer the corresponding source code of that version.
 
-The license covers this repository's code and configuration templates only. It does not grant rights to distribute music or third-party metadata.
+The license covers this repository's code and safe templates only. It does not grant rights to distribute music or third-party metadata.

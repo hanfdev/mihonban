@@ -1,83 +1,118 @@
 # Publish the code safely
 
-This repository should contain source code, tests, documentation, and safe templates only. Audio, saved RYM pages, databases, backups, and credentials stay private.
+[中文](github-publish.zh.md)
 
-## Pre-push checks
+The canonical public repository is [hanfdev/mihonban](https://github.com/hanfdev/mihonban). It should contain source, tests, public documentation, and safe templates only.
+
+## Never track
+
+- `.dev.vars`, `.env`, `mihonban.toml`, `rclone.conf`, or provider configuration
+- `backups/`, `*.sqlite`, `*.db`, SQL exports, or Admin settings JSON
+- Audio, personal covers/galleries, saved RYM pages, or inbox archives
+- Cloudflare, Azure, Google, WebDAV, Discogs, R2, proxy, or companion credentials
+- `GOAL.local.md` and other private planning/agent notes
+- Generated `node_modules`, `.wrangler`, build output, logs, or temporary files
+
+The root `.gitignore` covers the standard locations, but ignore rules do not remove a file that was already committed.
+
+## Before every push
 
 ```bash
 git status --short
 git diff --check
+git diff --stat
 git grep -n -I -i -E "refresh[_-]?token|client[_-]?secret|access[_-]?key|proxy[_-]?secret" -- .
 ```
 
-Review matches manually; templates and variable names are expected, real values are not.
-
-Never track:
-
-- `.dev.vars`, `.env`, `mihonban.toml`, `rclone.conf`
-- `backups/`, `*.sqlite`, `*.db`, exported settings JSON
-- Audio, covers from the personal library, or RYM HTML archives
-- Cloudflare, Azure, Google, WebDAV, Discogs, or R2 credentials
-
-Before the first public push, use a secret scanner such as Gitleaks on the full history.
-
-Also review commit identity before publishing history:
+Review every match manually. Variable names and redacted examples are expected; real values are not. Also check the commit author identity:
 
 ```bash
-git log --all --format='%an <%ae>' | sort -u
+git log -5 --format='%h %an <%ae> %s'
 ```
 
-This repository uses `AGPL-3.0-only`. Keep the root `LICENSE` file when publishing or redistributing the project.
+Before the first public release or after a history rewrite, run a dedicated scanner such as Gitleaks against all refs.
 
 ## Validate the repository
 
+From the repository root:
+
 ```bash
 python -m pytest -q
-cd cloud/worker && npm ci && npm test && npx wrangler deploy --dry-run
-cd ../proxy-worker && npm ci && npm test && npx wrangler deploy --dry-run
-cd ../web && npm ci && npm run build
 ```
 
-Do not add generated `dist`, `.wrangler`, `node_modules`, databases, or backup SQL to make CI pass.
-
-## Create the remote
+Then in each package:
 
 ```bash
-gh auth login
-gh repo create mihonban --private --source=. --remote=origin --push
+cd cloud/web
+npm ci
+npm test
+npm run build
+
+cd ../worker
+npm ci
+npm test
+npx wrangler deploy --dry-run
+
+cd ../proxy-worker
+npm ci
+npm test
+npx wrangler deploy --dry-run
 ```
 
-Or create an empty repository on GitHub and add it manually:
+Do not add ignored build output, local D1 state, databases, or backups merely to make CI pass.
+
+## Remotes and forks
+
+Confirm the destination before pushing:
 
 ```bash
-git remote add origin git@github.com:<you>/mihonban.git
-git push -u origin HEAD
+git remote -v
+git branch --show-current
 ```
 
-Private visibility is the conservative default. If publishing publicly, review licenses for every bundled asset and make clear that no music is distributed.
+The canonical origin is:
 
-## CI secrets
+```text
+https://github.com/hanfdev/mihonban.git
+```
 
-- Build and unit tests need no production secrets.
-- Do not run deployment workflows from untrusted pull requests.
-- Use GitHub environments and least-privilege Cloudflare tokens for deployment.
-- Never place OneDrive/R2 credentials in frontend build variables.
+For a personal fork, point `origin` at the fork and retain the canonical repository as `upstream`:
+
+```bash
+git remote add upstream https://github.com/hanfdev/mihonban.git
+git fetch upstream
+```
+
+Do not push local recovery branches or ignored backup material.
+
+## CI and deployment secrets
+
+- Build and unit tests require no production secrets.
+- Untrusted pull requests must not receive deployment secrets.
+- Use GitHub environments and least-privilege Cloudflare API tokens for deployment.
+- Never place storage or R2 credentials in frontend build variables.
+- Rotate any production secret that appeared in chat, logs, screenshots, CI output, or Git history.
 
 ## Release checklist
 
-- Documentation links resolve.
-- Fresh clone installs with `npm ci` and `pip install -e ./pipeline`.
-- D1 migration and proxy tests pass.
-- No machine-specific paths or real service URLs are documented.
-- `git status` contains no untracked secret/config file.
-- Production secrets that ever appeared in chat, logs, screenshots, or history have been rotated.
+- English and Chinese document pairs both exist and cross-link correctly.
+- A fresh clone installs with `npm ci` and `pip install -e ./pipeline`.
+- Python, frontend, main Worker, proxy Worker, and dry-run checks pass.
+- Documentation contains no machine-specific path, personal service URL, or credential.
+- Database/schema migration notes match the released code.
+- No private music or third-party copyrighted asset is bundled.
+- `LICENSE` remains present and package metadata still declares `AGPL-3.0-only`.
 
 ## If a secret was committed
 
-1. Revoke/rotate it at the provider immediately.
-2. Remove it from current files.
-3. Rewrite history with `git filter-repo` or BFG if required.
-4. Force-push only after coordinating with collaborators.
-5. Assume every prior copy remains compromised.
+1. Revoke or rotate it at the provider immediately.
+2. Remove it from current files and deployments.
+3. Rewrite affected history with `git filter-repo` or BFG when required.
+4. Force-push only after coordinating with every collaborator.
+5. Treat all old clones, logs, and artifacts as compromised copies.
 
-Deleting a line in a later commit is not sufficient.
+Deleting the value in a later commit does not remove it from history.
+
+## License boundary
+
+The AGPL covers this repository's software. It does not grant permission to publish music, personal library images, or third-party metadata. Every release must preserve that distinction.

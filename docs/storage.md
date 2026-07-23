@@ -1,5 +1,7 @@
 # Storage backends and file migration
 
+[中文](storage.zh.md)
+
 mihonban separates catalog metadata from file storage. D1 knows which named backend owns each album; audio and source images remain in that backend.
 
 ## Data model
@@ -9,7 +11,7 @@ mihonban separates catalog metadata from file storage. D1 knows which named back
 | `storages` | Named OneDrive, WebDAV, Google Drive, or Node-local backend configuration |
 | `albums.storage_id` | Backend that contains the album folder; required |
 | `artists.storage_id` | Backend that contains the artist avatar |
-| `storages.is_write` | The single named target for new uploads; one must be selected |
+| `storages.is_write` | The single named target for new uploads; select one before uploading |
 
 Track and gallery paths are relative storage paths. Tracks inherit the album backend; gallery images also use the album backend. Artist avatars have their own binding because an artist can span several disks.
 

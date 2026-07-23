@@ -1,5 +1,7 @@
 # 多存储与文件迁移
 
+[English](storage.md)
+
 mihonban 把曲库元数据和文件存储分开。D1 记录每张专辑属于哪个命名后端，音频和原图仍放在对应存储中。
 
 ## 数据模型
@@ -9,7 +11,7 @@ mihonban 把曲库元数据和文件存储分开。D1 记录每张专辑属于�
 | `storages` | 命名 OneDrive、WebDAV、Google Drive 或 Node 本地后端 |
 | `albums.storage_id` | 专辑目录所在后端；必须有值 |
 | `artists.storage_id` | 艺人头像所在后端 |
-| `storages.is_write` | 新上传使用的唯一命名目标；必须设置一个 |
+| `storages.is_write` | 新上传使用的唯一命名目标；上传前必须选择一个 |
 
 曲目和内页图使用存储相对路径并继承专辑后端。艺人头像有独立绑定，因为同一艺人可能跨多个盘。
 

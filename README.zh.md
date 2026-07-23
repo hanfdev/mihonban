@@ -1,48 +1,73 @@
 # mihonban / 見本盤
 
-一套面向稀有音乐收藏的私有曲库：Cloudflare 托管网页播放器，可选在本机自动整理音频。
+[English](README.md)
 
-当前主产品是 `cloud/web` 的 React 应用和 `cloud/worker` 的 API。音频留在你控制的存储里；D1 保存曲库、艺人和人工维护的元数据。
+Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。它可以使用 Node + SQLite 在本地运行，也可以使用 Wrangler 本地 D1，或部署到 Cloudflare Workers + D1；音频始终保存在你控制的存储中。
 
 ## 主要能力
 
-- 专辑、歌曲、艺人、收藏、导入和管理后台，完整适配桌面与手机
-- 听众/管理员口令与可选只读访客模式
-- 播放队列、随机/循环、Range 流式播放和播放器状态持久化
-- OneDrive、WebDAV、Google Drive，以及 Node 部署专用的本地文件夹
-- R2 镜像封面、内页和艺人头像
-- Discogs 官方 API 导入；手动保存 RYM HTML 后本地解析，不自动请求 RYM
-- 可选的 Python 收件箱管线：处理文件夹及单层/嵌套压缩包、修复日文乱码、整理标签并同步云端
-- 七种界面语言
+- 完整适配桌面与手机的专辑、歌曲、艺人、精选、导入和管理页面
+- 听众与管理员双口令，以及可选的免密只读访客模式
+- 播放队列、随机/循环、Range 拖动、系统媒体控制和移动端手势
+- 命名 OneDrive、WebDAV、Google Drive，以及仅 Node 支持的本地文件夹后端
+- 可选 R2 图片镜像，用于封面、内页和艺人头像
+- Discogs 官方 API 导入；手动保存 RYM HTML 后解析，不自动请求 RYM
+- 可选 Python 本机伴侣：处理文件夹及单层/嵌套压缩包、修复标签并同步
+- 英语、简体中文、繁体中文、日语、韩语、法语和西班牙语界面
 - SQLite/D1 迁移工具和可选的签名音源代理 Worker
 
-## 架构
+## 运行方式
 
-```text
-浏览器 / PWA
-    |
-    v
-Cloudflare Worker + React 静态资源
-    |-- D1：专辑、曲目、艺人、收藏、备注、存储绑定
-    |-- KV：限流和短期缓存
-    |-- R2：可选图片镜像
-    +-- OneDrive / WebDAV / Google Drive：音频与原图
+| 运行时 | 元数据数据库 | 文件后端 | 适用场景 |
+|---|---|---|---|
+| Node | `<DATA_DIR>/mihonban.sqlite` | OneDrive、WebDAV、Google Drive、本地文件夹 | 局域网、NAS、VPS |
+| Wrangler 本地 | `.wrangler/` 下的本地 D1/KV | OneDrive、WebDAV、Google Drive | 兼容 Cloudflare 的本地开发 |
+| Cloudflare | D1 + KV，可选 R2 | OneDrive、WebDAV、Google Drive | 全天在线的 Serverless 部署 |
 
-可选本机 Python 伴侣 --> 元数据 API + 音频存储
-可选代理 Worker  --> 短期签名、域名白名单、Range 音频中转
-```
-
-生产环境首选 Cloudflare。`cloud/worker/src/node.js` 可在 Node 上用 SQLite 运行同一套 API，并支持本地文件夹存储。本机桌面播放器可以独立使用，但不属于本仓库运行时。
+Python 伴侣在所有模式下都是可选项。只有需要本地收件箱守望、解压、标签整理或本地与云端对账时才安装。
 
 ## 快速开始
 
-### 可选：本机管线
-
-纯 Cloudflare 部署可以跳过本节；只有需要收件箱守望、压缩包处理、标签整理或本机同步时才安装。
+克隆正式仓库：
 
 ```bash
-git clone https://github.com/<你>/mihonban.git
+git clone https://github.com/hanfdev/mihonban.git
 cd mihonban
+```
+
+### 本地 Wrangler 应用
+
+Windows 可使用辅助脚本，把构建目录放到 OneDrive 外并监听全部网卡：
+
+```powershell
+tools\cloud-dev.cmd
+```
+
+电脑打开 `http://127.0.0.1:8787`。同一局域网的手机在 Windows 防火墙允许 Node.js 后，可打开 `http://<电脑内网 IP>:8787`。辅助脚本首次生成的本地听众口令是 `mihonban-guest`，管理员口令是 `mihonban-admin`；对外分享前必须在管理后台修改。
+
+手动配置 Wrangler 见[安装与部署](docs/install.zh.md)。
+
+### 本地 Node + SQLite 应用
+
+```bash
+cd cloud/web
+npm ci
+npm run build
+cd ../worker
+npm ci
+# 将 .env.example 复制为 .env，替换全部占位值；本地 HTTP 设置 DEV_INSECURE_COOKIE=1。
+npm run node
+```
+
+Node 默认监听 `0.0.0.0:8788`。未设置 `DATA_DIR` 时，数据库是 `cloud/worker/data/mihonban.sqlite`。Node 模式没有内置口令：`.env` 必须提供 `APP_PASSWORD`、`ADMIN_PASSWORD` 和至少 32 个字符的 `SESSION_SECRET`。
+
+### Cloudflare
+
+构建网页后创建 D1/KV、设置 Worker secrets、应用 `schema.sql` 并部署。手动部署是标准流程，不要求安装本机 Python 伴侣。操作前阅读[安装与部署](docs/install.zh.md)；已有本地曲库先阅读[数据库迁移](docs/database-migration.zh.md)。
+
+### 可选 Python 本机伴侣
+
+```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # POSIX:   source .venv/bin/activate
@@ -51,103 +76,73 @@ mihonban setup
 mihonban doctor
 ```
 
-`music_root`、`data_dir`、数据库和临时目录不要放进 OneDrive、Dropbox 等同步目录。
+`music_root`、`data_dir`、数据库和临时目录不能位于 OneDrive、Dropbox、iCloud 或其他同步目录中。
 
-### 本地运行云端应用
+## 数据与备份
 
-```bash
-cd cloud/web
-npm ci
-npm run build
-cd ../worker
-npm ci
-npx wrangler d1 execute mihonban --local --file schema.sql
-npm run dev
-```
+| 数据 | 权威来源 | 备份方式 |
+|---|---|---|
+| 专辑、曲目、艺人、收藏、备注 | Node SQLite 或 D1 | SQLite 感知备份或逻辑 SQL 导出 |
+| 命名存储、R2 和模块设置 | 数据库 settings | 管理后台设置 JSON，必须加密保存 |
+| 初始口令、会话、伴侣和代理密钥 | 运行环境 | 单独记录在密码管理器 |
+| 音频和原始图片 | 配置的存储后端 | 存储层独立备份 |
+| R2 图片镜像和 KV 缓存 | 可重建缓存 | 重新预热，无需迁移 |
 
-这里的 `mihonban` 是 `wrangler.jsonc` 中保留的 D1 资源名，不是产品显示名称；现有部署无需为改名重建数据库。
-
-根据 `.env.example` 创建 `cloud/worker/.dev.vars`。本机纯 HTTP 需要 `DEV_INSECURE_COOKIE=1`。打开 Wrangler 输出的网址，通常是 `http://127.0.0.1:8787`。
-
-### 部署到 Cloudflare
-
-如果需要同时配置本机伴侣，Windows 可运行一体化向导：
-
-```powershell
-tools\deploy-cloud.cmd
-```
-
-纯 Cloudflare 部署不需要本机伴侣或守望任务，请使用 [docs/install.zh.md](docs/install.zh.md) 中的手动部署步骤。
-
-## 数据库迁移
-
-曲库数据和运行设置分开备份：
-
-```powershell
-# 自动寻找 Node SQLite 或 Wrangler 本地 D1，保留 SQL 备份并导入远端 mihonban D1
-powershell -File tools\migrate-d1.ps1 -ImportRemote
-```
-
-默认 SQL 包含专辑、曲目、艺人、收藏、备注等，不包含设置和存储凭据。迁移前在管理后台下载“设置备份”JSON，D1 导入后再恢复。完整说明见 [docs/database-migration.zh.md](docs/database-migration.zh.md)。
-
-## 可选音源代理
-
-`cloud/proxy-worker` 是独立的标准 Cloudflare Worker：支持 Range/HEAD，校验五分钟 HMAC 签名、上游域名和每次重定向，不会成为开放代理，也不缓存私人音频。
-
-部署见 [docs/audio-proxy.zh.md](docs/audio-proxy.zh.md)。是否加速取决于用户、Cloudflare 与源站之间的真实网络，代理只提供受控中转，不承诺一定更快。
+管理后台设置 JSON 不是曲库备份，数据库备份也不是音频备份。
 
 ## 仓库结构
 
 | 路径 | 用途 |
 |---|---|
-| `cloud/web/` | 主 React 播放器与管理后台 |
+| `cloud/web/` | React 播放器与管理界面 |
 | `cloud/worker/` | Hono API、D1 schema、Node 兼容运行时 |
-| `cloud/proxy-worker/` | 可选签名音源代理 |
+| `cloud/proxy-worker/` | 可选签名音源中转 |
 | `pipeline/` | Python `mihonban` CLI 与整理/同步管线 |
 | `config/` | 不含密钥的配置模板 |
-| `tools/` | 部署、守望和数据库迁移工具 |
+| `tools/` | 本地开发、部署、守望和迁移工具 |
 | `tests/` | Python 回归测试 |
 
 ## 常用命令
 
 ```text
-mihonban setup                 创建可移植配置
-mihonban doctor                检查依赖与路径
-mihonban ingest --apply        处理收件箱压缩包或专辑文件夹
-mihonban watch                 守望收件箱并定期对账
-mihonban cloud sync            上传并登记本机专辑
-mihonban cloud pull            把网页导入拉回本机
-mihonban rym parse|match|write 解析手存 RYM HTML 并写标签
+mihonban setup                  创建本机伴侣配置
+mihonban doctor                 检查依赖与路径
+mihonban ingest --apply         处理收件箱压缩包或专辑文件夹
+mihonban watch                  守望收件箱并对账云端数据
+mihonban cloud sync             上传并登记本机专辑
+mihonban cloud pull             把网页导入拉回本机
+mihonban rym parse|match|write  处理手动保存的 RYM HTML
 
 cd cloud/worker && npm test
 cd cloud/proxy-worker && npm test
-cd cloud/web && npm run build
+cd cloud/web && npm test && npm run build
+python -m pytest -q
 ```
 
-## 安全与数据所有权
+## 安全
 
-- 不要提交 `.dev.vars`、`.env`、`mihonban.toml`、`rclone.conf`、SQL 备份、token 或音频。
-- 生产 cookie 依赖 HTTPS；访客模式默认关闭。
-- 外部代理应始终配置同一份 `STREAM_PROXY_SECRET` / `PROXY_SECRET`。
-- RYM 只解析用户手动保存的文件，项目不包含 RYM 爬虫。
-- 稀有音频至少保留一份独立备份；D1 备份不等于音频备份。
+- 不要提交 `.dev.vars`、`.env`、`mihonban.toml`、`rclone.conf`、数据库、设置导出、token 或音频。
+- 本地 HTTP 需要 `DEV_INSECURE_COOKIE=1`；公开环境必须使用 HTTPS，并且不能设置它。
+- 在管理后台保存的新口令会覆盖环境变量中的初始口令，并让旧会话失效。
+- 使用外部代理时，`STREAM_PROXY_SECRET` 与 `PROXY_SECRET` 必须完全相同并保持私密。
+- RYM 功能只解析用户手动保存的文件，本仓库不包含 RYM 爬虫。
+- 无法替代的音频至少保留一份独立副本。
 
 ## 文档
 
-| 文档 | 内容 |
+| English | 中文 |
 |---|---|
-| [GOAL.md](GOAL.md) | 当前产品目标与红线 |
-| [docs/install.zh.md](docs/install.zh.md) | 安装与部署 |
-| [docs/database-migration.zh.md](docs/database-migration.zh.md) | D1 备份、迁移和恢复 |
-| [docs/audio-proxy.zh.md](docs/audio-proxy.zh.md) | 音源代理部署 |
-| [docs/storage.zh.md](docs/storage.zh.md) | 多存储与文件迁移 |
-| [docs/manual.md](docs/manual.md) | 日常使用与排障 |
-| [docs/serverless-hosting.zh.md](docs/serverless-hosting.zh.md) | 纯 Cloudflare 免费托管决策 |
-| [docs/github-publish.zh.md](docs/github-publish.zh.md) | 安全发布代码 |
-| [README.md](README.md) | English overview |
+| [Install and deploy](docs/install.md) | [安装与部署](docs/install.zh.md) |
+| [Architecture and runtime](docs/cloud.md) | [云端架构与运行模型](docs/cloud.zh.md) |
+| [Daily operation](docs/manual.md) | [日常使用手册](docs/manual.zh.md) |
+| [Database migration](docs/database-migration.md) | [数据库迁移](docs/database-migration.zh.md) |
+| [Storage and file migration](docs/storage.md) | [多存储与文件迁移](docs/storage.zh.md) |
+| [Serverless hosting](docs/serverless-hosting.md) | [纯 Cloudflare 托管](docs/serverless-hosting.zh.md) |
+| [Optional audio proxy](docs/audio-proxy.md) | [可选音源代理](docs/audio-proxy.zh.md) |
+| [Publishing safely](docs/github-publish.md) | [安全发布代码](docs/github-publish.zh.md) |
 
 ## 许可证
 
 Mihonban 使用 [GNU Affero 通用公共许可证第三版](LICENSE)（`AGPL-3.0-only`）。如果修改本软件并通过网络向他人提供服务，AGPL 要求向这些用户提供对应版本的源代码。
 
-许可证只覆盖本仓库中的代码和配置模板，不授予传播音乐或第三方元数据的权利。
+许可证只覆盖本仓库中的代码和安全模板，不授予传播音乐或第三方元数据的权利。

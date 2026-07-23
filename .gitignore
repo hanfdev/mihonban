@@ -77,6 +77,10 @@ service-account*.json
 id_rsa
 id_ed25519
 
+# Local planning notes (not part of the public documentation)
+GOAL.md
+GOAL.local.md
+
 # Personal music, inbox archives, and saved metadata pages
 inbox/
 music/

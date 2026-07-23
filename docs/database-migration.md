@@ -1,6 +1,10 @@
 # Database backup, migration, and recovery
 
+[中文](database-migration.zh.md)
+
 This document moves a catalog between local Node SQLite, local Wrangler D1, and remote Cloudflare D1.
+
+If you remain local, back up `<DATA_DIR>/mihonban.sqlite`, the Admin settings JSON, runtime secrets, and audio separately. The remote sections apply only when a Cloudflare deployment actually exists.
 
 ## What must be moved
 
@@ -62,6 +66,8 @@ powershell -File tools\migrate-d1.ps1 -ImportRemote
 ```
 
 The helper auto-detects the newest Node SQLite or local Wrangler D1 and writes a timestamped SQL file under ignored `backups/`. It writes remote D1 only when `-ImportRemote` is present; omit that switch for export only.
+
+When several local databases exist, always pass `-Source` instead of relying on modification time.
 
 Explicit source:
 

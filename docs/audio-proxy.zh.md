@@ -1,5 +1,7 @@
 # 可选 Cloudflare 音源代理
 
+[English](audio-proxy.md)
+
 `cloud/proxy-worker` 是独立 Worker，用于中转主 mihonban Worker 取得的临时音频 URL。只有第二条 Worker 路由或自定义域确实改善到存储 CDN 的路径时，它才有价值。
 
 它不缓存音频，也不保证一定更快。部署前后应实际测速。
@@ -34,7 +36,7 @@ npx wrangler secret put PROXY_SECRET
 npx wrangler deploy
 ```
 
-使用至少 32 字节随机值，临时保留，以便给主 Worker 输入同一个值。
+至少使用 32 个随机字符，推荐把 32 个随机字节编码为十六进制字符串。临时保留它，以便给主 Worker 输入完全相同的值。
 
 ## 2. 配置主 Worker
 

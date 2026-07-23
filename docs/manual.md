@@ -1,100 +1,108 @@
-# 日常使用手册
+# Daily operation guide
 
-本文面向曲库管理员。路径和网址都以你自己的配置为准。
+[中文](manual.zh.md)
 
-## 三个入口
+This guide is for library administrators. Paths and URLs depend on the selected runtime and your private configuration.
 
-| 入口 | 用途 |
+## Entry points
+
+| Entry point | Purpose |
 |---|---|
-| 見本盤网页 | 浏览、播放、收藏、导入和管理 |
-| 本机收件箱 | 放入 RAR/ZIP/7z 或专辑文件夹，交给 Python 管线整理 |
-| 本机命令行 | 同步、拉回、修复和诊断 |
+| Web app | Browse, play, search, favorite, import, and administer |
+| Local inbox | Optional folders or RAR/ZIP/7z archives processed by the Python companion |
+| `mihonban` CLI | Diagnose, ingest, watch, synchronize, pull, and process saved RYM pages |
 
-本机桌面播放器不是云端播放的依赖；云端播放完全由 Worker 和配置的音源存储完成。
+The Python companion and any desktop player are not required for web playback.
 
-## 身份
+## Identities
 
-- 听众口令：浏览与播放。
-- 管理员口令：上传、编辑、隐藏、删除、收藏和后台设置。
-- 访客模式：管理员显式打开后，陌生访问者可以只读浏览。
+- Listener password: browse and play authenticated content.
+- Administrator password: upload, edit, hide, delete, favorite, order, and configure infrastructure.
+- Passwordless guest mode: optional read-only listener access without entering a password.
+- Companion key: machine credential for the optional local pipeline.
 
-管理员口令不要分享。改管理员口令后，旧登录会话会失效。
+`mihonban-guest` and `mihonban-admin` are defaults generated only by `tools\cloud-dev.cmd`. Node and manual Cloudflare deployments have no default passwords. Change local helper defaults before sharing access.
 
-## 常见工作流
+Passwords saved in Admin override environment bootstrap values. Changing either password revokes existing sessions.
 
-### 收件箱压缩包或文件夹
+## Inbox folders and archives
 
-1. 准备你有权使用的压缩包或专辑文件夹。
-2. 放入配置的 `inbox`。
-3. `mihonban watch` 自动处理，或手动运行 `mihonban ingest --apply`。
-4. 检查隔离区和日志；失败不会静默丢弃。
-5. 配置云同步后，运行 `mihonban cloud sync`。
+1. Put an album folder or an archive you are authorized to use into the configured `inbox`.
+2. Run `mihonban watch`, or process once with `mihonban ingest --apply`.
+3. Review logs and quarantine reports; hard failures are never silently discarded.
+4. When cloud synchronization is configured, run `mihonban cloud sync`.
 
-支持单层压缩、压缩包内再嵌套压缩包，以及直接放入文件夹。守望者会连续三次确认文件大小或目录树没有变化，避免读取复制到一半的内容。管线在私有工作区处理副本；成功后原始收件项进入 `_done`，硬失败则连同原因进入 `_quarantine`。
+The pipeline supports direct folders, one archive, and nested archives. It waits for three unchanged polls before processing so partially copied files are not opened. Work occurs in a private temporary area. Successful source items move to `_done`; hard failures and their report move to `_quarantine`.
 
-管线负责解压、日文编码修复、标签匹配、规范目录和云端登记。自动匹配不可靠的项目进入人工复核。
+The pipeline extracts, repairs Japanese filename encoding, runs metadata/tag organization, normalizes the library layout, and can register the result with the API. Ambiguous metadata stays available for manual review.
 
-### Cloudflare 与本机守望
+## Cloud source scan versus local watcher
 
-管理后台里的资源站扫描可以由 Cloudflare Cron 定时运行，只读取 RSS/Atom/Blogger 的标题和链接。`mihonban watch` 不能运行在 Cloudflare Workers：Worker 看不到电脑上的 `inbox`，没有持久本机文件系统，也不适合运行 7-Zip、beets 和批量改标签。
+The Admin source module reads supported RSS/Atom/Blogger titles and links. Cloudflare Cron or Node's interval can run it while a home computer is off. It does not download or unpack music.
 
-因此网页播放和资源站提醒可以完全云托管；收件箱自动整理需要在能访问该目录的 Windows、macOS、Linux 或 NAS 上运行本机 Python 伴侣。它不必为了在线播放而常开，只需在接收和整理新音源时运行；启动后会继续同步到云端。
+`mihonban watch` requires access to the local `inbox`, persistent files, 7-Zip, and beets. Run it on Windows, macOS, Linux, or a NAS; it cannot run inside Cloudflare Workers.
 
-### 网页导入散装音频
+## Web import
 
-1. 管理员进入“导入”。
-2. 选择同一张专辑的音频，核对艺人、专辑、年份和曲目。
-3. 选择封面并上传。
-4. 上传完成后打开专辑抽查播放。
-5. 需要本机副本时运行 `mihonban cloud pull`；`--retag` 可按云端信息补齐已有文件标签。
+1. Sign in as administrator and open Import.
+2. Select tracks belonging to one album and review artist, title, year, filenames, and order.
+3. Choose/crop a cover and select the intended write-target storage.
+4. Start upload and wait for every track to finish before leaving the page.
+5. Open the completed album, play a track, and seek near the end.
 
-### RYM 元数据
+Use `mihonban cloud pull` when the web copy must return to the local library. Add `--retag` only when cloud metadata should update existing local tags.
 
-1. 浏览器手动保存对应发行页 HTML。
-2. 在专辑页导入该 HTML，确认评分、票数、genre 和 descriptor。
-3. 不要使用自动抓取脚本访问 RYM。
+## RYM metadata
 
-### Discogs
+Mihonban does not automate requests to Rate Your Music. Save a release page manually in the browser, import the saved HTML on the album page, and review rating, vote count, primary/secondary genres, and descriptors before saving. The CLI can parse, match, and write manually saved pages in bulk.
 
-管理员可搜索发行或艺人，预览后导入图片、风格和简介。Discogs token 在管理后台设置，只使用官方 API。
+## Discogs
 
-### 收藏和隐藏
+Administrators can search releases or artists and preview an import of images, genres/styles, and biography text. Configure a personal Discogs token in Admin. The integration uses the official API.
 
-- 管理员可收藏专辑或歌曲并拖动排序。
-- 听众只能查看收藏。
-- 隐藏专辑不会出现在听众的曲库、搜索、收藏、图片或艺人资料接口中。
+## Favorites and hidden content
 
-### 多存储
+- Administrators can favorite albums or tracks and drag to reorder them.
+- Listeners can view the curated favorites pages but cannot edit them.
+- Hidden albums, tracks, artists, styles that exist only on hidden content, images, searches, and favorite entries are excluded from listener responses.
+- The Show hidden toggle is an administrator-only view state shared by album, track, and artist lists.
 
-- “写入目标”只影响之后的新上传。
-- 已有专辑继续从自己的 `storage_id` 读取。
-- 迁移会复制文件并改绑定，不删除源文件。
-- 大批量迁移后先抽查播放、封面、头像和内页，再手工处理旧副本。
+After changing hidden state, verify with a separate listener session instead of relying only on the administrator UI.
 
-## 管理后台
+## Named storage
 
-- 系统概览：专辑、曲目和伴侣状态。
-- 口令与访客访问。
-- 设置备份：迁移凭据和后端配置，不包含曲库数据。
-- 存储后端与写入目标。
-- R2 配置和预热。
-- Discogs token。
-- 可选模块：资源站提醒、音源代理。
+- The write target affects future uploads only.
+- Existing albums continue to read from their own `storage_id`.
+- Migration copies required objects and changes bindings only after required copies succeed.
+- Source objects are not automatically deleted.
+- After a bulk move, test playback, seeking, covers, avatars, and galleries before archiving old copies.
 
-设置备份 JSON 含敏感凭据，应放入加密保险库；不要发送到聊天、邮件或 Git。
+See [Storage backends and file migration](storage.md).
 
-## 推荐备份节奏
+## Admin areas
 
-| 频率 | 动作 |
+- System status: album/track/storage totals and companion heartbeat.
+- Passwords and guest access.
+- Backup and restore settings: sensitive configuration, not catalog rows.
+- Named storage backends and write target.
+- R2 image mirror and prewarm.
+- Discogs token.
+- Optional source scan and audio proxy modules.
+
+The settings JSON contains credentials. Store it in an encrypted vault and never attach it to issues, chat, email, or Git.
+
+## Backup routine
+
+| When | Action |
 |---|---|
-| 每次重大导入后 | 导出 D1 SQL；确认音频已有第二份副本 |
-| 每次改存储/R2 后 | 下载新的管理后台设置 JSON |
-| 每次部署升级前 | 远端 D1 导出 + 设置 JSON + 记录当前 Worker 版本 |
-| 定期 | 抽查备份能否恢复，而不只是“文件存在” |
+| After a major import | Back up Node SQLite or export D1 SQL; confirm a second audio copy exists |
+| After storage/R2/module changes | Export a new Admin settings JSON |
+| Before an application update | Database + settings JSON + current commit/deployment identifier |
+| Periodically | Perform a restore test rather than checking only that files exist |
 
-详见 [database-migration.zh.md](database-migration.zh.md)。
+See [Database backup, migration, and recovery](database-migration.md).
 
-## 常用命令
+## Common commands
 
 ```text
 mihonban doctor
@@ -108,20 +116,20 @@ mihonban rym match
 mihonban rym write --apply
 
 cd cloud/worker && npm test
-cd cloud/web && npm run build
+cd cloud/web && npm test && npm run build
 ```
 
-## 排障
+## Troubleshooting
 
-| 现象 | 处理 |
+| Symptom | Action |
 |---|---|
-| 收件箱没反应 | 确认输入是 RAR/ZIP/7z 或非隐藏文件夹、内容已复制完成，且 `mihonban watch` 只有一个实例；查看 `data_dir/logs` |
-| 文件进入隔离区 | 阅读同目录报告，检查损坏、密码和匹配置信度 |
-| 网页无旧专辑 | 检查是否只恢复了设置 JSON；专辑需要 D1 SQL |
-| 播放 502 | 后台测试对应存储；确认路径没有被手工移动 |
-| 拖进度条失败 | 检查上游和代理是否正确返回 206/Content-Range |
-| 图片慢或 Graph 限流 | 启用 R2，测试后预热 |
-| Google Drive 找不到旧文件 | 重新授权当前 Drive 权限，并核对 root ID |
-| 网页上传未回到本机 | 运行 `mihonban cloud pull`，检查 rclone remote |
-| 登录 429 | 等待 15 分钟并停止重复尝试 |
-| 本机 HTTP 登录不保持 | 本地 `.dev.vars` 设置 `DEV_INSECURE_COOKIE=1` |
+| Inbox does nothing | Confirm the item is supported and fully copied, only one watcher runs, and inspect `data_dir/logs` |
+| Item is quarantined | Read its report; check corruption, archive password, unsupported files, and match confidence |
+| Web app has no old albums | Restore the catalog database; Admin settings JSON does not contain albums |
+| Playback returns 502 | Test the album's named storage and confirm no file was moved outside Mihonban |
+| Seeking fails or iOS duration is wrong | Verify the upstream/proxy returns correct 206, `Content-Range`, and total length |
+| Images are slow or Graph is throttled | Test and enable R2, then prewarm |
+| Google Drive cannot find existing files | Reauthorize the current Drive scope and verify root ID |
+| Web upload is absent locally | Run `mihonban cloud pull` and verify the configured rclone remote |
+| Login returns 429 | Stop retrying and wait 15 minutes |
+| Local HTTP login does not persist | Set `DEV_INSECURE_COOKIE=1`; never use it on public HTTPS |

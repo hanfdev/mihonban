@@ -1,6 +1,6 @@
 @echo off
 rem Local cloud dev: stage cloud/ off OneDrive, build web, wrangler dev.
-rem Stage dir comes from MIHONBAN_STAGE/MIHONBAN_STAGE or a temporary directory.
+rem Stage dir comes from MIHONBAN_STAGE or a temporary directory.
 setlocal
 set "SRC=%~dp0..\cloud"
 if defined MIHONBAN_STAGE set "STAGE=%MIHONBAN_STAGE%"

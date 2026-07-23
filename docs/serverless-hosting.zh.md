@@ -1,61 +1,57 @@
-# 纯 Cloudflare 免费托管方案
+# Cloudflare Serverless 托管
 
-目标是让家里电脑关机后，网页仍能登录、浏览和播放。推荐形态是 Worker + D1 + KV + 可选 R2，音频保存在你的网盘。
+[English](serverless-hosting.md)
 
-## 哪些适合 Serverless
+Serverless 的目标是在家中电脑关机后，网页仍能登录、浏览和播放。受支持的形态是：一个 Worker 同源提供 React 与 API，D1 + KV，可选 R2 图片镜像，音频保存在 OneDrive、WebDAV 或 Google Drive。
 
-| 工作 | Cloudflare Worker 是否合适 |
+## 工作负载是否适合
+
+| 工作 | Cloudflare Workers 适合度 |
 |---|---|
-| React 静态页面与短 API | 合适 |
-| D1 元数据、KV 短期缓存 | 合适 |
-| RSS/Atom/Blogger 资源站提醒 | 合适，可用 Cron Trigger |
-| 从存储读取并流式转发音频 | 可用，但受请求/网络/额度影响 |
-| 本机收件箱守望、RAR 解压、beets 匹配、批量改 tag | 不合适，留在本机管线 |
-| 常驻播放器、转码、本机文件夹持续扫描 | 不合适，需要本机或 NAS |
+| React 静态资源和短 API 请求 | 适合 |
+| D1 曲库/设置与 KV 短期缓存 | 适合 |
+| RSS/Atom/Blogger 资源站提醒 | 适合，可用 Cron Trigger |
+| 从存储进行 Range 流式播放 | 支持，但受网络和套餐限制 |
+| 收件箱守望、解压、beets、批量改标签 | 不支持，使用本机伴侣 |
+| 转码或持续扫描本地文件夹 | 不支持，使用 Node/NAS 工具 |
 
-## 推荐部署
+## 推荐拓扑
 
 ```text
 浏览器
   |
-Cloudflare Worker（API + React）
-  |-- D1：曲库与设置
-  |-- KV：限流和短期缓存
-  |-- R2：图片镜像
-  +-- OneDrive / WebDAV / Google Drive：音频
+Cloudflare Worker（API + React 静态资源）
+  |-- D1：曲库和设置
+  |-- KV：限流与短期缓存
+  |-- 可选 R2：图片镜像
+  +-- OneDrive / WebDAV / Google Drive：音频和原图
 ```
 
-具体创建 D1、KV、secrets 和部署命令见 [install.zh.md](install.zh.md)。已有本地曲库要迁移时，先读 [database-migration.zh.md](database-migration.zh.md)，不要只导入设置 JSON。
+部署步骤见[安装与部署](install.zh.md)。已有本地曲库先按[数据库迁移](database-migration.zh.md)操作；只导入管理后台设置不会恢复专辑。
 
-## 家里电脑是否必须常开
+## 家中电脑是否必须常开
 
-不需要为了在线浏览和播放而常开。资源站提醒也可以由 Cloudflare Cron 独立运行。本机只在以下情况开机：
+网页登录、浏览、播放、网页导入和定时资源站扫描都不需要家中电脑常开。只有处理本机收件箱、本地与云端对账、离线备份或其他伴侣任务时才开机。
 
-- 守望本机收件箱，处理文件夹或单层/嵌套压缩包并修复标签。
-- 把本机曲库同步到云端。
-- 把网页上传拉回本机。
-- 做离线备份。
-
-也可以完全通过网页导入音频，但仍建议保留离线副本。
-
-Cloudflare Workers 无法访问电脑上的目录，也不能常驻等待文件变化。若希望收件箱 24 小时自动处理，可以把 Python 伴侣放在常开的低功耗主机或 NAS；这台设备只负责整理和同步，网页与播放仍由 Cloudflare 托管。
+Cloudflare Workers 看不到家中目录，也不能常驻等待文件事件。希望收件箱全天自动处理时，可把 Python 伴侣放到常开的 NAS 或低功耗主机。该设备只负责整理与同步，网页应用仍独立运行在 Cloudflare。
 
 ## 免费不等于无限
 
-Workers、D1、KV 和 R2 的免费配额会调整，以 Cloudflare 当期官方说明为准。个人曲库和少量听众通常适合；大量公开访问、持续代理无损音频或 TB 级 Worker 搬运不属于本项目的免费使用假设。
+Workers、D1、KV 与 R2 的额度和价格会变化，应以当前 Cloudflare 控制台和官方文档为准。本项目对免费额度的假设是个人曲库或少量听众，不包括大规模公开分发或持续搬运 TB 级无损音频。
 
-OneDrive 临时直链通常让音频绕过 Worker。WebDAV、Google Drive、本地目录以及主动启用的音源代理会让字节经过 Worker。
+OneDrive 临时 URL 常常绕过 Worker。WebDAV、Google Drive 和主动启用的音源代理会让字节经过 Worker，消耗更多平台资源。
 
-## 要不要额外部署音源代理
+## 外部音源代理
 
-先用主站实测。只有网络路径确实不理想时，再部署 [audio-proxy.zh.md](audio-proxy.zh.md) 中的独立 Worker。它是受控中转，不是 CDN，也不保证在所有地区更快。
+先实测主部署。只有测量证实另一条 Worker 路由或自定义域改善网络路径时才添加独立代理。它是带签名和白名单的中转，不是公共 CDN，也不保证更快。详见[可选 Cloudflare 音源代理](audio-proxy.zh.md)。
 
 ## 上线清单
 
-- Worker URL 或自定义域可打开。
-- 管理员和听众权限正确。
-- 播放和拖动进度条正常。
-- 隐藏专辑对听众完全不可见。
-- R2 图片可选但已测试。
-- D1 和设置 JSON 均已备份。
-- 所有密钥未进入 Git、文档或截图。
+- Worker URL/自定义域通过 HTTPS 打开。
+- 听众、管理员和可选免密访客权限正确。
+- 桌面、iOS Safari 和 Android Chrome 均能播放和拖动进度。
+- 隐藏内容在 API 层面对听众不可访问。
+- 每个命名存储都已测试，并选择了一个写入目标。
+- 可选 R2 图片和代理分别通过测试。
+- D1 SQL、设置 JSON、运行时密钥和音频备份各自都有安排。
+- Git、文档、日志和截图中没有任何密钥。

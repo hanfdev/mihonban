@@ -78,11 +78,11 @@ try {
   Write-Host "    D1: $dbId"
 
   Step "Provisioning KV namespace"
-  $kvList = npx wrangler kv namespace list --json 2>$null | ConvertFrom-Json
+  $kvList = npx wrangler kv namespace list 2>$null | ConvertFrom-Json
   $kv = $kvList | Where-Object { $_.title -match "mihonban.KV$" }
   if (-not $kv) {
     $null = npx wrangler kv namespace create KV 2>&1
-    $kv = (npx wrangler kv namespace list --json | ConvertFrom-Json) |
+    $kv = (npx wrangler kv namespace list | ConvertFrom-Json) |
       Where-Object { $_.title -match "mihonban.KV$" }
   }
   $kvId = $kv.id

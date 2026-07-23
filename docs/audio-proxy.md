@@ -1,5 +1,7 @@
 # Optional Cloudflare audio proxy
 
+[中文](audio-proxy.zh.md)
+
 `cloud/proxy-worker` is a standalone Worker that relays temporary audio URLs for the main mihonban app. It is useful when a second Worker route or custom domain gives a better path to the storage CDN.
 
 It does not cache audio and cannot guarantee higher speed. Measure before and after.
@@ -34,7 +36,7 @@ npx wrangler secret put PROXY_SECRET
 npx wrangler deploy
 ```
 
-Use a random value of at least 32 bytes and retain it temporarily so the same value can be added to the main Worker.
+Use at least 32 random characters; a hex string generated from 32 random bytes is recommended. Retain it temporarily so the exact same value can be added to the main Worker.
 
 ## 2. Configure the main Worker
 
