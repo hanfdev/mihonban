@@ -7,7 +7,7 @@ import { readTags } from '../tags.js'
 import { I, Dialog, Heart, Md, NoteText, Rating, Reader,
          fmtDur, fmtTotal, goBack, navigate, usePointerReorder, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
-import { gallerySwipeDirection } from '../gallery-gesture.js'
+import { galleryImageLoadState, gallerySwipeDirection } from '../gallery-gesture.js'
 
 const cleanName = (s) =>
   (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
@@ -554,6 +554,7 @@ function Gallery({ album, isAdmin, onChanged }) {
   const [order, setOrder] = useState(null)      // 拖动中的临时 id 序
   const [swipeX, setSwipeX] = useState(0)
   const [swipeAnimating, setSwipeAnimating] = useState(false)
+  const [settledImage, setSettledImage] = useState(null)
   const fileRef = useRef(null)
   const uploadInFlight = useRef(false)
   const deleteInFlight = useRef(new Set())
@@ -565,6 +566,8 @@ function Gallery({ album, isAdmin, onChanged }) {
   const baseImages = album.images || []
   // 拖动时用临时序，否则用服务端序
   const images = order || baseImages
+  const currentImageId = lightbox >= 0 ? images[lightbox] : null
+  const imageLoadState = galleryImageLoadState(currentImageId, settledImage)
   // 服务端序变了（刷新/增删）→ 清临时序，跟随服务端
   useEffect(() => { setOrder(null) }, [album.images])
 
@@ -606,6 +609,7 @@ function Gallery({ album, isAdmin, onChanged }) {
     swipeRef.current = null
     setSwipeAnimating(false)
     setSwipeX(0)
+    setSettledImage(null)
     setLightbox(-1)
   }
 
@@ -750,7 +754,7 @@ function Gallery({ album, isAdmin, onChanged }) {
           <div key={imgId}
                className={`gal-thumb ${canDrag ? 'draggable' : ''} ${galDrag.active === i ? 'dragging' : ''}`}
                {...galDrag.dragProps(i)}
-               onClick={() => setLightbox(i)}>
+               onClick={() => { setSettledImage(null); setLightbox(i) }}>
             <img loading="lazy" src={imgUrl(imgId, 480)} alt="" />
             {canDrag && (
               <span className="gal-grip" data-drag-handle
@@ -784,14 +788,27 @@ function Gallery({ album, isAdmin, onChanged }) {
                e.preventDefault(); e.stopPropagation()
              }}
              onClick={closeLightbox}>
-          <img className={`lb-image ${swipeAnimating ? 'animating' : ''}`}
-               src={imgUrl(images[lightbox], 1000)}
+          {imageLoadState !== 'ready' && (
+            <div className={`lb-image-state ${imageLoadState}`} role="status"
+                 aria-label={imageLoadState === 'error'
+                   ? t('gallery.loadFail') : t('common.loading')}>
+              {imageLoadState === 'error'
+                ? <><I.img size={24} /><span>{t('gallery.loadFail')}</span></>
+                : <I.spin size={26} aria-hidden="true" />}
+            </div>
+          )}
+          <img key={currentImageId}
+               className={`lb-image ${swipeAnimating ? 'animating' : ''}`}
+               src={imgUrl(currentImageId, 1000)}
                alt={`${lightbox + 1} / ${images.length}`}
                draggable="false"
                style={{
                  transform: `translate3d(${swipeX}px, 0, 0)`,
-                 opacity: Math.max(0.35, 1 - Math.abs(swipeX) / 420),
+                 opacity: imageLoadState === 'ready'
+                   ? Math.max(0.35, 1 - Math.abs(swipeX) / 420) : 0,
                }}
+               onLoad={() => setSettledImage({ id: currentImageId, status: 'ready' })}
+               onError={() => setSettledImage({ id: currentImageId, status: 'error' })}
                onClick={(e) => e.stopPropagation()} />
           <button className="lb-close icon-btn" onClick={closeLightbox}>
             <I.x size={22} /></button>

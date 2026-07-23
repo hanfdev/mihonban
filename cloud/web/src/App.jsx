@@ -14,6 +14,7 @@ import Player from './Player.jsx'
 import Login from './views/Login.jsx'
 import { seekAudio, updateMediaPosition } from './media.js'
 import { adjacentQueuePosition } from './player-queue.js'
+import { visibleAlbumCount } from './visibility.js'
 
 const parseHash = () => {
   const h = location.hash.replace(/^#\/?/, '')
@@ -185,6 +186,9 @@ export default function App() {
   }, [authed, refreshLibrary, refreshArtists, refreshFavorites])
 
   const isAdmin = role === 'admin'
+  const headerAlbumCount = useMemo(() => visibleAlbumCount(albums, {
+    isAdmin, showHidden,
+  }), [albums, isAdmin, showHidden])
   useEffect(() => {
     if (!isAdmin) setShowHidden(false)
   }, [isAdmin])
@@ -554,7 +558,7 @@ export default function App() {
             </nav>
           )}
           <span className="hdr-count">
-            {albums ? t('count.albums', albums.length) : ''}
+            {headerAlbumCount !== null ? t('count.albums', headerAlbumCount) : ''}
           </span>
           <LangSelect className="hdr-lang" />
           {/* 会话入口：产品只分两档——管理员 / 访客（只读）。

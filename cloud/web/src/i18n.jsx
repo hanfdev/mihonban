@@ -283,6 +283,7 @@ const en = {
     add: 'Add',
     uploadFirst: 'Upload booklet / photos',
     original: 'Original',
+    loadFail: 'Image could not be loaded',
   },
   tracksManage: {
     title: 'Manage tracks',
@@ -607,6 +608,7 @@ const zhHans = {
     add: '添加',
     uploadFirst: '上传内页 / 写真',
     original: '原图',
+    loadFail: '图片加载失败',
   },
   artists: {
     sortName: '名字',
@@ -692,6 +694,10 @@ const zhHant = {
     edit: '編輯', close: '關閉', loading: '載入中…',
     empty: '尚無內容', language: '語言',
     fav: '加入精選', unfav: '移出精選', faved: '已精選',
+  },
+  gallery: {
+    ...zhHans.gallery,
+    loadFail: '圖片載入失敗',
   },
   library: {
     sortRating: '評分 高→低', sortArtist: '藝人', sortTitle: '盤名',
@@ -846,6 +852,7 @@ const ja = {
     add: '追加',
     uploadFirst: 'ブックレット / 写真をアップロード',
     original: '原寸',
+    loadFail: '画像を読み込めませんでした',
   },
   tracksManage: {
     ...en.tracksManage,
@@ -1062,6 +1069,7 @@ const ko = {
     add: '추가',
     uploadFirst: '북클릿 / 사진 업로드',
     original: '원본',
+    loadFail: '이미지를 불러오지 못했습니다',
   },
   tracksManage: {
     ...en.tracksManage,
@@ -1278,6 +1286,7 @@ const fr = {
     add: 'Ajouter',
     uploadFirst: 'Téléverser un livret / des photos',
     original: 'Original',
+    loadFail: 'Impossible de charger l’image',
   },
   tracksManage: {
     ...en.tracksManage,
@@ -1493,6 +1502,7 @@ const es = {
     add: 'Añadir',
     uploadFirst: 'Subir libreto / fotos',
     original: 'Original',
+    loadFail: 'No se pudo cargar la imagen',
   },
   tracksManage: {
     ...en.tracksManage,
