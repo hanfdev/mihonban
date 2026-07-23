@@ -14,7 +14,7 @@ If you remain local, back up `<DATA_DIR>/mihonban.sqlite`, the Admin settings JS
 | OneDrive/R2/module settings and named storage configs | Admin settings JSON |
 | App/admin password, session secret, companion key, proxy signing secret | Configure as target Worker secrets |
 | KV rate limits and short-lived caches | Do not migrate |
-| R2 cache index | Rebuild with image prewarm |
+| R2 cache index | Same bucket: export with `--include-cache`; new bucket: omit and prewarm |
 | Audio and original images | Copy/migrate in the storage layer; not part of D1 |
 
 The Admin JSON alone is not a catalog backup. A D1 SQL file alone does not contain audio or, by default, credentials.
@@ -77,6 +77,20 @@ The helper auto-detects the newest Node SQLite or local Wrangler D1 and writes a
 
 The helper prefers ignored `cloud/worker/wrangler.local.jsonc` when present and otherwise uses the public template. Pass `-WranglerConfig <path>` to select another private config.
 
+When the target keeps the exact same R2 bucket and public URL, add
+`-IncludeCache` so prewarm can skip objects already mirrored there:
+
+```powershell
+powershell -File tools\migrate-d1.ps1 `
+  -Source "D:\mihonban-data\mihonban.sqlite" `
+  -IncludeCache -ImportRemote
+```
+
+Do not include that index when moving to an empty/different bucket: its rows
+would point at objects that are not present. If an index was omitted while the
+same public objects still exist, current prewarm checks those deterministic
+object URLs with HEAD and reclaims the index without re-uploading image bytes.
+
 When several local databases exist, always pass `-Source` instead of relying on modification time.
 
 Explicit source:
@@ -117,6 +131,7 @@ heartbeat, scan timestamps, and errors. Configure target Worker passwords and
 runtime secrets independently. The separate Admin JSON remains the recommended
 configuration path. Even with `--replace`, only allowlisted configuration keys
 are replaced; target authentication and runtime-state rows remain untouched.
+For the same R2 bucket, add `--include-cache`; omit it for a new bucket.
 
 ## 4. Restore configuration and secrets
 
@@ -146,7 +161,7 @@ Then verify:
 - Cover, avatar, and gallery images.
 - Listener cannot access hidden objects.
 - Admin settings export works on the new deployment.
-- R2 images are prewarmed again if the cache index was omitted.
+- If the R2 index was omitted, run prewarm: existing public objects are reclaimed with HEAD and only missing objects are uploaded.
 
 ## 6. Cutover and rollback
 

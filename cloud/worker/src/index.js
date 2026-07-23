@@ -1422,6 +1422,41 @@ async function ctxOf(c) {
   try { return c.executionCtx; } catch { return null; }
 }
 
+const R2_IMAGE_EXT_BY_MIME = {
+  "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+  "image/avif": "avif", "image/jpeg": "jpg",
+};
+const R2_IMAGE_EXTENSIONS = new Set(Object.values(R2_IMAGE_EXT_BY_MIME));
+const r2ImageKeyBase = (cacheKey) =>
+  `img/${cacheKey.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
+const r2ImageObjectKey = (cacheKey, contentType) =>
+  `${r2ImageKeyBase(cacheKey)}.${R2_IMAGE_EXT_BY_MIME[contentType] || "jpg"}`;
+
+async function recordR2Mirror(env, cacheKey, r2Key) {
+  await env.DB.prepare(
+    "INSERT INTO r2_cache (cache_key, r2_key, created_at) VALUES (?,?,?) " +
+    "ON CONFLICT(cache_key) DO UPDATE SET r2_key = excluded.r2_key")
+    .bind(cacheKey, r2Key, Date.now()).run();
+}
+
+async function claimExistingR2Image(env, conf, cacheKey, srcPath) {
+  const sourceMatch = /\.([a-z0-9]+)$/i.exec(srcPath);
+  const sourceExt = sourceMatch?.[1]?.toLowerCase() === "jpeg"
+    ? "jpg" : sourceMatch?.[1]?.toLowerCase();
+  const extensions = ["jpg"];
+  if (sourceExt && R2_IMAGE_EXTENSIONS.has(sourceExt) && sourceExt !== "jpg") {
+    extensions.push(sourceExt);
+  }
+  for (const ext of extensions) {
+    const r2Key = `${r2ImageKeyBase(cacheKey)}.${ext}`;
+    const exists = await r2.r2PublicObjectExists(conf, r2Key);
+    if (!exists) continue;
+    await recordR2Mirror(env, cacheKey, r2Key);
+    return true;
+  }
+  return false;
+}
+
 async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   storageId = null, allowPublicMirror = true) {
   const conf = await r2.r2Conf(c.env);
@@ -1460,20 +1495,11 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   if (!ct) return null;
   // 4) 懒同步到 R2（后台，不阻塞响应）
   if (conf.ready && allowPublicMirror) {
-    const ext = {
-      "image/png": "png", "image/webp": "webp", "image/gif": "gif",
-      "image/avif": "avif", "image/jpeg": "jpg",
-    }[ct] || "jpg";
-    const r2key = `img/${cacheKey.replace(/[^a-zA-Z0-9_.-]/g, "_")}.${ext}`;
+    const r2key = r2ImageObjectKey(cacheKey, ct);
     const upload = (async () => {
       try {
         const ok = await r2.r2Put(conf, r2key, bytes, ct);
-        if (ok) {
-          await c.env.DB.prepare(
-            "INSERT INTO r2_cache (cache_key, r2_key, created_at) VALUES (?,?,?) " +
-            "ON CONFLICT(cache_key) DO UPDATE SET r2_key = excluded.r2_key")
-            .bind(cacheKey, r2key, Date.now()).run();
-        }
+        if (ok) await recordR2Mirror(c.env, cacheKey, r2key);
       } catch { /* image response must not fail because the optional mirror did */ }
     })();
     const ctx = await ctxOf(c);
@@ -2839,6 +2865,7 @@ async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim, storageId = nu
   const exists = await env.DB.prepare(
     "SELECT 1 FROM r2_cache WHERE cache_key = ?").bind(cacheKey).first();
   if (exists) return "skip"; // R2 里已有，不重复上传
+  if (await claimExistingR2Image(env, conf, cacheKey, srcPath)) return "skip";
   let bytes, ct;
   const url = (dim ? await storage.thumbnailUrl(env, srcPath, dim, storageId) : null)
     || (await storage.downloadUrl(env, srcPath, storageId));
@@ -2857,16 +2884,9 @@ async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim, storageId = nu
   }
   ct = imageMimeFromBytes(bytes);
   if (!ct) return "fail";
-  const ext = {
-    "image/png": "png", "image/webp": "webp", "image/gif": "gif",
-    "image/avif": "avif", "image/jpeg": "jpg",
-  }[ct] || "jpg";
-  const r2key = `img/${cacheKey.replace(/[^a-zA-Z0-9_.-]/g, "_")}.${ext}`;
+  const r2key = r2ImageObjectKey(cacheKey, ct);
   if (!(await r2.r2Put(conf, r2key, bytes, ct))) return "fail";
-  await env.DB.prepare(
-    "INSERT INTO r2_cache (cache_key, r2_key, created_at) VALUES (?,?,?) " +
-    "ON CONFLICT(cache_key) DO UPDATE SET r2_key = excluded.r2_key")
-    .bind(cacheKey, r2key, Date.now()).run();
+  await recordR2Mirror(env, cacheKey, r2key);
   return "done";
 }
 

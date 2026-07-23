@@ -14,7 +14,7 @@
 | OneDrive/R2/模块设置和命名存储配置 | 管理后台设置 JSON |
 | 听众/管理员口令、会话密钥、伴侣 Key、代理签名密钥 | 在新 Worker 单独配置 secrets |
 | KV 限流与短期缓存 | 不迁移 |
-| R2 镜像索引 | 不迁移，重新预热 |
+| R2 镜像索引 | 复用同一桶时加 `--include-cache` 导出；换新桶时省略并重新预热 |
 | 音频和原图 | 在存储层复制/迁移，不属于 D1 |
 
 只下载管理后台 JSON 不等于备份曲库；只导入 D1 也不会自动搬音频或恢复全部密钥。
@@ -78,6 +78,16 @@ powershell -File tools\migrate-d1.ps1 -ImportRemote
 
 工具优先使用已忽略的 `cloud/worker/wrangler.local.jsonc`，不存在时才使用公开模板。可用 `-WranglerConfig <路径>` 指定其他私有配置。
 
+目标继续使用完全相同的 R2 桶和公开 URL 时，加 `-IncludeCache`，预热即可跳过桶内已有镜像：
+
+```powershell
+powershell -File tools\migrate-d1.ps1 `
+  -Source "D:\mihonban-data\mihonban.sqlite" `
+  -IncludeCache -ImportRemote
+```
+
+迁往空桶或不同桶时不要带这个索引，否则记录会指向不存在的对象。如果复用原桶却漏迁了索引，当前预热会对确定性对象 URL 做 HEAD 检查，直接认领已有对象，不再重复上传图片字节。
+
 本机存在多个数据库时，必须显式传入 `-Source`，不要依赖修改时间自动选择。
 
 显式指定源：
@@ -110,6 +120,8 @@ npx wrangler d1 execute mihonban --remote \
 
 `--include-config` 会导出命名存储和与管理后台备份相同的设置白名单，因此 SQL 会包含存储及服务凭据；它明确排除听众/管理员口令哈希、会话纪元、伴侣心跳、扫描时间和错误状态。目标 Worker 的口令与运行时密钥必须单独设置。配置迁移仍推荐使用管理后台 JSON。即使同时使用 `--replace`，也只替换白名单配置键，目标端认证与运行状态行保持不变。
 
+复用同一 R2 桶时再加 `--include-cache`；换新桶时省略。
+
 ## 4. 恢复设置和 secrets
 
 1. 新主 Worker 配置新的 `APP_PASSWORD`、`ADMIN_PASSWORD`、`SESSION_SECRET`、`COMPANION_KEY`。
@@ -138,7 +150,7 @@ npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc --comman
 - 封面、艺人头像、内页图。
 - 听众无法看到隐藏资源。
 - 新站能再次导出设置 JSON。
-- 未迁移 R2 索引时重新预热。
+- 未迁移 R2 索引时执行预热：已有公开对象会通过 HEAD 被认领，只有真正缺失的对象才上传。
 
 ## 6. 切换与回滚
 

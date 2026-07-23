@@ -67,6 +67,21 @@ export async function r2Conf(env) {
 /** 公开读地址（不签名，走 CDN）。 */
 export const r2PublicUrl = (conf, key) => `${conf.publicUrl}/${key}`;
 
+/** Check the public mirror without downloading it. A missing index can then
+ * be rebuilt without fetching and uploading the source image again. */
+export async function r2PublicObjectExists(conf, key) {
+  if (!conf?.publicUrl || typeof key !== "string" || !key) {
+    throw new Error("R2 public object check is not configured");
+  }
+  const response = await fetchWithTimeout(r2PublicUrl(conf, key), {
+    method: "HEAD",
+    headers: { "Cache-Control": "no-cache" },
+  }, 5_000);
+  if (response.ok) return true;
+  if (response.status === 404) return false;
+  throw new Error(`R2 public object check failed: ${response.status}`);
+}
+
 /** SigV4 上传对象到 R2。返回 true/false。 */
 export async function r2Put(conf, key, bytes, contentType = "application/octet-stream") {
   const url = new URL(`${conf.endpoint}/${conf.bucket}/${key}`);

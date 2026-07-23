@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { r2Conf, r2Test } from "../src/r2.js";
+import { r2Conf, r2PublicObjectExists, r2Test } from "../src/r2.js";
 
 test("R2 config fails closed for malformed environment URLs", async () => {
   const env = {
@@ -44,6 +44,28 @@ test("R2 connectivity probes use a unique object and remove it", async () => {
     assert.match(putKey, /^_probe\/mihonban-[a-z0-9-]+\.txt$/);
     assert.equal(getKey, putKey);
     assert.equal(deleteKey, putKey);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("R2 public object checks use HEAD and distinguish missing objects", async () => {
+  const conf = { publicUrl: "https://cdn.example" };
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  const statuses = [200, 404, 403];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), method: init.method, headers: init.headers });
+    return new Response(null, { status: statuses.shift() });
+  };
+  try {
+    assert.equal(await r2PublicObjectExists(conf, "img/existing.jpg"), true);
+    assert.equal(await r2PublicObjectExists(conf, "img/missing.jpg"), false);
+    await assert.rejects(
+      r2PublicObjectExists(conf, "img/forbidden.jpg"), /failed: 403/);
+    assert.deepEqual(calls.map((call) => call.method), ["HEAD", "HEAD", "HEAD"]);
+    assert.equal(calls[0].url, "https://cdn.example/img/existing.jpg");
+    assert.equal(calls[0].headers["Cache-Control"], "no-cache");
   } finally {
     globalThis.fetch = realFetch;
   }

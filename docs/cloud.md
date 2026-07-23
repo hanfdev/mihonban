@@ -72,7 +72,7 @@ The Admin settings JSON exports an allowlisted subset of settings plus named sto
 
 ## Images
 
-Without R2, the API reads images from the owning storage and uses edge/browser cache headers. With R2 enabled, a first request or prewarm copies the image into the mirror and later requests can redirect to its public URL. Replacing an image invalidates its index so it can be mirrored again.
+Without R2, the API reads images from the owning storage and uses edge/browser cache headers. With R2 enabled, a first request or prewarm copies the image into the mirror and later requests can redirect to its public URL. Replacing an image invalidates its index so it can be mirrored again. If D1 lost the index but the same public R2 object still exists, prewarm uses a bounded HEAD probe to reclaim it without downloading or uploading the image again.
 
 R2 is not an audio backend and is not the catalog database.
 
@@ -88,7 +88,7 @@ Cloudflare uses the Wrangler Cron trigger at minute 17 every six hours. Node use
 2. Configuration: Admin settings JSON, encrypted at rest.
 3. Runtime secrets: password manager or deployment secret store.
 4. Audio and original images: independent storage-level backup.
-5. KV and R2 image index: rebuild instead of migrating.
+5. KV: rebuild. R2 image index: migrate only when the same bucket is retained; otherwise reclaim existing public objects or rebuild with prewarm.
 
 See [Database backup, migration, and recovery](database-migration.md) for the complete order.
 

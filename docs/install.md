@@ -203,7 +203,7 @@ Available only in the Node runtime. The configured root must stay within the ser
 
 ## 8. Optional R2 image mirror
 
-R2 is a rebuildable image mirror, not the catalog database or an audio backend. Create a bucket, public read URL, and S3-compatible read/write token; enter them in Admin, test, enable, and prewarm. Keep the access key and secret out of Git.
+R2 is a rebuildable image mirror, not the catalog database or an audio backend. Create a bucket, public read URL, and S3-compatible read/write token; enter them in Admin, test, enable, and prewarm. Keep the access key and secret out of Git. When migrating while retaining the same bucket, preserve `r2_cache` with `-IncludeCache`; for a new bucket, omit it and prewarm.
 
 ## 9. Move an existing database
 

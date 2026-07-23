@@ -86,7 +86,7 @@ Keep `music_root`, `data_dir`, databases, and temporary files outside OneDrive, 
 | Named storage, R2, and module settings | Database settings | Admin settings JSON; store encrypted |
 | Password bootstrap, session, companion, and proxy secrets | Runtime environment | Record separately in a password manager |
 | Audio and original images | Configured storage backend | Independent storage-level backup |
-| R2 image mirror and KV caches | Rebuildable cache | Re-prewarm; no migration required |
+| R2 image mirror and KV caches | Rebuildable cache | Same R2 bucket: migrate/reclaim its index; new bucket: prewarm; never migrate KV |
 
 An Admin settings JSON is not a catalog backup, and a database backup is not an audio backup.
 

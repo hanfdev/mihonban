@@ -27,7 +27,7 @@ Options:
   --output <file>       SQL output path (default: d1-backup.sql)
   --include-config      Include config settings + storages (contains secrets;
                         excludes password hashes and runtime/session state)
-  --include-cache       Include the R2 cache index (normally rebuild it)
+  --include-cache       Include R2 index when reusing the same bucket
   --replace             Clear included catalog tables/config keys first
   --help                Show this help
 

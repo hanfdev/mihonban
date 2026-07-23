@@ -1336,6 +1336,9 @@ test("R2 prewarm reads artist avatars from their recorded storage", async () => 
     });
     const cookie = login.headers.get("set-cookie").split(";", 1)[0];
     globalThis.fetch = async (input, init) => {
+      if (init?.method === "HEAD" && String(input).startsWith("https://cdn.example/")) {
+        return new Response(null, { status: 404 });
+      }
       if (init?.method === "PUT" && String(input).startsWith("https://r2.example/")) {
         uploaded = Buffer.from(init.body);
         return new Response(null, { status: 200 });
@@ -1355,6 +1358,104 @@ test("R2 prewarm reads artist avatars from their recorded storage", async () => 
     globalThis.fetch = realFetch;
     db.close();
     rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("R2 prewarm claims existing public objects without reading source images", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store-1', 'Store', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, cover_path, storage_id, created_at, updated_at)
+    VALUES ('album-1', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      'Music/Library/Artist/Album/cover.jpg', 'store-1', 1, 1)`).run();
+  db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
+  const env = companionEnv(db, {
+    R2_ACCESS_KEY: "access",
+    R2_SECRET_KEY: "secret",
+    R2_ENDPOINT: "https://r2.example",
+    R2_BUCKET: "bucket",
+    R2_PUBLIC_URL: "https://cdn.example",
+  });
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), method: init.method || "GET" });
+    if (init.method === "HEAD" && String(input).startsWith("https://cdn.example/")) {
+      return new Response(null, { status: 200 });
+    }
+    throw new Error(`unexpected source/upload request ${input}`);
+  };
+
+  try {
+    const response = await companionRequest(env, "/api/admin/r2/prewarm", {
+      method: "POST", ...jsonBody({ offset: 0, limit: 1 }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, body.error);
+    assert.deepEqual(body, {
+      total: 1, processed: 1, done: 0, skipped: 2, failed: 0, finished: true,
+    });
+    assert.deepEqual(calls, [
+      { url: "https://cdn.example/img/art_album-1_480.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_1000.jpg", method: "HEAD" },
+    ]);
+    assert.deepEqual(db.prepare(
+      "SELECT cache_key, r2_key FROM r2_cache ORDER BY cache_key").all(), [
+      { cache_key: "art:album-1:1000", r2_key: "img/art_album-1_1000.jpg" },
+      { cache_key: "art:album-1:480", r2_key: "img/art_album-1_480.jpg" },
+    ]);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
+test("R2 prewarm never uploads when the public existence check is inconclusive", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store-1', 'Store', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, cover_path, storage_id, created_at, updated_at)
+    VALUES ('album-1', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      'Music/Library/Artist/Album/cover.jpg', 'store-1', 1, 1)`).run();
+  db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
+  const env = companionEnv(db, {
+    R2_ACCESS_KEY: "access",
+    R2_SECRET_KEY: "secret",
+    R2_ENDPOINT: "https://r2.example",
+    R2_BUCKET: "bucket",
+    R2_PUBLIC_URL: "https://cdn.example",
+  });
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), method: init.method || "GET" });
+    if (init.method === "HEAD" && String(input).startsWith("https://cdn.example/")) {
+      return new Response(null, { status: 503 });
+    }
+    throw new Error(`unexpected source/upload request ${input}`);
+  };
+
+  try {
+    const response = await companionRequest(env, "/api/admin/r2/prewarm", {
+      method: "POST", ...jsonBody({ offset: 0, limit: 1 }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, body.error);
+    assert.deepEqual(body, {
+      total: 1, processed: 1, done: 0, skipped: 0, failed: 2, finished: true,
+    });
+    assert.deepEqual(calls, [
+      { url: "https://cdn.example/img/art_album-1_480.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_1000.jpg", method: "HEAD" },
+    ]);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM r2_cache").get().count, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
   }
 });
 

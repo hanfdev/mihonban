@@ -196,7 +196,7 @@ npx wrangler deploy --config wrangler.local.jsonc
 
 ## 8. 可选 R2 图片镜像
 
-R2 是可重建的图片镜像，不是曲库数据库，也不是音频后端。创建 bucket、公开读取 URL 和 S3 兼容读写令牌，在后台填写后测试、启用并预热。access key 与 secret 不能进入 Git。
+R2 是可重建的图片镜像，不是曲库数据库，也不是音频后端。创建 bucket、公开读取 URL 和 S3 兼容读写令牌，在后台填写后测试、启用并预热。access key 与 secret 不能进入 Git。迁移时继续使用同一桶，应通过 `-IncludeCache` 保留 `r2_cache`；换新桶则省略并重新预热。
 
 ## 9. 搬迁已有数据库
 
