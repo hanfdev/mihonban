@@ -1,0 +1,159 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { artistArtUrl } from '../api.js'
+import { ClearFilters, FilterSel, I, VisibilityToggle } from '../ui.jsx'
+import { useI18n } from '../i18n.jsx'
+import { zhNorm } from '../zh.js'
+import { romajiOf } from '../aliases.js'
+
+export default function ArtistsPage({ albums, artists, q, avatarVer,
+                                      onOpenArtist, isAdmin,
+                                      showHidden, setShowHidden, onClearQuery }) {
+  const { t } = useI18n()
+  const [sort, setSort] = useState('name')
+  const [genre, setGenre] = useState('')
+
+  const SORTS = useMemo(() => ({
+    name: { label: t('artists.sortName'),
+      fn: (a, b) => a.sort.localeCompare(b.sort, 'ja') },
+    count: { label: t('artists.sortCount'),
+      fn: (a, b) => b.count - a.count || a.sort.localeCompare(b.sort, 'ja') },
+    added: { label: t('artists.sortAdded'),
+      fn: (a, b) => b.latest - a.latest },
+  }), [t])
+
+  const noteBy = useMemo(() =>
+    new Map((artists || []).map((a) => [a.name, a.note])), [artists])
+  // 有自定义头像时 URL 带 'c'，避免浏览器把「无头像 302 封面」缓存当成头像
+  const avatarFlagBy = useMemo(() =>
+    new Map((artists || []).map((a) => [a.name, !!a.hasAvatar])), [artists])
+
+  const data = useMemo(() => {
+    const m = new Map()
+    for (const a of albums || []) {
+      if (a.hidden && !(isAdmin && showHidden)) continue
+      const e = m.get(a.artist) || {
+        name: a.artist, sort: a.artistSort || a.artist,
+        count: 0, hiddenCount: 0, genres: new Set(), latest: 0, years: [],
+      }
+      e.count++
+      if (a.hidden) e.hiddenCount++
+      ;(a.genres || []).forEach((g) => e.genres.add(g))
+      e.latest = Math.max(e.latest, a.updatedAt || 0)
+      if (a.year) e.years.push(a.year)
+      m.set(a.artist, e)
+    }
+    return [...m.values()]
+  }, [albums, isAdmin, showHidden])
+
+  const hiddenAlbumCount = useMemo(() =>
+    (albums || []).filter((album) => album.hidden).length, [albums])
+
+  const genres = useMemo(() => {
+    const m = new Map()
+    data.forEach((e) => e.genres.forEach((g) => {
+      const k = g.toLowerCase()
+      let x = m.get(k)
+      if (!x) { x = { n: 0, forms: new Map() }; m.set(k, x) }
+      x.n++
+      x.forms.set(g, (x.forms.get(g) || 0) + 1)
+    }))
+    return [...m.values()].sort((a, b) => b.n - a.n).map((x) =>
+      [...x.forms.entries()].sort((p, q2) => q2[1] - p[1])[0][0])
+  }, [data])
+
+  useEffect(() => {
+    if (genre && !genres.some((g) =>
+      g.toLowerCase() === genre.toLowerCase())) setGenre('')
+  }, [genre, genres])
+
+  const shown = useMemo(() => {
+    const needle = zhNorm(q.trim())
+    const wantGenre = genre.toLowerCase()
+    return data.filter((e) => {
+      if (needle && !zhNorm(`${e.name} ${e.sort} ${romajiOf(e.name)}`)
+        .includes(needle)) return false
+      if (wantGenre && ![...e.genres]
+        .some((g) => g.toLowerCase() === wantGenre)) return false
+      return true
+    }).sort(SORTS[sort].fn)
+  }, [data, q, genre, sort, SORTS])
+
+  const yearsOf = (e) => {
+    if (!e.years.length) return ''
+    const lo = Math.min(...e.years), hi = Math.max(...e.years)
+    return lo === hi ? `${lo}` : `${lo}–${hi}`
+  }
+
+  const activeFilterCount = Number(!!q.trim()) + Number(!!genre)
+  const clearFilters = () => {
+    onClearQuery?.()
+    setGenre('')
+  }
+
+  return (
+    <>
+      <div className="filters">
+        <FilterSel on={!!genre} value={genre}
+                   onChange={(e) => setGenre(e.target.value)}>
+          <option value="">{t('artists.filterGenre')}</option>
+          {genres.map((g) => <option key={g} value={g}>{g}</option>)}
+        </FilterSel>
+        {isAdmin && hiddenAlbumCount > 0 && (
+          <VisibilityToggle on={showHidden}
+                            onToggle={() => setShowHidden((value) => !value)}
+                            label={t('library.showHidden')}
+                            count={hiddenAlbumCount} />
+        )}
+        <div className="filter-tail">
+          <ClearFilters count={activeFilterCount} onClear={clearFilters}
+                        label={t('common.clearFilters')} />
+          <select className="sort-sel ghost" value={sort}
+                  onChange={(e) => setSort(e.target.value)}>
+            {Object.entries(SORTS).map(([k, v]) =>
+              <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="agrid">
+        {!albums && [...Array(8)].map((_, i) => (
+          <div key={i} className="acard">
+            <div className="sk" style={{ width: 128, height: 128, borderRadius: '50%' }} />
+            <div className="sk" style={{ height: 14, marginTop: 12, width: 90 }} />
+          </div>
+        ))}
+        {albums && shown.length === 0 && (
+          <div className="empty">
+            <div className="big">{t('artists.empty')}</div>
+          </div>
+        )}
+        {albums && shown.map((e) => (
+          <div key={e.name}
+               className={`acard ${e.hiddenCount === e.count ? 'is-hidden' : ''}`}
+               onClick={() => onOpenArtist(e.name)}>
+            <div className="acard-avatar">
+              <img loading="lazy"
+                   src={artistArtUrl(e.name,
+                     avatarFlagBy.get(e.name)
+                       ? `c${avatarVer || ''}`
+                       : avatarVer)}
+                   alt="" />
+            </div>
+            {e.hiddenCount > 0 && (
+              <span className="acard-hidden-mark" title={t('library.showHidden')}>
+                <I.eye size={11} /><b>{e.hiddenCount}</b>
+              </span>
+            )}
+            <div className="acard-name" title={e.name}>{e.name}</div>
+            <div className="acard-sub">
+              {t('artists.albums', e.count)}{yearsOf(e) ? ` · ${yearsOf(e)}` : ''}
+              {noteBy.get(e.name)
+                ? <I.list size={10} style={{ marginLeft: 5, opacity: 0.6 }} />
+                : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}

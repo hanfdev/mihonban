@@ -1,0 +1,59 @@
+# beets config template rendered by mihonban into <data_dir>/beets/config.yaml.
+# Placeholders: music_root / library_db / import_log / token / art_sources /
+#               pluginpath. Committed to the repo; the rendered copy never is.
+
+directory: "{music_root}"
+library: "{library_db}"
+
+original_date: yes
+
+pluginpath:
+  - "{pluginpath}"
+
+import:
+  move: yes
+  write: yes
+  log: "{import_log}"
+  quiet_fallback: skip
+  duplicate_action: skip
+  languages: []
+
+paths:
+  default: "$albumartist/[$year] $album%aunique{{}}/$track $title"
+  singleton: "_singletons/$artist/$title"
+  comp: "_compilations/[$year] $album%aunique{{}}/$track $title"
+
+match:
+  # quiet-mode auto-accept at >=90% similarity (default 96% is too strict for
+  # reissue rips whose tag year differs from the matched release year)
+  strong_rec_thresh: 0.10
+  distance_weights:
+    year: 0.5
+    # constant noise on fresh imports when >1 metadata plugin is active
+    data_source: 0.0
+  preferred:
+    countries: [JP]
+  max_rec:
+    missing_tracks: medium
+    unmatched_tracks: medium
+
+plugins: musicbrainz fromfilename fetchart embedart mihonban_artist{discogs_plugin}
+
+musicbrainz:
+  search_limit: 20
+
+fetchart:
+  auto: yes
+  sources: [{art_sources}]
+  cautious: yes
+
+embedart:
+  auto: yes
+  remove_art_file: no
+
+discogs:
+  user_token: "{token}"
+  index_tracks: no
+
+ui:
+  color: no

@@ -1,0 +1,21 @@
+{
+  "name": "mihonban-cloud",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "node": "node src/node.js",
+    "db:export": "node scripts/export-sqlite.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.11",
+    "better-sqlite3": "^11.8.0",
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

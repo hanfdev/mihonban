@@ -1,0 +1,34 @@
+# mihonban runtime config template (portable).
+# Create it with `mihonban setup`, or copy it outside cloud-sync folders:
+#   Windows:  %APPDATA%\mihonban\config.toml
+#   Linux/macOS:  ~/.config/mihonban/config.toml
+# Then:  export MIHONBAN_CONFIG=/path/to/that/file
+#
+# Red line: music_root / data_dir must NOT live inside OneDrive / iCloud / Dropbox.
+
+[paths]
+# Absolute paths. Use forward slashes on all platforms (Windows accepts them).
+music_root = '~/Music/mihonban/Library'
+inbox      = '~/Music/mihonban/_inbox'
+rym_pages  = '~/Music/mihonban/_rym_pages'
+data_dir   = '~/Music/mihonban/_data'
+
+[archive]
+# Tried in order; unencrypted archives ignore passwords.
+passwords = []
+# sevenzip = '/usr/bin/7z'          # auto-detected if on PATH
+# sevenzip = 'C:/Program Files/7-Zip/7z.exe'
+
+[naming]
+# original = folder/primary tags keep source script; romaji is used for sorting.
+primary = "original"
+
+[discogs]
+token = ""   # personal access token from discogs.com/settings/developers
+
+# Filled automatically by tools/deploy-cloud (or set after you deploy).
+[cloud]
+url = ""              # https://mihonban.<you>.workers.dev
+api_key = ""          # companion key from deploy wizard
+rclone = ""           # path to rclone binary (auto-detected if empty)
+remote = "mihonban:Music/Library"  # rclone remote name + library path

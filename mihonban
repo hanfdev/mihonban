@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Preferred mihonban entry point.
+set -euo pipefail
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 -m mihonban "$@"
+elif command -v python >/dev/null 2>&1; then
+  exec python -m mihonban "$@"
+fi
+echo "mihonban: python not found. Install Python 3.11+ and: pip install -e ./pipeline" >&2
+exit 1

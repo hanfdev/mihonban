@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mihonban-audio-proxy",
+  "main": "worker.js",
+  "compatibility_date": "2026-06-01",
+  "vars": {
+    "ALLOWED_HOSTS": ".sharepoint.com,.1drv.com,onedrive.live.com",
+    "ALLOWED_ORIGINS": "*"
+  }
+  // Required secret: npx wrangler secret put PROXY_SECRET
+  // Debug only: ALLOW_UNSIGNED=1. HTTP upstreams remain disabled by default.
+}

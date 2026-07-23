@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mihonban"
+version = "0.1.0"
+description = "Private Japanese rare-music library pipeline: ingest, tag-fix, RYM metadata layer"
+license = "AGPL-3.0-only"
+requires-python = ">=3.11"
+dependencies = [
+    "mutagen>=1.47",
+    "beets>=2.0",
+    "musicbrainzngs",
+    "requests",
+    "beautifulsoup4",
+    "lxml",
+    "pyyaml",
+    "rich",
+    "pykakasi",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+]
+
+[project.scripts]
+mihonban = "mihonban.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mihonban*"]
