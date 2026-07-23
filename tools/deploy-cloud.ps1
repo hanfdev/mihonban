@@ -8,7 +8,9 @@ param(
   [string]$AdminPassword = "",
   [string]$ConfigPath = "",
   [string]$StageDir = "",
-  [string]$RcloneRemote = "mihonban:Music/Library"
+  [string]$RcloneRemote = "mihonban:Music/Library",
+  [ValidateSet("", "weur", "eeur", "apac", "oc", "wnam", "enam")]
+  [string]$D1Location = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -70,28 +72,40 @@ try {
   $d1List = npx wrangler d1 list --json 2>$null | ConvertFrom-Json
   $db = $d1List | Where-Object { $_.name -eq "mihonban" }
   if (-not $db) {
-    $null = npx wrangler d1 create mihonban 2>&1
+    if ($D1Location) {
+      $null = npx wrangler d1 create mihonban --location $D1Location 2>&1
+    } else {
+      $null = npx wrangler d1 create mihonban 2>&1
+    }
     $db = (npx wrangler d1 list --json | ConvertFrom-Json) |
       Where-Object { $_.name -eq "mihonban" }
   }
   $dbId = $db.uuid
+  if ($dbId -notmatch '^[0-9a-fA-F-]{36}$') {
+    throw "Could not resolve the mihonban D1 database ID."
+  }
   Write-Host "    D1: $dbId"
 
   Step "Provisioning KV namespace"
   $kvList = npx wrangler kv namespace list 2>$null | ConvertFrom-Json
-  $kv = $kvList | Where-Object { $_.title -match "mihonban.KV$" }
+  $kv = $kvList | Where-Object {
+    $_.title -in @("mihonban-kv", "mihonban.KV")
+  } | Select-Object -First 1
   if (-not $kv) {
-    $null = npx wrangler kv namespace create KV 2>&1
+    $null = npx wrangler kv namespace create mihonban-kv --binding KV 2>&1
     $kv = (npx wrangler kv namespace list | ConvertFrom-Json) |
-      Where-Object { $_.title -match "mihonban.KV$" }
+      Where-Object { $_.title -eq "mihonban-kv" } | Select-Object -First 1
   }
   $kvId = $kv.id
+  if ($kvId -notmatch '^[0-9a-fA-F]{32}$') {
+    throw "Could not resolve the mihonban KV namespace ID."
+  }
   Write-Host "    KV: $kvId"
 
   Step "Writing IDs into wrangler.jsonc"
   $cfg = Get-Content wrangler.jsonc -Raw
   $cfg = $cfg -replace '"database_id":\s*"[^"]*"', "`"database_id`": `"$dbId`""
-  $cfg = $cfg -replace '"id":\s*"0{32}"', "`"id`": `"$kvId`""
+  $cfg = $cfg -replace '"id":\s*"[0-9a-fA-F]{32}"', "`"id`": `"$kvId`""
   Set-Content wrangler.jsonc $cfg -Encoding utf8
 
   Step "Applying schema to remote D1"

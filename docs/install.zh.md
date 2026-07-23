@@ -142,24 +142,30 @@ cd ../worker
 npm ci
 npx wrangler login
 npx wrangler d1 create mihonban
-npx wrangler kv namespace create KV
+npx wrangler kv namespace create mihonban-kv --binding KV
 ```
 
-把返回的 D1 数据库 ID 和 KV namespace ID 写入 `cloud/worker/wrangler.jsonc`，替换全零占位符。然后执行：
+需要明确主区域时，可在 `d1 create` 后添加 `--location apac` 或其他受支持的区域提示。创建任一资源时，如果 Wrangler 询问是否更新当前配置，请选择**否**；真实 ID 应写入下面创建的私有副本。把公开配置复制为已被忽略的本地部署配置，再在其中用返回的 D1/KV ID 替换全零占位符：
 
 ```bash
-npx wrangler d1 execute mihonban --remote --file schema.sql
-npx wrangler secret put APP_PASSWORD
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put SESSION_SECRET
-npx wrangler deploy
+cp wrangler.jsonc wrangler.local.jsonc
+```
+
+PowerShell 使用 `Copy-Item wrangler.jsonc wrangler.local.jsonc`。不要把真实账户资源 ID 或任何密钥写进公开 `wrangler.jsonc`。然后执行：
+
+```bash
+npx wrangler d1 execute mihonban --remote --file schema.sql --config wrangler.local.jsonc
+npx wrangler secret put APP_PASSWORD --config wrangler.local.jsonc
+npx wrangler secret put ADMIN_PASSWORD --config wrangler.local.jsonc
+npx wrangler secret put SESSION_SECRET --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 Cloudflare 部署没有默认听众或管理员口令。请分别输入不同口令，并为 `SESSION_SECRET` 使用至少 32 个随机字符。只有本机伴侣要连接云端时才添加：
 
 ```bash
-npx wrangler secret put COMPANION_KEY
-npx wrangler deploy
+npx wrangler secret put COMPANION_KEY --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 同一个 Worker 同源提供 `/api/*` 和构建后的 React 静态资源，无需另配前端托管。
@@ -210,8 +216,8 @@ Cloudflare：
 git pull
 cd cloud/web && npm ci && npm run build
 cd ../worker && npm ci
-npx wrangler d1 execute mihonban --remote --file schema.sql
-npx wrangler deploy
+npx wrangler d1 execute mihonban --remote --file schema.sql --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 Node：重新构建 `cloud/web`、安装 Worker 依赖、停止旧进程并重新运行 `npm run node`。`schema.sql` 可重复执行，运行时迁移会为旧数据库补充必需列。

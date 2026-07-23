@@ -38,21 +38,29 @@ Stop writes during the final cutover. The exporter uses a SQLite read transactio
 
 ## 2. Prepare the target
 
-Create D1/KV, place their IDs in `wrangler.jsonc`, and apply the schema:
+Create D1/KV, copy the public template to the ignored local config, place the
+real IDs in that local file, and apply the schema:
 
 ```bash
 cd cloud/worker
 npm ci
-npx wrangler d1 execute mihonban --remote --file schema.sql
+cp wrangler.jsonc wrangler.local.jsonc
+# Replace the zero D1/KV IDs in wrangler.local.jsonc.
+npx wrangler d1 execute mihonban --remote --file schema.sql \
+  --config wrangler.local.jsonc
 ```
 
-The D1 resource is named `mihonban`, matching `wrangler.jsonc` and the Worker.
+On PowerShell, use `Copy-Item wrangler.jsonc wrangler.local.jsonc`. The D1
+resource is named `mihonban`, matching the config and Worker. Never put account
+resource IDs or deployment secrets in the public template.
 
 If the target already has important data, export it first:
 
 ```bash
 mkdir -p ../../backups
-npx wrangler d1 export mihonban --remote --output ../../backups/remote-before-import.sql
+npx wrangler d1 export mihonban --remote \
+  --output ../../backups/remote-before-import.sql \
+  --config wrangler.local.jsonc
 ```
 
 ## 3. Export and import library data
@@ -65,7 +73,9 @@ From the repository root:
 powershell -File tools\migrate-d1.ps1 -ImportRemote
 ```
 
-The helper auto-detects the newest Node SQLite or local Wrangler D1 and writes a timestamped SQL file under ignored `backups/`. It writes remote D1 only when `-ImportRemote` is present; omit that switch for export only.
+The helper auto-detects the newest Node SQLite or local Wrangler D1 and writes a timestamped SQL file under ignored `backups/`. It writes remote D1 only when `-ImportRemote` is present; omit that switch for export only. Before every remote import it also exports the current target to `backups/` and aborts if that backup fails. `-SkipRemoteBackup` is an explicit emergency override.
+
+The helper prefers ignored `cloud/worker/wrangler.local.jsonc` when present and otherwise uses the public template. Pass `-WranglerConfig <path>` to select another private config.
 
 When several local databases exist, always pass `-Source` instead of relying on modification time.
 
@@ -75,6 +85,7 @@ Explicit source:
 powershell -File tools\migrate-d1.ps1 `
   -Source "D:\mihonban-data\mihonban.sqlite" `
   -Database "mihonban" `
+  -WranglerConfig "cloud\worker\wrangler.local.jsonc" `
   -ImportRemote
 ```
 
@@ -88,12 +99,24 @@ npm run db:export -- \
   --output ../../backups/mihonban-d1.sql
 
 npx wrangler d1 execute mihonban --remote \
-  --file ../../backups/mihonban-d1.sql
+  --file ../../backups/mihonban-d1.sql \
+  --config wrangler.local.jsonc
 ```
 
 Default mode uses primary-key UPSERT and retains target rows absent from the source. A conflicting unique path with a different ID fails instead of deleting data silently. For a fresh target this produces an exact source catalog. `--replace` clears the included catalog tables first; only use it after a remote backup.
 
-`--include-config` also exports `settings` and `storages`, but then the SQL contains secrets. The recommended flow is the separate Admin JSON instead.
+The generated SQL intentionally has no explicit `BEGIN TRANSACTION` or
+`COMMIT`: current remote D1 imports reject those statements and Wrangler applies
+an uploaded file atomically. The exporter still reads the source in one SQLite
+transaction, so its snapshot is consistent.
+
+`--include-config` also exports named storages and the same allowlisted settings
+as the Admin backup, so the SQL contains storage and service credentials. It
+deliberately excludes listener/admin password hashes, session epoch, companion
+heartbeat, scan timestamps, and errors. Configure target Worker passwords and
+runtime secrets independently. The separate Admin JSON remains the recommended
+configuration path. Even with `--replace`, only allowlisted configuration keys
+are replaced; target authentication and runtime-state rows remain untouched.
 
 ## 4. Restore configuration and secrets
 
@@ -108,11 +131,11 @@ The settings JSON intentionally does not restore password hashes or session stat
 ## 5. Verify counts and behavior
 
 ```bash
-npx wrangler d1 execute mihonban --remote --command \
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc --command \
   "SELECT COUNT(*) AS albums FROM albums"
-npx wrangler d1 execute mihonban --remote --command \
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc --command \
   "SELECT COUNT(*) AS tracks FROM tracks"
-npx wrangler d1 execute mihonban --remote --command \
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc --command \
   "SELECT COUNT(*) AS artists FROM artists"
 ```
 

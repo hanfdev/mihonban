@@ -13,6 +13,7 @@ import { requireAuth, requireAdmin, sessionCookie, sessionRole,
 import { scanSource } from "./source.js";
 import { signProxyTarget } from "./proxy-sign.js";
 import { discardResponse, fetchWithTimeout } from "./net.js";
+import { CONFIG_BACKUP_SETTING_KEYS } from "./config-backup.js";
 
 const app = new Hono();
 
@@ -3632,17 +3633,9 @@ app.post("/api/admin/storages/gdrive-exchange", async (c) => {
 /* ---------- 配置导出 / 导入（重新部署后一键还原命名存储 + R2 等） ----------
    导出不含口令哈希与 session 纪元；敏感字段原样导出（请妥善保管 JSON）。 */
 
-const EXPORT_SETTING_KEYS = [
-  "r2_enabled", "r2_access_key", "r2_secret_key", "r2_endpoint",
-  "r2_bucket", "r2_public_url",
-  "discogs_token",
-  "guest_open", "module_source", "stream_proxy", "stream_proxy_url",
-  "source_url", "archive_passwords",
-];
-
 app.get("/api/admin/config/export", async (c) => {
   const settings = {};
-  for (const k of EXPORT_SETTING_KEYS) {
+  for (const k of CONFIG_BACKUP_SETTING_KEYS) {
     const v = await getSetting(c.env, k);
     if (v != null && v !== "") settings[k] = v;
   }
@@ -3690,7 +3683,7 @@ app.post("/api/admin/config/import", async (c) => {
   const booleanSettings = new Set([
     "r2_enabled", "guest_open", "module_source", "stream_proxy",
   ]);
-  for (const key of EXPORT_SETTING_KEYS) {
+  for (const key of CONFIG_BACKUP_SETTING_KEYS) {
     if (settings[key] === undefined || settings[key] === "") continue;
     if (typeof settings[key] !== "string") {
       return c.json({ error: `设置 ${key} 必须是字符串` }, 400);

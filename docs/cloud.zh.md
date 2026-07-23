@@ -105,7 +105,8 @@ Cloudflare：
 ```bash
 cd cloud/worker
 npx wrangler tail
-npx wrangler d1 execute mihonban --remote --command "SELECT COUNT(*) AS albums FROM albums"
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc \
+  --command "SELECT COUNT(*) AS albums FROM albums"
 ```
 
 Wrangler 本地把命令改为 `--local`。Node 用户检查 `DATA_DIR`、启动日志和管理后台系统状态。日志中不得输出 refresh token、签名音频 URL、设置备份正文或请求授权头。

@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "nod
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { CONFIG_BACKUP_SETTING_KEYS } from "../src/config-backup.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const workerDir = resolve(here, "..");
@@ -24,9 +25,10 @@ function usage(message = "") {
 Options:
   --source <file>       SQLite file from Node or local Wrangler D1
   --output <file>       SQL output path (default: d1-backup.sql)
-  --include-config      Include settings + storage configs (contains secrets)
+  --include-config      Include config settings + storages (contains secrets;
+                        excludes password hashes and runtime/session state)
   --include-cache       Include the R2 cache index (normally rebuild it)
-  --replace             Clear included target tables before importing
+  --replace             Clear included catalog tables/config keys first
   --help                Show this help
 
 Import with:
@@ -96,6 +98,8 @@ if (includeConfig) tables.unshift("storages");
 if (includeConfig) tables.push("settings");
 if (includeCache) tables.push("r2_cache");
 const selected = tables.filter(tableExists);
+const configSettingPlaceholders = CONFIG_BACKUP_SETTING_KEYS
+  .map(() => "?").join(", ");
 db.exec("BEGIN TRANSACTION");
 const lines = [
   "-- mihonban D1 logical backup",
@@ -103,17 +107,22 @@ const lines = [
   `-- generated: ${new Date().toISOString()}`,
   "-- Import with: npx wrangler d1 execute mihonban --remote --file this.sql",
   includeConfig
-    ? "-- WARNING: settings and storage configs are included; protect this file like a secret."
+    ? "-- WARNING: allowlisted settings and storage configs are included; protect this file like a secret."
     : "-- settings/storage configs omitted; use the Admin config backup for credentials.",
+  "-- Remote D1 imports reject explicit SQL transactions; Wrangler applies the uploaded file atomically.",
   replace
     ? "-- WARNING: --replace was requested; included tables are cleared first."
     : "-- Mode: merge (primary-key UPSERT; absent source rows are retained).",
-  "BEGIN TRANSACTION;",
 ];
 
 if (replace) {
   for (const table of [...selected].reverse()) {
-    lines.push(`DELETE FROM ${quoteIdent(table)};`);
+    if (table === "settings") {
+      lines.push(`DELETE FROM ${quoteIdent(table)} WHERE "k" IN (` +
+        `${CONFIG_BACKUP_SETTING_KEYS.map(sqlValue).join(", ")});`);
+    } else {
+      lines.push(`DELETE FROM ${quoteIdent(table)};`);
+    }
   }
 }
 
@@ -125,8 +134,12 @@ for (const table of selected) {
   const primaryKey = info.filter((column) => column.pk > 0)
     .sort((a, b) => a.pk - b.pk).map((column) => column.name);
   const updateColumns = columns.filter((column) => !primaryKey.includes(column));
-  const rows = db.prepare(
-    `SELECT ${columns.map(quoteIdent).join(", ")} FROM ${quoteIdent(table)}`).all();
+  const select = `SELECT ${columns.map(quoteIdent).join(", ")} ` +
+    `FROM ${quoteIdent(table)}`;
+  const rows = table === "settings"
+    ? db.prepare(`${select} WHERE "k" IN (${configSettingPlaceholders})`)
+      .all(...CONFIG_BACKUP_SETTING_KEYS)
+    : db.prepare(select).all();
   counts.push(`${table}=${rows.length}`);
   const prefix = `INSERT INTO ${quoteIdent(table)} ` +
     `(${columns.map(quoteIdent).join(", ")}) VALUES `;
@@ -141,7 +154,7 @@ for (const table of selected) {
     lines.push(`${prefix}(${columns.map((column) => sqlValue(row[column])).join(", ")})${upsert};`);
   }
 }
-lines.push("COMMIT;", "");
+lines.push("");
 db.exec("COMMIT");
 db.close();
 writeFileSync(output, lines.join("\n"), "utf8");

@@ -63,6 +63,7 @@ config/*.local.toml
 secrets*.toml
 rclone.conf
 wrangler.toml
+wrangler.local.jsonc
 .secrets/
 .secret
 .secret.*

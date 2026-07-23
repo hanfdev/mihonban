@@ -105,7 +105,8 @@ Cloudflare:
 ```bash
 cd cloud/worker
 npx wrangler tail
-npx wrangler d1 execute mihonban --remote --command "SELECT COUNT(*) AS albums FROM albums"
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc \
+  --command "SELECT COUNT(*) AS albums FROM albums"
 ```
 
 Local Wrangler uses the same command with `--local`. Node users should verify `DATA_DIR`, the startup log, and the Admin system status. Never print refresh tokens, signed audio URLs, settings exports, or request authorization headers in logs.

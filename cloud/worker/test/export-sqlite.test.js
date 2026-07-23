@@ -59,3 +59,64 @@ test("SQLite export restores library data without leaking config by default", ()
     rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test("config export is remote-D1 compatible and excludes auth/runtime state", () => {
+  const temp = mkdtempSync(join(tmpdir(), "mihonban-export-config-"));
+  const sourcePath = join(temp, "source.sqlite");
+  const outputPath = join(temp, "backup.sql");
+  const source = new Database(sourcePath);
+  try {
+    source.exec(schema);
+    source.prepare(`INSERT INTO storages
+      (id, name, kind, config, created_at)
+      VALUES ('store-1', 'Store', 'webdav', '{"password":"storage-secret"}', 1)`).run();
+    const insertSetting = source.prepare(
+      "INSERT INTO settings (k, v) VALUES (?, ?)");
+    insertSetting.run("discogs_token", "config-secret");
+    insertSetting.run("admin_pass_hash", "admin-auth-secret");
+    insertSetting.run("user_pass_hash", "user-auth-secret");
+    insertSetting.run("session_epoch", "session-runtime-secret");
+    insertSetting.run("companion_last_seen", "heartbeat-runtime-secret");
+    insertSetting.run("source_last_scan", "scanner-runtime-secret");
+  } finally {
+    source.close();
+  }
+
+  try {
+    execFileSync(process.execPath, [join(workerDir, "scripts", "export-sqlite.mjs"),
+      "--source", sourcePath, "--output", outputPath, "--include-config",
+      "--replace"],
+    { cwd: workerDir });
+    const sql = readFileSync(outputPath, "utf8");
+    assert.equal(/^\s*(?:BEGIN TRANSACTION|COMMIT);\s*$/mi.test(sql), false);
+    assert.equal(sql.includes("storage-secret"), true);
+    assert.equal(sql.includes("config-secret"), true);
+    for (const excluded of [
+      "admin-auth-secret", "user-auth-secret", "session-runtime-secret",
+      "heartbeat-runtime-secret", "scanner-runtime-secret",
+    ]) assert.equal(sql.includes(excluded), false);
+
+    const target = new Database(":memory:");
+    try {
+      target.exec(schema);
+      target.prepare("INSERT INTO settings (k, v) VALUES (?, ?)")
+        .run("admin_pass_hash", "target-admin-auth");
+      target.prepare("INSERT INTO settings (k, v) VALUES (?, ?)")
+        .run("discogs_token", "stale-config-secret");
+      target.exec(sql);
+      assert.equal(target.prepare("SELECT COUNT(*) AS n FROM storages").get().n, 1);
+      assert.equal(target.prepare(
+        "SELECT v FROM settings WHERE k = 'discogs_token'").get().v,
+      "config-secret");
+      assert.equal(target.prepare(
+        "SELECT v FROM settings WHERE k = 'admin_pass_hash'").get().v,
+      "target-admin-auth");
+      assert.equal(target.prepare(
+        "SELECT v FROM settings WHERE k = 'session_epoch'").get(), undefined);
+    } finally {
+      target.close();
+    }
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});

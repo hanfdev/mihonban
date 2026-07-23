@@ -142,24 +142,37 @@ cd ../worker
 npm ci
 npx wrangler login
 npx wrangler d1 create mihonban
-npx wrangler kv namespace create KV
+npx wrangler kv namespace create mihonban-kv --binding KV
 ```
 
-Copy the returned D1 database ID and KV namespace ID into `cloud/worker/wrangler.jsonc`, replacing the zero placeholders. Then run:
+Add `--location apac` (or another supported location hint) to `d1 create` when
+you need an explicit primary region. Copy the public config to the ignored
+local deployment config, then replace its zero placeholders with the returned
+D1 and KV IDs:
+
+If Wrangler offers to update the current config while creating either resource,
+answer **No**; the real IDs belong in the private copy created below.
 
 ```bash
-npx wrangler d1 execute mihonban --remote --file schema.sql
-npx wrangler secret put APP_PASSWORD
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put SESSION_SECRET
-npx wrangler deploy
+cp wrangler.jsonc wrangler.local.jsonc
+```
+
+PowerShell uses `Copy-Item wrangler.jsonc wrangler.local.jsonc`. Keep real
+account IDs and all secrets out of the public `wrangler.jsonc`. Then run:
+
+```bash
+npx wrangler d1 execute mihonban --remote --file schema.sql --config wrangler.local.jsonc
+npx wrangler secret put APP_PASSWORD --config wrangler.local.jsonc
+npx wrangler secret put ADMIN_PASSWORD --config wrangler.local.jsonc
+npx wrangler secret put SESSION_SECRET --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 Cloudflare deployment has no default listener or administrator password. Enter unique values, and use at least 32 random characters for `SESSION_SECRET`. Add `COMPANION_KEY` only when a local companion will call the deployment:
 
 ```bash
-npx wrangler secret put COMPANION_KEY
-npx wrangler deploy
+npx wrangler secret put COMPANION_KEY --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 The same Worker serves `/api/*` and the built React assets. A separate frontend host is unnecessary.
@@ -210,8 +223,8 @@ Cloudflare:
 git pull
 cd cloud/web && npm ci && npm run build
 cd ../worker && npm ci
-npx wrangler d1 execute mihonban --remote --file schema.sql
-npx wrangler deploy
+npx wrangler d1 execute mihonban --remote --file schema.sql --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 Node: rebuild `cloud/web`, reinstall Worker dependencies, stop the old process, and restart `npm run node`. `schema.sql` is repeatable and runtime migrations add columns required by older databases.

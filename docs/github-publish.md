@@ -6,7 +6,7 @@ The canonical public repository is [hanfdev/mihonban](https://github.com/hanfdev
 
 ## Never track
 
-- `.dev.vars`, `.env`, `mihonban.toml`, `rclone.conf`, or provider configuration
+- `.dev.vars`, `.env`, `mihonban.toml`, `rclone.conf`, `wrangler.local.jsonc`, or provider configuration
 - `backups/`, `*.sqlite`, `*.db`, SQL exports, or Admin settings JSON
 - Audio, personal covers/galleries, saved RYM pages, or inbox archives
 - Cloudflare, Azure, Google, WebDAV, Discogs, R2, proxy, or companion credentials

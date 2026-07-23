@@ -40,21 +40,26 @@ Node 数据库为 `<DATA_DIR>/mihonban.sqlite`。Wrangler 本地 D1 位于 `clou
 
 ## 2. 准备新 Cloudflare 项目
 
-创建 D1/KV，把 ID 写入 `wrangler.jsonc`，应用 schema：
+创建 D1/KV，把公开模板复制为已忽略的本地配置，只在本地配置中填入真实 ID，然后应用 schema：
 
 ```bash
 cd cloud/worker
 npm ci
-npx wrangler d1 execute mihonban --remote --file schema.sql
+cp wrangler.jsonc wrangler.local.jsonc
+# 在 wrangler.local.jsonc 中替换 D1/KV 的全零占位 ID。
+npx wrangler d1 execute mihonban --remote --file schema.sql \
+  --config wrangler.local.jsonc
 ```
 
-本文命令中的 D1 资源名为 `mihonban`，与 `wrangler.jsonc` 和 Worker 保持一致。
+PowerShell 使用 `Copy-Item wrangler.jsonc wrangler.local.jsonc`。本文命令中的 D1 资源名为 `mihonban`，与配置和 Worker 保持一致。不要把账户资源 ID 或部署密钥写进公开模板。
 
 如果目标 D1 已有重要内容，先备份：
 
 ```bash
 mkdir -p ../../backups
-npx wrangler d1 export mihonban --remote --output ../../backups/remote-before-import.sql
+npx wrangler d1 export mihonban --remote \
+  --output ../../backups/remote-before-import.sql \
+  --config wrangler.local.jsonc
 ```
 
 PowerShell 可先用 `New-Item -ItemType Directory ../../backups -Force` 创建目录。
@@ -69,7 +74,9 @@ PowerShell 可先用 `New-Item -ItemType Directory ../../backups -Force` 创建�
 powershell -File tools\migrate-d1.ps1 -ImportRemote
 ```
 
-工具会自动寻找最新的 Node SQLite 或 Wrangler 本地 D1，在已忽略的 `backups/` 下生成带时间戳 SQL。只有显式加 `-ImportRemote` 才写远端；去掉该开关就是只导出。
+工具会自动寻找最新的 Node SQLite 或 Wrangler 本地 D1，在已忽略的 `backups/` 下生成带时间戳 SQL。只有显式加 `-ImportRemote` 才写远端；去掉该开关就是只导出。每次远端导入前，工具还会先把当前目标导出到 `backups/`，备份失败就终止导入。`-SkipRemoteBackup` 只用于明确接受风险的紧急情况。
+
+工具优先使用已忽略的 `cloud/worker/wrangler.local.jsonc`，不存在时才使用公开模板。可用 `-WranglerConfig <路径>` 指定其他私有配置。
 
 本机存在多个数据库时，必须显式传入 `-Source`，不要依赖修改时间自动选择。
 
@@ -79,6 +86,7 @@ powershell -File tools\migrate-d1.ps1 -ImportRemote
 powershell -File tools\migrate-d1.ps1 `
   -Source "D:\mihonban-data\mihonban.sqlite" `
   -Database "mihonban" `
+  -WranglerConfig "cloud\worker\wrangler.local.jsonc" `
   -ImportRemote
 ```
 
@@ -92,12 +100,15 @@ npm run db:export -- \
   --output ../../backups/mihonban-d1.sql
 
 npx wrangler d1 execute mihonban --remote \
-  --file ../../backups/mihonban-d1.sql
+  --file ../../backups/mihonban-d1.sql \
+  --config wrangler.local.jsonc
 ```
 
 默认是按主键 UPSERT 的合并模式，源端没有的目标行会保留；如果同一路径已对应另一个 ID，会明确失败而不是静默删除。对空目标来说就是完整源曲库。`--replace` 会先清空本次包含的曲库表，只能在目标备份后使用。
 
-`--include-config` 会把 `settings` 和 `storages` 也写进 SQL，但文件会含密钥。推荐仍使用单独的管理后台 JSON。
+生成的 SQL 故意不包含显式 `BEGIN TRANSACTION` 或 `COMMIT`：当前远端 D1 导入会拒绝这些语句，而 Wrangler 会原子应用整个上传文件。导出器读取源 SQLite 时仍使用单个事务，因此快照保持一致。
+
+`--include-config` 会导出命名存储和与管理后台备份相同的设置白名单，因此 SQL 会包含存储及服务凭据；它明确排除听众/管理员口令哈希、会话纪元、伴侣心跳、扫描时间和错误状态。目标 Worker 的口令与运行时密钥必须单独设置。配置迁移仍推荐使用管理后台 JSON。即使同时使用 `--replace`，也只替换白名单配置键，目标端认证与运行状态行保持不变。
 
 ## 4. 恢复设置和 secrets
 
@@ -112,11 +123,11 @@ npx wrangler d1 execute mihonban --remote \
 ## 5. 核对
 
 ```bash
-npx wrangler d1 execute mihonban --remote --command \
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc --command \
   "SELECT COUNT(*) AS albums FROM albums"
-npx wrangler d1 execute mihonban --remote --command \
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc --command \
   "SELECT COUNT(*) AS tracks FROM tracks"
-npx wrangler d1 execute mihonban --remote --command \
+npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc --command \
   "SELECT COUNT(*) AS artists FROM artists"
 ```
 

@@ -6,7 +6,7 @@
 
 ## 绝不能跟踪
 
-- `.dev.vars`、`.env`、`mihonban.toml`、`rclone.conf` 或服务商配置
+- `.dev.vars`、`.env`、`mihonban.toml`、`rclone.conf`、`wrangler.local.jsonc` 或服务商配置
 - `backups/`、`*.sqlite`、`*.db`、SQL 导出或管理后台设置 JSON
 - 音频、私人封面/内页、手存 RYM 页面或收件箱压缩包
 - Cloudflare、Azure、Google、WebDAV、Discogs、R2、代理或伴侣凭据
