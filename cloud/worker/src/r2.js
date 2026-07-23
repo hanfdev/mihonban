@@ -64,8 +64,14 @@ export async function r2Conf(env) {
   return conf;
 }
 
-/** 公开读地址（不签名，走 CDN）。 */
-export const r2PublicUrl = (conf, key) => `${conf.publicUrl}/${key}`;
+/** 公开读地址（不签名，走 CDN）。稳定版本号可绕过浏览器缓存过的旧 404。 */
+export const r2PublicUrl = (conf, key, version = null) => {
+  const url = new URL(`${conf.publicUrl}/${key}`);
+  if (version !== null && version !== undefined && version !== "") {
+    url.searchParams.set("v", String(version));
+  }
+  return url.toString();
+};
 
 /** Check the public mirror without downloading it. A missing index can then
  * be rebuilt without fetching and uploading the source image again. */

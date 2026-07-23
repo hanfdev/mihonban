@@ -1,6 +1,6 @@
 # Cloudflare Serverless 托管
 
-[English](serverless-hosting.md)
+[English](serverless-hosting.md) · [简体中文](serverless-hosting.zh.md) · [繁體中文](serverless-hosting.zh-Hant.md) · [日本語](serverless-hosting.ja.md) · [한국어](serverless-hosting.ko.md) · [Français](serverless-hosting.fr.md) · [Español](serverless-hosting.es.md)
 
 Serverless 的目标是在家中电脑关机后，网页仍能登录、浏览和播放。受支持的形态是：一个 Worker 同源提供 React 与 API，D1 + KV，可选 R2 图片镜像，音频保存在 OneDrive、WebDAV 或 Google Drive。
 

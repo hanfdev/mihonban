@@ -1,6 +1,6 @@
 # Publish the code safely
 
-[中文](github-publish.zh.md)
+[English](github-publish.md) · [简体中文](github-publish.zh.md) · [繁體中文](github-publish.zh-Hant.md) · [日本語](github-publish.ja.md) · [한국어](github-publish.ko.md) · [Français](github-publish.fr.md) · [Español](github-publish.es.md)
 
 The canonical public repository is [hanfdev/mihonban](https://github.com/hanfdev/mihonban). It should contain source, tests, public documentation, and safe templates only.
 
@@ -95,7 +95,7 @@ Do not push local recovery branches or ignored backup material.
 
 ## Release checklist
 
-- English and Chinese document pairs both exist and cross-link correctly.
+- Every public guide has English, Simplified Chinese, Traditional Chinese, Japanese, Korean, French, and Spanish versions, with valid cross-language links.
 - A fresh clone installs with `npm ci` and `pip install -e ./pipeline`.
 - Python, frontend, main Worker, proxy Worker, and dry-run checks pass.
 - Documentation contains no machine-specific path, personal service URL, or credential.

@@ -1,6 +1,6 @@
 # Database backup, migration, and recovery
 
-[中文](database-migration.zh.md)
+[English](database-migration.md) · [简体中文](database-migration.zh.md) · [繁體中文](database-migration.zh-Hant.md) · [日本語](database-migration.ja.md) · [한국어](database-migration.ko.md) · [Français](database-migration.fr.md) · [Español](database-migration.es.md)
 
 This document moves a catalog between local Node SQLite, local Wrangler D1, and remote Cloudflare D1.
 

@@ -1094,6 +1094,12 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       {t('common.loading')}</div>
   }
   const rym = al.rym
+  const retryCoverFromOrigin = (event, size) => {
+    const image = event.currentTarget
+    if (image.dataset.originRetry === '1') return
+    image.dataset.originRetry = '1'
+    image.src = artUrl(al.id, size, true)
+  }
 
   const del = async (files) => {
     try {
@@ -1118,14 +1124,16 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
 
   return (
     <div className={`album-page ${al.hidden ? 'is-hidden' : ''}`}>
-      <div className="backdrop"><img src={artUrl(al.id, 480)} alt="" /></div>
+      <div className="backdrop"><img src={artUrl(al.id, 480)} alt=""
+        onError={(event) => retryCoverFromOrigin(event, 480)} /></div>
       <button className="back-btn" onClick={goBack}>
         <I.back size={15} /> {t('common.back')}
       </button>
 
       <div className="hero">
         <div className="hero-cover">
-          <img src={artUrl(al.id, 1000)} alt="" />
+          <img src={artUrl(al.id, 1000)} alt=""
+               onError={(event) => retryCoverFromOrigin(event, 1000)} />
           {al.hidden && <span className="badge-hidden">{t('albumPage.hiddenBadge')}</span>}
         </div>
         <div className="hero-info">

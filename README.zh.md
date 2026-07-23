@@ -1,6 +1,6 @@
 # mihonban / 見本盤
 
-[English](README.md)
+[English](README.md) · [简体中文](README.zh.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Español](README.es.md)
 
 Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。它可以使用 Node + SQLite 在本地运行，也可以使用 Wrangler 本地 D1，或部署到 Cloudflare Workers + D1；音频始终保存在你控制的存储中。
 
@@ -8,9 +8,9 @@ Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。�
 
 - 完整适配桌面与手机的专辑、歌曲、艺人、精选、导入和管理页面
 - 听众与管理员双口令，以及可选的免密只读访客模式
-- 播放队列、随机/循环、Range 拖动、系统媒体控制和移动端手势
+- 播放队列、移动端手势安全首播、随机/循环、Range 拖动和系统媒体控制
 - 命名 OneDrive、WebDAV、Google Drive，以及仅 Node 支持的本地文件夹后端
-- 可选 R2 图片镜像，用于封面、内页和艺人头像
+- 可自动回源修复的 R2 图片镜像，用于封面、内页和艺人头像
 - Discogs 官方 API 导入；手动保存 RYM HTML 后解析，不自动请求 RYM
 - 可选 Python 本机伴侣：处理文件夹及单层/嵌套压缩包、修复标签并同步
 - 英语、简体中文、繁体中文、日语、韩语、法语和西班牙语界面
@@ -130,16 +130,16 @@ python -m pytest -q
 
 ## 文档
 
-| English | 中文 |
+| 指南 | 语言版本 |
 |---|---|
-| [Install and deploy](docs/install.md) | [安装与部署](docs/install.zh.md) |
-| [Architecture and runtime](docs/cloud.md) | [云端架构与运行模型](docs/cloud.zh.md) |
-| [Daily operation](docs/manual.md) | [日常使用手册](docs/manual.zh.md) |
-| [Database migration](docs/database-migration.md) | [数据库迁移](docs/database-migration.zh.md) |
-| [Storage and file migration](docs/storage.md) | [多存储与文件迁移](docs/storage.zh.md) |
-| [Serverless hosting](docs/serverless-hosting.md) | [纯 Cloudflare 托管](docs/serverless-hosting.zh.md) |
-| [Optional audio proxy](docs/audio-proxy.md) | [可选音源代理](docs/audio-proxy.zh.md) |
-| [Publishing safely](docs/github-publish.md) | [安全发布代码](docs/github-publish.zh.md) |
+| 安装与部署 | [English](docs/install.md) · [简体中文](docs/install.zh.md) · [繁體中文](docs/install.zh-Hant.md) · [日本語](docs/install.ja.md) · [한국어](docs/install.ko.md) · [Français](docs/install.fr.md) · [Español](docs/install.es.md) |
+| 架构与运行模型 | [English](docs/cloud.md) · [简体中文](docs/cloud.zh.md) · [繁體中文](docs/cloud.zh-Hant.md) · [日本語](docs/cloud.ja.md) · [한국어](docs/cloud.ko.md) · [Français](docs/cloud.fr.md) · [Español](docs/cloud.es.md) |
+| 日常使用手册 | [English](docs/manual.md) · [简体中文](docs/manual.zh.md) · [繁體中文](docs/manual.zh-Hant.md) · [日本語](docs/manual.ja.md) · [한국어](docs/manual.ko.md) · [Français](docs/manual.fr.md) · [Español](docs/manual.es.md) |
+| 数据库迁移 | [English](docs/database-migration.md) · [简体中文](docs/database-migration.zh.md) · [繁體中文](docs/database-migration.zh-Hant.md) · [日本語](docs/database-migration.ja.md) · [한국어](docs/database-migration.ko.md) · [Français](docs/database-migration.fr.md) · [Español](docs/database-migration.es.md) |
+| 多存储与文件迁移 | [English](docs/storage.md) · [简体中文](docs/storage.zh.md) · [繁體中文](docs/storage.zh-Hant.md) · [日本語](docs/storage.ja.md) · [한국어](docs/storage.ko.md) · [Français](docs/storage.fr.md) · [Español](docs/storage.es.md) |
+| 纯 Cloudflare 托管 | [English](docs/serverless-hosting.md) · [简体中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
+| 可选音源代理 | [English](docs/audio-proxy.md) · [简体中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
+| 安全发布代码 | [English](docs/github-publish.md) · [简体中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
 
 ## 许可证
 

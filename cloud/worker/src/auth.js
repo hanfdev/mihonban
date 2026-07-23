@@ -4,7 +4,7 @@
 // 密码优先读 DB 里的 PBKDF2 哈希（后台可改），没有则回退到部署时的
 // 环境变量明文（首次引导）。cookie 携带角色并整体签名。
 
-const COOKIE = "jr_s";
+const COOKIE = "mihonban_session";
 const DAY = 86400_000;
 const MIN_SESSION_SECRET_LENGTH = 32;
 const PBKDF2_ITERS = 210_000; // OWASP 2023 推荐（PBKDF2-HMAC-SHA256）

@@ -33,16 +33,16 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   const toast = useToast()
   // 排序偏好持久化：用户挑的顺序下次进来还在（含「默认顺序自己调」的诉求）
   const [aSort, setASort] = useState(() => storedSort(
-    'jr_fav_asort', ['fav', 'artist', 'title', 'yearNew', 'yearOld']))
+    'mihonban_favorite_album_sort', ['fav', 'artist', 'title', 'yearNew', 'yearOld']))
   const [tSort, setTSort] = useState(() => storedSort(
-    'jr_fav_tsort', ['fav', 'title', 'artist', 'album', 'yearNew', 'yearOld']))
+    'mihonban_favorite_track_sort', ['fav', 'title', 'artist', 'album', 'yearNew', 'yearOld']))
   const [fArtist, setFArtist] = useState('')
   const [fDecade, setFDecade] = useState('')
   const [fGenre, setFGenre] = useState('')
   const [shuf, setShuf] = useState(playerShuffle) // 歌曲 tab 的随机开关（只切状态，不触发播放）
   useEffect(() => setShuf(playerShuffle), [playerShuffle])
-  useEffect(() => { saveSort('jr_fav_asort', aSort) }, [aSort])
-  useEffect(() => { saveSort('jr_fav_tsort', tSort) }, [tSort])
+  useEffect(() => { saveSort('mihonban_favorite_album_sort', aSort) }, [aSort])
+  useEffect(() => { saveSort('mihonban_favorite_track_sort', tSort) }, [tSort])
 
   const ALBUM_SORTS = useMemo(() => ({
     fav: { label: t('favs.sortOrder'), fn: null },

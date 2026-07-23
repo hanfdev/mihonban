@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { artUrl } from './api.js'
 import { I, Heart, Marquee, fmtDur } from './ui.jsx'
 import { useI18n } from './i18n.jsx'
-import { clampMediaTime, mediaDuration, seekAudio } from './media.js'
+import { clampMediaTime, mediaDuration, seekAudio, storedVolume } from './media.js'
 
 /* 进度条：支持点按 + 拖动洗擦（scrub）。拖动中只更新预览，
  * 松手 onSeek 立刻跳到目标位置（UI 同步更新，不等缓冲）。
@@ -96,13 +96,19 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
   const [dur, setDur] = useState(0)
   const [buffering, setBuffering] = useState(false)
   const [vol, setVol] = useState(() => {
-    let saved = NaN
-    try { saved = Number(localStorage.getItem('jr_vol')) } catch { /* storage unavailable */ }
-    return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.85
+    let saved = null
+    try { saved = localStorage.getItem('mihonban_volume') } catch { /* storage unavailable */ }
+    return storedVolume(saved)
   })
   const [closing, setClosing] = useState(false) // 播放页滑出动画中
   const npHistoryRef = useRef(null)
   const pendingSheetNav = useRef(null)
+  const retryArtFromOrigin = (event, size) => {
+    const image = event.currentTarget
+    if (image.dataset.originRetry === '1') return
+    image.dataset.originRetry = '1'
+    image.src = artUrl(current.albumId, size, true)
+  }
 
   useEffect(() => {
     const a = audioRef.current
@@ -256,7 +262,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
 
   const setVolume = (v) => {
     setVol(v)
-    try { localStorage.setItem('jr_vol', String(v)) } catch { /* storage unavailable */ }
+    try { localStorage.setItem('mihonban_volume', String(v)) } catch { /* storage unavailable */ }
   }
   const volSlider = (
     <input type="range" min="0" max="1" step="0.02" value={vol}
@@ -367,7 +373,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
         <button type="button" className="p-cover-hit"
                 aria-label={`${current.title} — ${current.artist}`}
                 onClick={() => setNpOpen(true)}>
-          <img className="p-cover" src={artUrl(current.albumId, 120)} alt="" />
+          <img className="p-cover" src={artUrl(current.albumId, 120)} alt=""
+               onError={(event) => retryArtFromOrigin(event, 120)} />
         </button>
         <div className="p-info" onClick={blankBarClick}>
           <button type="button" className="p-title"
@@ -416,7 +423,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
              onAnimationEnd={(e) => {
                if (closing && e.target === e.currentTarget) finishClose()
              }}>
-          <div className="np-bg"><img src={artUrl(current.albumId, 480)} alt="" /></div>
+          <div className="np-bg"><img src={artUrl(current.albumId, 480)} alt=""
+            onError={(event) => retryArtFromOrigin(event, 480)} /></div>
           <div className="np-top">
             <button className="icon-btn" title={__('player.collapse')}
                     onClick={closeSheet}>
@@ -427,7 +435,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
           </div>
           <div className="np-body">
             <div className="np-cover">
-              <img src={artUrl(current.albumId, 1000)} alt="" />
+              <img src={artUrl(current.albumId, 1000)} alt=""
+                   onError={(event) => retryArtFromOrigin(event, 1000)} />
             </div>
             <div className="np-panel">
               <div className="np-meta">

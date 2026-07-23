@@ -224,27 +224,6 @@ export default function App() {
   }, [applyFavs, refreshFavorites])
 
   // ---- 播放控制 ----
-  // index 省略 =「播放全部」：继承播放器当前模式，随机开着时起点也随机；
-  // opts.shuffle = 强制随机（歌曲页的随机按钮），顺带把播放器切到随机模式
-  const playTracks = useCallback((list, index, opts) => {
-    if (!list?.length) return
-    const useShuffle = opts?.shuffle ?? shuffle
-    if (useShuffle !== shuffle) setShuffle(useShuffle)
-    const start = index ?? (useShuffle ? Math.floor(Math.random() * list.length) : 0)
-    const { order, pos } = buildOrder(list.length, start, useShuffle)
-    setQueue({ list, order, pos })
-    setPlaying(true)
-  }, [shuffle])
-
-  // 专辑上下文播放（归一化补上艺人/专辑信息）
-  const playFrom = useCallback((album, tracks, index) => {
-    playTracks(tracks.map((t) => ({
-      id: t.id, title: t.title, duration: t.duration, format: t.format,
-      artist: t.artist || album.artist,
-      albumId: t.albumId || album.id, albumTitle: t.albumTitle || album.title,
-    })), index)
-  }, [playTracks])
-
   const skipRun = useRef(0) // 连续自动跳过计数：整条队列都不支持时防死循环
   const sourceRef = useRef({ id: null, proxy: false })
   const playAttemptRef = useRef(0)
@@ -255,9 +234,11 @@ export default function App() {
           && sourceRef.current.id === sourceId && !audio.paused) {
         setPlaying(true)
       }
+      return true
     }).catch(() => {
       if (playAttemptRef.current === attempt
           && sourceRef.current.id === sourceId) setPlaying(false)
+      return false
     })
   }, [])
   const pauseAudio = useCallback((audio) => {
@@ -265,6 +246,37 @@ export default function App() {
     audio.pause()
     setPlaying(false)
   }, [])
+
+  // index 省略 =「播放全部」：继承播放器当前模式，随机开着时起点也随机；
+  // opts.shuffle = 强制随机（歌曲页的随机按钮），顺带把播放器切到随机模式
+  const playTracks = useCallback((list, index, opts) => {
+    if (!list?.length) return
+    const useShuffle = opts?.shuffle ?? shuffle
+    if (useShuffle !== shuffle) setShuffle(useShuffle)
+    const start = index ?? (useShuffle ? Math.floor(Math.random() * list.length) : 0)
+    const { order, pos } = buildOrder(list.length, start, useShuffle)
+    setQueue({ list, order, pos })
+    // Android Chrome 对首次有声播放严格要求调用仍处在点击手势内。
+    // 先在本次事件栈里装载并播放；current 变化后的 effect 只负责兜底和切歌。
+    const first = list[order[pos]]
+    const audio = audioRef.current
+    if (audio && first?.id) {
+      playAttemptRef.current++
+      sourceRef.current = { id: first.id, proxy: false }
+      audio.src = streamUrl(first.id)
+      playAudio(audio, first.id)
+    }
+  }, [playAudio, shuffle])
+
+  // 专辑上下文播放（归一化补上艺人/专辑信息）
+  const playFrom = useCallback((album, tracks, index) => {
+    playTracks(tracks.map((t) => ({
+      id: t.id, title: t.title, duration: t.duration, format: t.format,
+      artist: t.artist || album.artist,
+      albumId: t.albumId || album.id, albumTitle: t.albumTitle || album.title,
+    })), index)
+  }, [playTracks])
+
   useEffect(() => {
     const a = audioRef.current
     if (!a || !current) return
@@ -288,11 +300,17 @@ export default function App() {
     }
     skipRun.current = 0
     // 不再整首预取下一曲：它会制造并发大文件请求并触发 OneDrive 503 限流。
-    playAttemptRef.current++
-    sourceRef.current = { id: current.id, proxy: false }
-    a.src = streamUrl(current.id)
+    const alreadyStarted = sourceRef.current.id === current.id
+    if (!alreadyStarted) {
+      playAttemptRef.current++
+      sourceRef.current = { id: current.id, proxy: false }
+      a.src = streamUrl(current.id)
+    }
     const sourceId = current.id
-    playAudio(a, sourceId)
+    // playTracks already called play() inside the originating tap/click. Do
+    // not issue a second asynchronous play request while that promise is in
+    // flight: Android can treat the later call as detached from the gesture.
+    if (!alreadyStarted) playAudio(a, sourceId)
     if ('mediaSession' in navigator) {
       try {
         navigator.mediaSession.metadata = new MediaMetadata({

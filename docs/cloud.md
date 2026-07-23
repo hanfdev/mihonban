@@ -1,6 +1,6 @@
 # Architecture and runtime model
 
-[中文](cloud.zh.md)
+[English](cloud.md) · [简体中文](cloud.zh.md) · [繁體中文](cloud.zh-Hant.md) · [日本語](cloud.ja.md) · [한국어](cloud.ko.md) · [Français](cloud.fr.md) · [Español](cloud.es.md)
 
 Mihonban uses the same React frontend and Worker-compatible API in local and cloud deployments. The persistence and file-access adapters change by runtime.
 
@@ -73,6 +73,8 @@ The Admin settings JSON exports an allowlisted subset of settings plus named sto
 ## Images
 
 Without R2, the API reads images from the owning storage and uses edge/browser cache headers. With R2 enabled, a first request or prewarm copies the image into the mirror and later requests can redirect to its public URL. Replacing an image invalidates its index so it can be mirrored again. If D1 lost the index but the same public R2 object still exists, prewarm uses a bounded HEAD probe to reclaim it without downloading or uploading the image again.
+
+If a public mirror redirect resolves to a missing or stale object, the web app retries against the owning storage. The Worker validates the returned image bytes, falls back from a provider thumbnail to the original file when necessary, and repairs the R2 object plus its versioned D1 index after a successful recovery. This makes an old cached 404 self-healing without putting private storage credentials in the browser.
 
 R2 is not an audio backend and is not the catalog database.
 

@@ -1,6 +1,6 @@
 # Install and deploy
 
-[中文](install.zh.md)
+[English](install.md) · [简体中文](install.zh.md) · [繁體中文](install.zh-Hant.md) · [日本語](install.ja.md) · [한국어](install.ko.md) · [Français](install.fr.md) · [Español](install.es.md)
 
 This guide covers the three supported runtimes and the optional local Python companion. Choose one application runtime; the companion is an additional workflow tool, not a server requirement.
 

@@ -1,6 +1,6 @@
 # 安全发布代码到 GitHub
 
-[English](github-publish.md)
+[English](github-publish.md) · [简体中文](github-publish.zh.md) · [繁體中文](github-publish.zh-Hant.md) · [日本語](github-publish.ja.md) · [한국어](github-publish.ko.md) · [Français](github-publish.fr.md) · [Español](github-publish.es.md)
 
 正式公开仓库是 [hanfdev/mihonban](https://github.com/hanfdev/mihonban)。仓库只应包含源码、测试、公开文档和安全模板。
 
@@ -95,7 +95,7 @@ git fetch upstream
 
 ## 发布清单
 
-- 每份公开文档都有中英文版本，并能互相跳转。
+- 每份公开指南都有英语、简体中文、繁体中文、日语、韩语、法语和西班牙语版本，并能通过有效链接互相跳转。
 - 全新 clone 可用 `npm ci` 和 `pip install -e ./pipeline` 安装。
 - Python、前端、主 Worker、代理 Worker 和 dry-run 检查全部通过。
 - 文档没有机器专属路径、私人服务 URL 或凭据。

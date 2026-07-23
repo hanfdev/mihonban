@@ -1,6 +1,6 @@
 # Optional Cloudflare audio proxy
 
-[中文](audio-proxy.zh.md)
+[English](audio-proxy.md) · [简体中文](audio-proxy.zh.md) · [繁體中文](audio-proxy.zh-Hant.md) · [日本語](audio-proxy.ja.md) · [한국어](audio-proxy.ko.md) · [Français](audio-proxy.fr.md) · [Español](audio-proxy.es.md)
 
 `cloud/proxy-worker` is a standalone Worker that relays temporary audio URLs for the main mihonban app. It is useful when a second Worker route or custom domain gives a better path to the storage CDN.
 

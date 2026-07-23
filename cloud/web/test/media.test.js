@@ -2,7 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { clampMediaTime, mediaDuration, seekAudio,
-         updateMediaPosition } from '../src/media.js'
+         storedVolume, updateMediaPosition } from '../src/media.js'
+
+test('a new origin starts audible while preserving an explicit zero volume', () => {
+  assert.equal(storedVolume(null), 0.85)
+  assert.equal(storedVolume(''), 0.85)
+  assert.equal(storedVolume('not-a-number'), 0.85)
+  assert.equal(storedVolume('0'), 0)
+  assert.equal(storedVolume('1.4'), 1)
+})
 
 test('library duration wins over Safari OGG duration estimates', () => {
   assert.equal(mediaDuration(266, 612.4), 266)

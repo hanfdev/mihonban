@@ -3,6 +3,12 @@ const positive = (value) => {
   return Number.isFinite(n) && n > 0 ? n : 0
 }
 
+export function storedVolume(value, fallback = 0.85) {
+  if (value === null || value === undefined || value === '') return fallback
+  const volume = Number(value)
+  return Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : fallback
+}
+
 /**
  * 曲库时长来自文件标签/解析器，比 Safari 对 OGG 流的动态估算稳定。
  * 只有曲库没有时长时，才采用浏览器报告的 duration。

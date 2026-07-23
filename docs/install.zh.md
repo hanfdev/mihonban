@@ -1,6 +1,6 @@
 # 安装与部署
 
-[English](install.md)
+[English](install.md) · [简体中文](install.zh.md) · [繁體中文](install.zh-Hant.md) · [日本語](install.ja.md) · [한국어](install.ko.md) · [Français](install.fr.md) · [Español](install.es.md)
 
 本文覆盖三种受支持的应用运行时，以及可选的本机 Python 伴侣。应用运行时三选一；伴侣只是额外工作流工具，不是服务器必需组件。
 

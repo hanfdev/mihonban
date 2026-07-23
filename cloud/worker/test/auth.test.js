@@ -34,3 +34,17 @@ test("session cookies fail closed without a sufficiently strong secret", async (
     /SESSION_SECRET must contain at least 32 characters/,
   );
 });
+
+test("session cookies use the current product namespace", async () => {
+  const env = {
+    SESSION_SECRET: "x".repeat(32),
+    DEV_INSECURE_COOKIE: "1",
+    DB: {
+      prepare() {
+        return { bind() { return { first: async () => null }; } };
+      },
+    },
+  };
+  const cookie = await sessionCookie(env, "admin");
+  assert.match(cookie, /^mihonban_session=/);
+});

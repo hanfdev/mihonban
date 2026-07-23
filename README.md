@@ -1,6 +1,6 @@
 # mihonban / 見本盤
 
-[简体中文](README.zh.md)
+[English](README.md) · [简体中文](README.zh.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Español](README.es.md)
 
 Mihonban is a private, self-hosted music library with a responsive web player. Run it locally with Node and SQLite, use Wrangler's local D1 emulator, or deploy the same application to Cloudflare Workers and D1. Audio remains in storage you control.
 
@@ -8,9 +8,9 @@ Mihonban is a private, self-hosted music library with a responsive web player. R
 
 - Responsive album, track, artist, favorites, import, and administration views
 - Listener and administrator passwords, plus an optional passwordless read-only guest mode
-- Persistent playback queue, shuffle/repeat, Range seeking, Media Session support, and mobile gestures
+- Persistent playback queue, gesture-safe mobile playback, shuffle/repeat, Range seeking, and Media Session controls
 - Named OneDrive, WebDAV, Google Drive, and Node-only local-folder storage backends
-- Optional R2 image mirror for covers, galleries, and artist avatars
+- Optional self-healing R2 image mirror for covers, galleries, and artist avatars
 - Discogs API imports and manual RYM HTML parsing without automated RYM requests
 - Optional Python companion for inbox folders, single/nested archives, tag repair, and cloud synchronization
 - English, Simplified Chinese, Traditional Chinese, Japanese, Korean, French, and Spanish interfaces
@@ -130,16 +130,16 @@ python -m pytest -q
 
 ## Documentation
 
-| English | 中文 |
+| Guide | Languages |
 |---|---|
-| [Install and deploy](docs/install.md) | [安装与部署](docs/install.zh.md) |
-| [Architecture and runtime](docs/cloud.md) | [云端架构与运行模型](docs/cloud.zh.md) |
-| [Daily operation](docs/manual.md) | [日常使用手册](docs/manual.zh.md) |
-| [Database migration](docs/database-migration.md) | [数据库迁移](docs/database-migration.zh.md) |
-| [Storage and file migration](docs/storage.md) | [多存储与文件迁移](docs/storage.zh.md) |
-| [Serverless hosting](docs/serverless-hosting.md) | [纯 Cloudflare 托管](docs/serverless-hosting.zh.md) |
-| [Optional audio proxy](docs/audio-proxy.md) | [可选音源代理](docs/audio-proxy.zh.md) |
-| [Publishing safely](docs/github-publish.md) | [安全发布代码](docs/github-publish.zh.md) |
+| Install and deploy | [English](docs/install.md) · [简体中文](docs/install.zh.md) · [繁體中文](docs/install.zh-Hant.md) · [日本語](docs/install.ja.md) · [한국어](docs/install.ko.md) · [Français](docs/install.fr.md) · [Español](docs/install.es.md) |
+| Architecture and runtime | [English](docs/cloud.md) · [简体中文](docs/cloud.zh.md) · [繁體中文](docs/cloud.zh-Hant.md) · [日本語](docs/cloud.ja.md) · [한국어](docs/cloud.ko.md) · [Français](docs/cloud.fr.md) · [Español](docs/cloud.es.md) |
+| Daily operation | [English](docs/manual.md) · [简体中文](docs/manual.zh.md) · [繁體中文](docs/manual.zh-Hant.md) · [日本語](docs/manual.ja.md) · [한국어](docs/manual.ko.md) · [Français](docs/manual.fr.md) · [Español](docs/manual.es.md) |
+| Database migration | [English](docs/database-migration.md) · [简体中文](docs/database-migration.zh.md) · [繁體中文](docs/database-migration.zh-Hant.md) · [日本語](docs/database-migration.ja.md) · [한국어](docs/database-migration.ko.md) · [Français](docs/database-migration.fr.md) · [Español](docs/database-migration.es.md) |
+| Storage and file migration | [English](docs/storage.md) · [简体中文](docs/storage.zh.md) · [繁體中文](docs/storage.zh-Hant.md) · [日本語](docs/storage.ja.md) · [한국어](docs/storage.ko.md) · [Français](docs/storage.fr.md) · [Español](docs/storage.es.md) |
+| Serverless hosting | [English](docs/serverless-hosting.md) · [简体中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
+| Optional audio proxy | [English](docs/audio-proxy.md) · [简体中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
+| Publishing safely | [English](docs/github-publish.md) · [简体中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
 
 ## License
 

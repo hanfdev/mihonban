@@ -1,6 +1,6 @@
 # 数据库备份、迁移与恢复
 
-[English](database-migration.md)
+[English](database-migration.md) · [简体中文](database-migration.zh.md) · [繁體中文](database-migration.zh-Hant.md) · [日本語](database-migration.ja.md) · [한국어](database-migration.ko.md) · [Français](database-migration.fr.md) · [Español](database-migration.es.md)
 
 本文用于在 Node SQLite、Wrangler 本地 D1 和 Cloudflare 远端 D1 之间搬迁完整曲库。
 

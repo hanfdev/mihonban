@@ -1,6 +1,6 @@
 # 多存储与文件迁移
 
-[English](storage.md)
+[English](storage.md) · [简体中文](storage.zh.md) · [繁體中文](storage.zh-Hant.md) · [日本語](storage.ja.md) · [한국어](storage.ko.md) · [Français](storage.fr.md) · [Español](storage.es.md)
 
 mihonban 把曲库元数据和文件存储分开。D1 记录每张专辑属于哪个命名后端，音频和原图仍放在对应存储中。
 

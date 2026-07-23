@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { r2Conf, r2PublicObjectExists, r2Test } from "../src/r2.js";
+import { r2Conf, r2PublicObjectExists, r2PublicUrl, r2Test } from "../src/r2.js";
+
+test("R2 public URLs use a stable cache-busting mirror version", () => {
+  const conf = { publicUrl: "https://cdn.example" };
+  assert.equal(r2PublicUrl(conf, "img/cover.jpg"),
+    "https://cdn.example/img/cover.jpg");
+  assert.equal(r2PublicUrl(conf, "img/cover.jpg", 123456),
+    "https://cdn.example/img/cover.jpg?v=123456");
+});
 
 test("R2 config fails closed for malformed environment URLs", async () => {
   const env = {

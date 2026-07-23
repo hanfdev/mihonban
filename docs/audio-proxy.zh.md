@@ -1,6 +1,6 @@
 # 可选 Cloudflare 音源代理
 
-[English](audio-proxy.md)
+[English](audio-proxy.md) · [简体中文](audio-proxy.zh.md) · [繁體中文](audio-proxy.zh-Hant.md) · [日本語](audio-proxy.ja.md) · [한국어](audio-proxy.ko.md) · [Français](audio-proxy.fr.md) · [Español](audio-proxy.es.md)
 
 `cloud/proxy-worker` 是独立 Worker，用于中转主 mihonban Worker 取得的临时音频 URL。只有第二条 Worker 路由或自定义域确实改善到存储 CDN 的路径时，它才有价值。
 

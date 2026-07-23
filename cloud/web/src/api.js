@@ -121,7 +121,8 @@ export const api = {
   importConfig: (payload) => req("POST", "/api/admin/config/import", payload),
 };
 
-export const artUrl = (albumId, s = 400) => `/api/art/${albumId}?s=${s}`;
+export const artUrl = (albumId, s = 400, origin = false) =>
+  `/api/art/${albumId}?s=${s}${origin ? '&proxy=1&fallback=1' : ''}`;
 export const streamUrl = (trackId) => `/api/stream/${trackId}`;
 export const imgUrl = (imgId, s = 0) =>
   s ? `/api/image/${imgId}?s=${s}` : `/api/image/${imgId}`;

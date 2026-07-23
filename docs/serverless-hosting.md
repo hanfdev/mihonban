@@ -1,6 +1,6 @@
 # Cloudflare serverless hosting
 
-[中文](serverless-hosting.zh.md)
+[English](serverless-hosting.md) · [简体中文](serverless-hosting.zh.md) · [繁體中文](serverless-hosting.zh-Hant.md) · [日本語](serverless-hosting.ja.md) · [한국어](serverless-hosting.ko.md) · [Français](serverless-hosting.fr.md) · [Español](serverless-hosting.es.md)
 
 The serverless goal is to keep login, browsing, and playback online while the home computer is off. The supported shape is one Worker serving the React app and API, D1 + KV, optional R2 for images, and audio stored in OneDrive, WebDAV, or Google Drive.
 

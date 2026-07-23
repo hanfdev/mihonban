@@ -499,6 +499,87 @@ test("image size inputs are strict and temporary cloud redirects are not cached"
   }
 });
 
+test("R2 image redirects carry the stable mirror version", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('media', 'Media', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, cover_path, storage_id, created_at, updated_at)
+    VALUES ('album', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      'Music/Library/Artist/Album/cover.jpg', 'media', 1, 1)`).run();
+  db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
+  db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at)
+    VALUES ('art:album:1000', 'img/art_album_1000.jpg', 123456)`).run();
+  const env = companionEnv(db, {
+    R2_ACCESS_KEY: "access",
+    R2_SECRET_KEY: "secret",
+    R2_ENDPOINT: "https://r2.example",
+    R2_BUCKET: "bucket",
+    R2_PUBLIC_URL: "https://cdn.example",
+  });
+  try {
+    const response = await companionRequest(env, "/api/art/album?s=1000");
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"),
+      "https://cdn.example/img/art_album_1000.jpg?v=123456");
+  } finally {
+    db.close();
+  }
+});
+
+test("a successful cover fallback repairs a missing public R2 mirror", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00]);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('media', 'Media', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, cover_path, storage_id, created_at, updated_at)
+    VALUES ('album', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      'Music/Library/Artist/Album/cover.jpg', 'media', 1, 1)`).run();
+  db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
+  db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at)
+    VALUES ('art:album:1000', 'img/stale.jpg', 1)`).run();
+  const env = companionEnv(db, {
+    R2_ACCESS_KEY: "access",
+    R2_SECRET_KEY: "secret",
+    R2_ENDPOINT: "https://r2.example",
+    R2_BUCKET: "bucket",
+    R2_PUBLIC_URL: "https://cdn.example",
+    LOCAL_FS: {
+      async thumbnailUrl() { return null; },
+      async downloadUrl() { return null; },
+      async getFile() {
+        return new Response(jpeg, { headers: { "Content-Type": "image/jpeg" } });
+      },
+    },
+  });
+  const realFetch = globalThis.fetch;
+  let uploaded = null;
+  globalThis.fetch = async (input, init = {}) => {
+    if (init.method === "PUT" && String(input).startsWith("https://r2.example/")) {
+      uploaded = new Uint8Array(init.body);
+      return new Response(null, { status: 200 });
+    }
+    throw new Error(`unexpected request ${init.method || "GET"} ${input}`);
+  };
+
+  try {
+    const response = await companionRequest(
+      env, "/api/art/album?s=1000&proxy=1&fallback=1");
+    assert.equal(response.status, 200, await response.text());
+    assert.deepEqual(uploaded, jpeg);
+    const row = db.prepare(`SELECT r2_key, created_at FROM r2_cache
+      WHERE cache_key = 'art:album:1000'`).get();
+    assert.equal(row.r2_key, "img/art_album_1000.jpg");
+    assert.ok(row.created_at > 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
 test("hidden images never enter the shared edge cache", async () => {
   const db = new Database(":memory:");
   db.exec(schema);

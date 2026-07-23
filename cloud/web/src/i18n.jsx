@@ -60,7 +60,7 @@ export function detectBrowserLang() {
 // After the user picks a language, that choice sticks in localStorage.
 const detect = () => {
   try {
-    const saved = localStorage.getItem('jr_lang')
+    const saved = localStorage.getItem('mihonban_language')
     // Ignore legacy "system" sentinel from older builds
     if (saved && saved !== 'system' && LANGS.some((l) => l.id === saved)) return saved
   } catch { /* private mode */ }
@@ -1634,7 +1634,7 @@ export function I18nProvider({ children }) {
   const setLang = useCallback((id) => {
     if (!LANGS.some((l) => l.id === id)) return
     setLangState(id)
-    try { localStorage.setItem('jr_lang', id) } catch { /* ignore */ }
+    try { localStorage.setItem('mihonban_language', id) } catch { /* ignore */ }
   }, [])
 
   const t = useCallback((key, ...args) => translate(lang, key, ...args), [lang])

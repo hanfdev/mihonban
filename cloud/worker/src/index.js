@@ -258,7 +258,7 @@ app.post("/api/login", async (c) => {
 });
 
 app.post("/api/logout", (c) => {
-  c.header("Set-Cookie", "jr_s=; Path=/; Max-Age=0");
+  c.header("Set-Cookie", "mihonban_session=; Path=/; Max-Age=0");
   return c.json({ ok: true });
 });
 
@@ -1435,8 +1435,62 @@ const r2ImageObjectKey = (cacheKey, contentType) =>
 async function recordR2Mirror(env, cacheKey, r2Key) {
   await env.DB.prepare(
     "INSERT INTO r2_cache (cache_key, r2_key, created_at) VALUES (?,?,?) " +
-    "ON CONFLICT(cache_key) DO UPDATE SET r2_key = excluded.r2_key")
+    "ON CONFLICT(cache_key) DO UPDATE SET " +
+    "r2_key = excluded.r2_key, created_at = excluded.created_at")
     .bind(cacheKey, r2Key, Date.now()).run();
+}
+
+async function mirrorImageBytes(c, conf, cacheKey, bytes, contentType) {
+  const r2Key = r2ImageObjectKey(cacheKey, contentType);
+  const upload = (async () => {
+    const ok = await r2.r2Put(conf, r2Key, bytes, contentType);
+    if (ok) await recordR2Mirror(c.env, cacheKey, r2Key);
+  })();
+  const ctx = await ctxOf(c);
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(upload);
+    return;
+  }
+  await upload;
+}
+
+async function validImageResponse(response) {
+  if (!response?.ok) return null;
+  let bytes;
+  try { bytes = await readResponseLimited(response, MAX_BUFFERED_IMAGE_BYTES); }
+  catch { return null; }
+  const contentType = imageMimeFromBytes(bytes);
+  return contentType ? { bytes, contentType } : null;
+}
+
+async function readStoredImage(env, srcPath, dim, storageId) {
+  // A OneDrive thumbnail URL may occasionally return a transient non-image
+  // body with HTTP 200. Validate bytes, then fall back to the original direct
+  // URL and finally the authenticated provider read instead of surfacing a
+  // broken cover to the browser.
+  const urls = [];
+  if (dim) {
+    try {
+      const thumbnail = await storage.thumbnailUrl(env, srcPath, dim, storageId);
+      if (thumbnail) urls.push(thumbnail);
+    } catch { /* continue to the original file */ }
+  }
+  try {
+    const direct = await storage.downloadUrl(env, srcPath, storageId);
+    if (direct && !urls.includes(direct)) urls.push(direct);
+  } catch { /* continue to the authenticated provider read */ }
+  for (const url of urls) {
+    try {
+      const image = await validImageResponse(await fetchWithTimeout(url));
+      if (image) return image;
+    } catch { /* try the next source */ }
+  }
+  try {
+    return await validImageResponse(
+      await storage.getFile(env, srcPath, storageId));
+  } catch {
+    return null;
+  }
 }
 
 async function claimExistingR2Image(env, conf, cacheKey, srcPath) {
@@ -1463,8 +1517,11 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   // 1) R2 已镜像 → 直接 302 到公开 CDN（优先于边缘缓存，避免旧的 200 字节挡路）
   if (conf.ready && allowPublicMirror) {
     const row = await c.env.DB.prepare(
-      "SELECT r2_key FROM r2_cache WHERE cache_key = ?").bind(cacheKey).first();
-    if (row) return c.redirect(r2.r2PublicUrl(conf, row.r2_key), 302);
+      "SELECT r2_key, created_at FROM r2_cache WHERE cache_key = ?")
+      .bind(cacheKey).first();
+    if (row) {
+      return c.redirect(r2.r2PublicUrl(conf, row.r2_key, row.created_at), 302);
+    }
   }
   // 2) 未镜像：查边缘缓存（R2 未启用时这是唯一的加速层）
   const edge = globalThis.caches?.default;
@@ -1475,36 +1532,13 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
     if (hit) return hit;
   }
   // 3) 从所属存储取字节（有缩略图直链的用直链；WebDAV 等直接代理读原图）
-  let bytes, ct;
-  const url = (dim ? await storage.thumbnailUrl(c.env, srcPath, dim, storageId) : null)
-    || (await storage.downloadUrl(c.env, srcPath, storageId));
-  if (url) {
-    const img = await fetchWithTimeout(url);
-    if (!img.ok) return null;
-    ct = img.headers.get("Content-Type") || "image/jpeg";
-    try { bytes = await readResponseLimited(img, MAX_BUFFERED_IMAGE_BYTES); }
-    catch { return null; }
-  } else {
-    const r = await storage.getFile(c.env, srcPath, storageId);
-    if (!r) return null;
-    ct = r.headers.get("Content-Type") || "image/jpeg";
-    try { bytes = await readResponseLimited(r, MAX_BUFFERED_IMAGE_BYTES); }
-    catch { return null; }
-  }
-  ct = imageMimeFromBytes(bytes);
-  if (!ct) return null;
+  const source = await readStoredImage(c.env, srcPath, dim, storageId);
+  if (!source) return null;
+  const { bytes, contentType: ct } = source;
   // 4) 懒同步到 R2（后台，不阻塞响应）
   if (conf.ready && allowPublicMirror) {
-    const r2key = r2ImageObjectKey(cacheKey, ct);
-    const upload = (async () => {
-      try {
-        const ok = await r2.r2Put(conf, r2key, bytes, ct);
-        if (ok) await recordR2Mirror(c.env, cacheKey, r2key);
-      } catch { /* image response must not fail because the optional mirror did */ }
-    })();
-    const ctx = await ctxOf(c);
-    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(upload);
-    else await upload;
+    await mirrorImageBytes(c, conf, cacheKey, bytes, ct)
+      .catch(() => null); // optional mirror failure must not fail the image
   }
   const res = new Response(bytes, {
     headers: {
@@ -1607,24 +1641,20 @@ app.get("/api/art/:albumId", async (c) => {
   // proxy=1：始终回源字节（不 302 到 R2/Graph），供前端 canvas/裁剪用，避免跨域 Failed to fetch
   const wantProxy = c.req.query("proxy") === "1" || c.req.query("inline") === "1";
   if (wantProxy) {
-    let bytes, ct;
-    const url = (dim ? await storage.thumbnailUrl(c.env, cover, dim, album.storage_id) : null)
-      || (await storage.downloadUrl(c.env, cover, album.storage_id));
-    if (url) {
-      const img = await fetchWithTimeout(url);
-      if (!img.ok) return c.json({ error: "cover unavailable" }, 502);
-      ct = img.headers.get("Content-Type") || "image/jpeg";
-      try { bytes = await readResponseLimited(img, MAX_BUFFERED_IMAGE_BYTES); }
-      catch { return c.json({ error: "cover too large" }, 413); }
-    } else {
-      const r = await storage.getFile(c.env, cover, album.storage_id);
-      if (!r) return c.json({ error: "cover unavailable" }, 502);
-      ct = r.headers.get("Content-Type") || "image/jpeg";
-      try { bytes = await readResponseLimited(r, MAX_BUFFERED_IMAGE_BYTES); }
-      catch { return c.json({ error: "cover too large" }, 413); }
+    const source = await readStoredImage(
+      c.env, cover, dim, album.storage_id);
+    if (!source) return c.json({ error: "cover unavailable" }, 502);
+    const { bytes, contentType: ct } = source;
+    // The browser reaches this branch after a public mirror returned an old
+    // cached 404. Serve the source immediately and repair that mirror in the
+    // background so subsequent devices return to the fast R2 path.
+    if (c.req.query("fallback") === "1" && !album.hidden) {
+      const conf = await r2.r2Conf(c.env);
+      if (conf.ready) {
+        await mirrorImageBytes(c, conf, logicalKey, bytes, ct)
+          .catch(() => null);
+      }
     }
-    ct = imageMimeFromBytes(bytes);
-    if (!ct) return c.json({ error: "cover content invalid" }, 415);
     return new Response(bytes, {
       headers: {
         "Content-Type": ct,

@@ -1,6 +1,6 @@
 # Storage backends and file migration
 
-[中文](storage.zh.md)
+[English](storage.md) · [简体中文](storage.zh.md) · [繁體中文](storage.zh-Hant.md) · [日本語](storage.ja.md) · [한국어](storage.ko.md) · [Français](storage.fr.md) · [Español](storage.es.md)
 
 mihonban separates catalog metadata from file storage. D1 knows which named backend owns each album; audio and source images remain in that backend.
 

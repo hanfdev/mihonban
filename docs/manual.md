@@ -1,6 +1,6 @@
 # Daily operation guide
 
-[中文](manual.zh.md)
+[English](manual.md) · [简体中文](manual.zh.md) · [繁體中文](manual.zh-Hant.md) · [日本語](manual.ja.md) · [한국어](manual.ko.md) · [Français](manual.fr.md) · [Español](manual.es.md)
 
 This guide is for library administrators. Paths and URLs depend on the selected runtime and your private configuration.
 
@@ -24,6 +24,13 @@ The Python companion and any desktop player are not required for web playback.
 `mihonban-guest` and `mihonban-admin` are defaults generated only by `tools\cloud-dev.cmd`. Node and manual Cloudflare deployments have no default passwords. Change local helper defaults before sharing access.
 
 Passwords saved in Admin override environment bootstrap values. Changing either password revokes existing sessions.
+
+## Playback and mobile interaction
+
+- Volume, language, and sort preferences are local to each browser origin. Opening a new hostname or custom domain starts with fresh preferences; an unset volume starts at 85%.
+- Playback is initiated inside the originating tap/click so Android Chrome can establish audible playback and a system media session. The lock-screen/notification controls expose play, pause, previous, next, and seeking where the browser supports them.
+- On mobile, tap the cover or the empty part of the mini-player, or swipe the mini-player upward, to open Now Playing. Album and artist links remain independently tappable.
+- Gallery images show a loading state while switching; swipe horizontally to move between pages on touch devices.
 
 ## Inbox folders and archives
 
@@ -66,6 +73,8 @@ Administrators can search releases or artists and preview an import of images, g
 - Listeners can view the curated favorites pages but cannot edit them.
 - Hidden albums, tracks, artists, styles that exist only on hidden content, images, searches, and favorite entries are excluded from listener responses.
 - The Show hidden toggle is an administrator-only view state shared by album, track, and artist lists.
+- The header album count follows that same state: hidden albums are counted only while Show hidden is enabled.
+- In the album gallery, switching images clears the previous image immediately and shows a loading indicator until the selected image is ready; a failed request shows an explicit error state.
 
 After changing hidden state, verify with a separate listener session instead of relying only on the administrator UI.
 
@@ -127,8 +136,10 @@ cd cloud/web && npm test && npm run build
 | Item is quarantined | Read its report; check corruption, archive password, unsupported files, and match confidence |
 | Web app has no old albums | Restore the catalog database; Admin settings JSON does not contain albums |
 | Playback returns 502 | Test the album's named storage and confirm no file was moved outside Mihonban |
+| Playback advances but is silent | Check player, tab, and system output volume; hard-refresh after an upgrade. A new browser origin defaults to 85% volume |
 | Seeking fails or iOS duration is wrong | Verify the upstream/proxy returns correct 206, `Content-Range`, and total length |
 | Images are slow or Graph is throttled | Test and enable R2, then prewarm |
+| A detail-page cover fails while its card works | Hard-refresh once. Current builds fall back to the owning storage and repair a missing R2 mirror; if it persists, test both that storage and R2 |
 | Google Drive cannot find existing files | Reauthorize the current Drive scope and verify root ID |
 | Web upload is absent locally | Run `mihonban cloud pull` and verify the configured rclone remote |
 | Login returns 429 | Stop retrying and wait 15 minutes |
