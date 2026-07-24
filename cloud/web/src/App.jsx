@@ -15,6 +15,7 @@ import Login from './views/Login.jsx'
 import { seekAudio, updateMediaPosition } from './media.js'
 import { installTrackMediaSessionHandlers } from './media-session.js'
 import { adjacentQueuePosition } from './player-queue.js'
+import { sessionAfterLogout } from './session.js'
 import { visibleAlbumCount } from './visibility.js'
 
 const parseHash = () => {
@@ -446,10 +447,12 @@ export default function App() {
       audio.load()
     }
     sourceRef.current = { id: null, proxy: false }
-    try { await api.logout() } catch { /* ignore */ }
-    setAuthed(false)
-    setRole(null)
-    setGuest(false)
+    // 注销管理员 Cookie 后重新读取服务端访问策略：开放访客时直接降级为
+    // 只读访客，不应短暂或永久落到口令登录页。
+    const nextSession = await sessionAfterLogout(api)
+    setAuthed(nextSession.ok)
+    setRole(nextSession.role)
+    setGuest(nextSession.guest)
     setAlbums(null)
     setTracksAll(null)
     setArtists([])
