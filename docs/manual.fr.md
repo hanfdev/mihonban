@@ -27,7 +27,7 @@ Les mots de passe enregistrés dans Admin dépassent les valeurs de démarrage d
 
 ## Lecture et interactions mobiles
 
-- Le volume, la langue et le tri sont enregistrés par origin du navigateur. Un nouveau nom d’hôte ou domaine personnalisé repart avec de nouvelles préférences ; sans valeur enregistrée, le volume commence à 85 %.
+- Le volume, la langue et le tri sont enregistrés par origin du navigateur. Un nouveau nom d’hôte ou domaine personnalisé repart avec de nouvelles préférences ; sans valeur enregistrée, le volume commence à 100 %.
 - La lecture démarre dans l’événement de toucher/clic d’origine afin qu’Android Chrome puisse établir une lecture audible et une session multimédia système. Sur les navigateurs compatibles, l’écran verrouillé/la notification permet lecture, pause, piste précédente/suivante et recherche.
 - Sur mobile, touchez la pochette ou la zone vide du mini-lecteur, ou faites glisser le mini-lecteur vers le haut, pour ouvrir l’écran de lecture. Les liens d’album et d’artiste restent indépendants.
 - Un état de chargement apparaît pendant le changement d’image du livret ; balayez horizontalement pour passer à l’image précédente ou suivante.
@@ -136,7 +136,7 @@ cd cloud/web && npm test && npm run build
 | L’élément est mis en quarantaine | Lisez son rapport ; vérifiez la corruption, le mot de passe de l’archive, les fichiers non pris en charge, et la confiance en correspondance |
 | L’application web ne contient pas d’anciens albums | Restaurez la base de données du catalogue ; Paramètres d’administration Le JSON ne contient pas d’albums |
 | Retour de lecture 502 | Testez le stockage nommé de l’album et confirmez qu’aucun fichier n’a été déplacé à l’extérieur de Mihonban |
-| La progression avance mais aucun son n’est audible | Vérifiez le volume du lecteur, de l’onglet et de la sortie système ; forcez l’actualisation après une mise à jour. Un nouvel origin démarre à 85 % |
+| La progression avance mais aucun son n’est audible | Vérifiez le volume du lecteur, de l’onglet et de la sortie système ; forcez l’actualisation après une mise à jour. Un nouvel origin démarre à 100 % |
 | Recherche d’échecs ou durée iOS est incorrecte | Vérifiez que les retours en amont/proxy sont corrects 206, `Content-Range` et longueur totale |
 | Les images sont lentes ou Graph est limité | Testez et activez R2, puis préchauffez |
 | La pochette fonctionne dans la liste mais pas dans la page détaillée | Forcez une actualisation. La version actuelle revient au stockage propriétaire et répare le miroir R2 manquant ; si le problème persiste, testez ce stockage et R2 |

@@ -13,6 +13,7 @@ import AdminPage from './views/Admin.jsx'
 import Player from './Player.jsx'
 import Login from './views/Login.jsx'
 import { seekAudio, updateMediaPosition } from './media.js'
+import { installTrackMediaSessionHandlers } from './media-session.js'
 import { adjacentQueuePosition } from './player-queue.js'
 import { visibleAlbumCount } from './visibility.js'
 
@@ -371,9 +372,6 @@ export default function App() {
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
     const ms = navigator.mediaSession
-    const safeHandler = (action, handler) => {
-      try { ms.setActionHandler(action, handler) } catch { /* Safari 版本不支持该 action */ }
-    }
     const audio = () => audioRef.current
     const sync = () => {
       try { updateMediaPosition(ms, audio(), current?.duration) } catch { /* ignore */ }
@@ -384,31 +382,19 @@ export default function App() {
       seekAudio(a, Number(details.seekTime), current?.duration, !!details.fastSeek)
       sync()
     }
-    const seekBy = (delta) => {
-      const a = audio()
-      if (!a) return
-      seekAudio(a, a.currentTime + delta, current?.duration)
-      sync()
-    }
-    safeHandler('play', () => {
-      const a = audio()
-      if (a) playAudio(a, sourceRef.current.id)
+    return installTrackMediaSessionHandlers(ms, {
+      play: () => {
+        const a = audio()
+        if (a) playAudio(a, sourceRef.current.id)
+      },
+      pause: () => {
+        const a = audio()
+        if (a) pauseAudio(a)
+      },
+      previoustrack: () => step(-1),
+      nexttrack: () => step(1),
+      seekto: seekTo,
     })
-    safeHandler('pause', () => {
-      const a = audio()
-      if (a) pauseAudio(a)
-    })
-    safeHandler('previoustrack', () => step(-1))
-    safeHandler('nexttrack', () => step(1))
-    safeHandler('seekto', seekTo)
-    safeHandler('seekbackward', (details = {}) =>
-      seekBy(-Math.max(Number(details.seekOffset) || 10, 0)))
-    safeHandler('seekforward', (details = {}) =>
-      seekBy(Math.max(Number(details.seekOffset) || 10, 0)))
-    return () => {
-      for (const action of ['play', 'pause', 'previoustrack', 'nexttrack',
-        'seekto', 'seekbackward', 'seekforward']) safeHandler(action, null)
-    }
   }, [current?.id, current?.duration, pauseAudio, playAudio, step])
 
   // iOS 不一定采用 <audio> 自己推断的 OGG 时长；主动提供曲库时长和当前位置。

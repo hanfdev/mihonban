@@ -3,7 +3,7 @@ const positive = (value) => {
   return Number.isFinite(n) && n > 0 ? n : 0
 }
 
-export function storedVolume(value, fallback = 0.85) {
+export function storedVolume(value, fallback = 1) {
   if (value === null || value === undefined || value === '') return fallback
   const volume = Number(value)
   return Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : fallback

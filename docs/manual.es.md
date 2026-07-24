@@ -27,7 +27,7 @@ Las contraseñas guardadas en Admin anulan los valores de arranque del entorno d
 
 ## Reproducción e interacción móvil
 
-- El volumen, el idioma y la ordenación se guardan por origin del navegador. Un nombre de host o dominio personalizado nuevo empieza con preferencias nuevas; si no hay volumen guardado, comienza al 85 %.
+- El volumen, el idioma y la ordenación se guardan por origin del navegador. Un nombre de host o dominio personalizado nuevo empieza con preferencias nuevas; si no hay volumen guardado, comienza al 100 %.
 - La reproducción comienza dentro del toque/clic original para que Android Chrome pueda establecer audio y una sesión multimedia del sistema. En navegadores compatibles, la pantalla de bloqueo/notificación permite reproducir, pausar, cambiar de pista y buscar.
 - En móvil, toca la portada o el espacio vacío del minirreproductor, o deslízalo hacia arriba, para abrir la pantalla de reproducción. Los enlaces del álbum y del artista siguen siendo independientes.
 - Al cambiar una imagen del libreto se muestra un estado de carga; desliza horizontalmente para ver la imagen anterior o siguiente.
@@ -136,7 +136,7 @@ cd cloud/web && npm test && npm run build
 | El elemento está en cuarentena | Lee su informe; comprueba corrupción, contraseña de archivo, archivos no soportados y confianza de coincidencia |
 | La aplicación web no tiene álbumes antiguos | Restaurar la base de datos del catálogo; Configuración de administrador JSON no contiene álbumes |
 | La reproducción regresa 502 | Prueba el almacenamiento con nombre del álbum y confirma que ningún archivo se ha movido fuera de Mihonban |
-| El progreso avanza pero no se oye sonido | Comprueba el volumen del reproductor, la pestaña y la salida del sistema; fuerza la recarga después de actualizar. Un origin nuevo empieza al 85 % |
+| El progreso avanza pero no se oye sonido | Comprueba el volumen del reproductor, la pestaña y la salida del sistema; fuerza la recarga después de actualizar. Un origin nuevo empieza al 100 % |
 | Fallar la búsqueda o la duración de iOS es incorrecta | Verifica que los retornos de ascendencia/proxy sean correctos 206, `Content-Range` y longitud total |
 | Las imágenes son lentas o Graph está limitado | Prueba y activa R2, luego precalenta |
 | La portada aparece en la lista pero falla en la página de detalle | Fuerza una recarga. La versión actual vuelve al almacenamiento propietario y repara el espejo R2 ausente; si continúa, prueba ese almacenamiento y R2 |

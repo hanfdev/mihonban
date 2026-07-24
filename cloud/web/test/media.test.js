@@ -5,9 +5,9 @@ import { clampMediaTime, mediaDuration, seekAudio,
          storedVolume, updateMediaPosition } from '../src/media.js'
 
 test('a new origin starts audible while preserving an explicit zero volume', () => {
-  assert.equal(storedVolume(null), 0.85)
-  assert.equal(storedVolume(''), 0.85)
-  assert.equal(storedVolume('not-a-number'), 0.85)
+  assert.equal(storedVolume(null), 1)
+  assert.equal(storedVolume(''), 1)
+  assert.equal(storedVolume('not-a-number'), 1)
   assert.equal(storedVolume('0'), 0)
   assert.equal(storedVolume('1.4'), 1)
 })

@@ -27,7 +27,7 @@ Passwords saved in Admin override environment bootstrap values. Changing either 
 
 ## Playback and mobile interaction
 
-- Volume, language, and sort preferences are local to each browser origin. Opening a new hostname or custom domain starts with fresh preferences; an unset volume starts at 85%.
+- Volume, language, and sort preferences are local to each browser origin. Opening a new hostname or custom domain starts with fresh preferences; an unset volume starts at 100%.
 - Playback is initiated inside the originating tap/click so Android Chrome can establish audible playback and a system media session. The lock-screen/notification controls expose play, pause, previous, next, and seeking where the browser supports them.
 - On mobile, tap the cover or the empty part of the mini-player, or swipe the mini-player upward, to open Now Playing. Album and artist links remain independently tappable.
 - Gallery images show a loading state while switching; swipe horizontally to move between pages on touch devices.
@@ -136,7 +136,7 @@ cd cloud/web && npm test && npm run build
 | Item is quarantined | Read its report; check corruption, archive password, unsupported files, and match confidence |
 | Web app has no old albums | Restore the catalog database; Admin settings JSON does not contain albums |
 | Playback returns 502 | Test the album's named storage and confirm no file was moved outside Mihonban |
-| Playback advances but is silent | Check player, tab, and system output volume; hard-refresh after an upgrade. A new browser origin defaults to 85% volume |
+| Playback advances but is silent | Check player, tab, and system output volume; hard-refresh after an upgrade. A new browser origin defaults to 100% volume |
 | Seeking fails or iOS duration is wrong | Verify the upstream/proxy returns correct 206, `Content-Range`, and total length |
 | Images are slow or Graph is throttled | Test and enable R2, then prewarm |
 | A detail-page cover fails while its card works | Hard-refresh once. Current builds fall back to the owning storage and repair a missing R2 mirror; if it persists, test both that storage and R2 |
