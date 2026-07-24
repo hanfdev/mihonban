@@ -229,6 +229,9 @@ export default function App() {
   const playAttemptRef = useRef(0)
   const playAudio = useCallback((audio, sourceId = sourceRef.current.id) => {
     const attempt = ++playAttemptRef.current
+    // Playback controls represent the user's intent immediately. The promise
+    // may remain pending while a remote source buffers.
+    setPlaying(true)
     return audio.play().then(() => {
       if (playAttemptRef.current === attempt
           && sourceRef.current.id === sourceId && !audio.paused) {
@@ -331,11 +334,9 @@ export default function App() {
   const toggle = useCallback(() => {
     const a = audioRef.current
     if (!a || !current) return
-    if (a.paused) {
-      playAudio(a, current.id)
-    }
-    else pauseAudio(a)
-  }, [current, pauseAudio, playAudio])
+    if (playing) pauseAudio(a)
+    else playAudio(a, current.id)
+  }, [current, pauseAudio, playAudio, playing])
 
   const step = useCallback((d) => {
     setQueue((s) => {
@@ -697,7 +698,12 @@ export default function App() {
       </nav>
       <audio ref={audioRef} preload="metadata" playsInline
              onEnded={() => { setPlaying(false); step(1) }}
-             onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+             onPlay={() => setPlaying(true)}
+             onPause={(event) => {
+               // A source switch can queue a stale pause event after a new
+               // play() call. Only accept it if the element is still paused.
+               if (event.currentTarget.paused) setPlaying(false)
+             }}
              onError={() => {
                const a = audioRef.current
                const source = sourceRef.current

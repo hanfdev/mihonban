@@ -3,6 +3,7 @@ import { artUrl } from './api.js'
 import { I, Heart, Marquee, fmtDur } from './ui.jsx'
 import { useI18n } from './i18n.jsx'
 import { clampMediaTime, mediaDuration, seekAudio, storedVolume } from './media.js'
+import { playbackControlState } from './player-control.js'
 
 /* 进度条：支持点按 + 拖动洗擦（scrub）。拖动中只更新预览，
  * 松手 onSeek 立刻跳到目标位置（UI 同步更新，不等缓冲）。
@@ -62,6 +63,7 @@ function SeekBar({ t, dur, big, onSeek }) {
 function Controls({ playing, buffering, shuffle, repeat, onToggle, onStep,
                     onShuffle, onRepeat, big }) {
   const { t } = useI18n()
+  const control = playbackControlState(playing, buffering)
   return (
     <div className={`p-ctrl ${big ? 'big' : ''}`}>
       <button className={`icon-btn mode ${shuffle ? 'on' : ''}`}
@@ -70,9 +72,13 @@ function Controls({ playing, buffering, shuffle, repeat, onToggle, onStep,
       </button>
       <button className="icon-btn" onClick={() => onStep(-1)}>
         <I.prev size={big ? 26 : 18} /></button>
-      <button className={`icon-btn main ${playing ? 'on' : ''}`} onClick={onToggle}>
-        {buffering ? <I.spin size={big ? 28 : 18} />
-          : playing ? <I.pause size={big ? 28 : 18} />
+      <button className={`icon-btn main ${playing ? 'on' : ''}`}
+              title={t(`common.${control.action}`)}
+              aria-label={t(`common.${control.action}`)}
+              aria-pressed={playing} aria-busy={control.buffering}
+              onClick={onToggle}>
+        {control.action === 'pause'
+          ? <I.pause size={big ? 28 : 18} />
           : <I.play size={big ? 28 : 18} />}
       </button>
       <button className="icon-btn" onClick={() => onStep(1)}>
@@ -128,8 +134,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     const busy = () => setBuffering(true)
     const idle = () => setBuffering(false)
     const timeEvs = ['loadedmetadata', 'timeupdate', 'durationchange', 'seeking']
-    const busyEvs = ['loadstart', 'waiting']       // 换源 / 数据不够停住
-    const idleEvs = ['playing', 'canplay', 'seeked', 'error'] // 恢复供数/出错收尾
+    const busyEvs = ['loadstart', 'waiting', 'stalled']
+    const idleEvs = ['playing', 'canplay', 'seeked', 'pause', 'abort', 'emptied', 'error']
     timeEvs.forEach((e) => a.addEventListener(e, onTime))
     busyEvs.forEach((e) => a.addEventListener(e, busy))
     idleEvs.forEach((e) => a.addEventListener(e, idle))
@@ -257,6 +263,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
 
   if (!current) return null
   const frac = dur ? Math.min(t / dur, 1) : 0
+  const miniControl = playbackControlState(playing, buffering)
   const ctrl = { playing, buffering, shuffle, repeat,
                  onToggle, onStep, onShuffle, onRepeat }
 
@@ -399,12 +406,15 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
         {isAdmin && <span className="p-heart">
           <Heart on={fav} canEdit onToggle={onFav} size={17} /></span>}
         <Controls {...ctrl} />
-        {/* 移动端迷你控制：播放 + 下一首（缓冲转圈，颜色跟随播放状态） */}
+        {/* 移动端迷你控制：主图标始终保持可执行动作。 */}
         <div className="p-mini-ctrl">
           <button className={`icon-btn mini-play ${playing ? 'on' : ''}`}
+                  title={__(`common.${miniControl.action}`)}
+                  aria-label={__(`common.${miniControl.action}`)}
+                  aria-pressed={playing} aria-busy={miniControl.buffering}
                   onClick={onToggle}>
-            {buffering ? <I.spin size={22} />
-              : playing ? <I.pause size={22} /> : <I.play size={22} />}
+            {miniControl.action === 'pause'
+              ? <I.pause size={22} /> : <I.play size={22} />}
           </button>
           <button className="icon-btn" onClick={() => onStep(1)}>
             <I.next size={20} /></button>
