@@ -3132,6 +3132,7 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
     scroll-snap-type: x proximity;
   }
   .filters > * { scroll-snap-align: start; }
+  .favs-page .filters.center { overflow-anchor: none; }
   .fsel, .sort-sel, .chip { min-height: 40px; }
   .visibility-toggle { height: 40px; }
   /* On touch, clearing must be discoverable without panning the filter rail.

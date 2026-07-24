@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { ClearFilters, FilterSel, I, usePointerReorder, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
@@ -180,6 +180,21 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   // 定位正在播放的歌
   const hasCurrent = useMemo(() =>
     !!currentId && !!shownTracks?.some((t) => t.id === currentId), [shownTracks, currentId])
+  const filterRailRef = useRef(null)
+  useLayoutEffect(() => {
+    const rail = filterRailRef.current
+    if (tab !== 'tracks' || !rail
+        || !window.matchMedia('(max-width: 720px)').matches) return undefined
+
+    // Android Chrome can preserve a control near the right as the horizontal
+    // scroll anchor while tracks load or the locate action mounts. Reveal the
+    // primary play action before paint and once again after layout settles.
+    const revealStart = () => { rail.scrollLeft = 0 }
+    revealStart()
+    const frame = requestAnimationFrame(revealStart)
+    return () => cancelAnimationFrame(frame)
+  }, [tab, hasCurrent, shownTracks?.length])
+
   const locate = () => {
     const el = document.querySelector(`.trow[data-tid="${currentId}"]`)
     if (!el) return
@@ -217,7 +232,8 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
 
   return (
     <div className="favs-page">
-      <div className={`filters ${tab === 'tracks' ? 'pin center' : ''}`}>
+      <div ref={filterRailRef}
+           className={`filters ${tab === 'tracks' ? 'pin center' : ''}`}>
         {tab === 'tracks' && shownTracks?.length > 0 && (
           <>
             <button className="play-big"
