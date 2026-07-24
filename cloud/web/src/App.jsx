@@ -529,6 +529,7 @@ export default function App() {
     onOpen: openAlbum, onOpenArtist: openArtist, onOpenGenre: openGenre,
     onPlay: playFrom, onPlayTracks: playTracks,
     currentId: current?.id, playingId: playing ? current?.id : null,
+    currentAlbumId: current?.albumId, onTogglePlayback: toggle,
     playerShuffle: shuffle,
   }
 
@@ -660,6 +661,8 @@ export default function App() {
           <AlbumPage key={route.arg} id={route.arg} onPlay={playFrom}
                      playingId={playing ? current?.id : null}
                      currentId={current?.id}
+                     currentAlbumId={current?.albumId}
+                     onTogglePlayback={toggle}
                      isAdmin={isAdmin}
                      favAlbums={favAlbums} favTracks={favTracks}
                      toggleFav={toggleFav}

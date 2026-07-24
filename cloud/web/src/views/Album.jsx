@@ -8,6 +8,7 @@ import { I, Dialog, Heart, Md, NoteText, Rating, Reader,
          fmtDur, fmtTotal, goBack, navigate, usePointerReorder, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { galleryImageLoadState, gallerySwipeDirection } from '../gallery-gesture.js'
+import { albumPlaybackState } from '../album-playback.js'
 
 const cleanName = (s) =>
   (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
@@ -1052,6 +1053,7 @@ function TracksDialog({ album, onClose, onChanged }) {
 }
 
 export default function AlbumPage({ id, onPlay, playingId, currentId,
+                                    currentAlbumId, onTogglePlayback,
                                     isAdmin, favAlbums, favTracks, toggleFav,
                                     onChanged, onOpen, onOpenArtist, onOpenGenre }) {
   const { t } = useI18n()
@@ -1059,6 +1061,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
   const [loadError, setLoadError] = useState('')
   const [dlg, setDlg] = useState('') // '' | 'edit' | 'rym' | 'tracks' | 'del'
   const [noteReader, setNoteReader] = useState(false) // 简介全文弹层
+  const [genresExpanded, setGenresExpanded] = useState(false)
   const loadSeq = useRef(0)
   const toast = useToast()
 
@@ -1077,6 +1080,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
   useEffect(() => {
     setAl(null)
     setLoadError('')
+    setGenresExpanded(false)
     load()
     return () => { loadSeq.current++ }
   }, [id])
@@ -1094,6 +1098,17 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       {t('common.loading')}</div>
   }
   const rym = al.rym
+  const playback = albumPlaybackState(al.id, currentAlbumId, playingId)
+  const allGenres = [
+    ...(al.genres || []).map((name) => ({ name, secondary: false })),
+    ...(al.secondaryGenres || []).map((name) => ({ name, secondary: true })),
+  ]
+  // Keep the overflow control beside the primary genres on wide layouts;
+  // eight labels could leave a lone "+N" chip on a second line.
+  const genrePreviewLimit = 7
+  const visibleGenres = genresExpanded
+    ? allGenres : allGenres.slice(0, genrePreviewLimit)
+  const hiddenGenreCount = Math.max(allGenres.length - genrePreviewLimit, 0)
   const retryCoverFromOrigin = (event, size) => {
     const image = event.currentTarget
     if (image.dataset.originRetry === '1') return
@@ -1137,62 +1152,77 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
           {al.hidden && <span className="badge-hidden">{t('albumPage.hiddenBadge')}</span>}
         </div>
         <div className="hero-info">
-          <div className="hero-artist link" onClick={() => onOpenArtist(al.artist)}>
-            {al.artist}</div>
-          <h1 className="hero-title">{al.title}</h1>
-          <div className="hero-meta">
-            {al.year && <span>{al.year}</span>}
-            <span>·</span><span>{t('count.tracks', al.tracks.length)}</span>
-            {al.duration ? <><span>·</span><span>{fmtTotal(al.duration, t)}</span></> : null}
-            {al.tracks[0]?.format &&
-              <><span>·</span><span style={{ textTransform: 'uppercase' }}>
-                {[...new Set(al.tracks.map((t) => t.format))].join(' / ')}</span></>}
+          <div className="hero-identity">
+            <div className="hero-artist link" onClick={() => onOpenArtist(al.artist)}>
+              {al.artist}</div>
+            <h1 className="hero-title">{al.title}</h1>
+            <div className="hero-meta">
+              {al.year && <span>{al.year}</span>}
+              <span>·</span><span>{t('count.tracks', al.tracks.length)}</span>
+              {al.duration ? <><span>·</span><span>{fmtTotal(al.duration, t)}</span></> : null}
+              {al.tracks[0]?.format &&
+                <><span>·</span><span style={{ textTransform: 'uppercase' }}>
+                  {[...new Set(al.tracks.map((t) => t.format))].join(' / ')}</span></>}
+            </div>
+
+            {rym ? (
+              <div className="rym-box">
+                <div className="rym-score">
+                  <span className="num">{rym.rating?.toFixed(2) ?? '—'}</span>
+                  <span className="outof">/ 5.00</span>
+                </div>
+                <div className="rym-side">
+                  {rym.votes && <div>{t('rym.votes', rym.votes)}</div>}
+                  {rym.rank && <div>{rym.rank}</div>}
+                  {rym.rymUrl &&
+                    <a href={rym.rymUrl} target="_blank" rel="noreferrer">
+                      {t('rym.page')} <I.ext size={11} /></a>}
+                </div>
+              </div>
+            ) : (
+              <div className="rym-box">
+                <span style={{ color: 'var(--ink-faint)', fontSize: 13 }}>
+                  {isAdmin
+                    ? t('rym.noDataAdmin')
+                    : t('rym.noDataUser')}
+                </span>
+              </div>
+            )}
           </div>
 
-          {rym ? (
-            <div className="rym-box">
-              <div className="rym-score">
-                <span className="num">{rym.rating?.toFixed(2) ?? '—'}</span>
-                <span className="outof">/ 5.00</span>
+          <div className="hero-taxonomy">
+            {(allGenres.length > 0 || rym?.descriptors?.length > 0) &&
+              <div className="taxonomy-label">{t('common.genres')}</div>}
+            {allGenres.length > 0 && (
+              <div className="genre-row">
+                {visibleGenres.map(({ name, secondary }) => (
+                  <span key={`${secondary ? 's' : 'p'}:${name}`}
+                        className={`gtag ${secondary ? 'sec' : ''} link`}
+                        title={t('albumPage.viewGenre', name)}
+                        onClick={() => onOpenGenre(name)}>{name}</span>
+                ))}
+                {hiddenGenreCount > 0 && (
+                  <button type="button" className="gtag genre-more"
+                          title={t(genresExpanded ? 'common.less' : 'common.more')}
+                          aria-expanded={genresExpanded}
+                          onClick={() => setGenresExpanded((value) => !value)}>
+                    {genresExpanded ? t('common.less') : `+${hiddenGenreCount}`}
+                  </button>
+                )}
               </div>
-              <div className="rym-side">
-                {rym.votes && <div>{t('rym.votes', rym.votes)}</div>}
-                {rym.rank && <div>{rym.rank}</div>}
-                {rym.rymUrl &&
-                  <a href={rym.rymUrl} target="_blank" rel="noreferrer">
-                    {t('rym.page')} <I.ext size={11} /></a>}
-              </div>
-            </div>
-          ) : (
-            <div className="rym-box">
-              <span style={{ color: 'var(--ink-faint)', fontSize: 13 }}>
-                {isAdmin
-                  ? t('rym.noDataAdmin')
-                  : t('rym.noDataUser')}
-              </span>
-            </div>
-          )}
-
-          {(al.genres.length > 0 || rym) && (
-            <div className="genre-row">
-              {al.genres.map((g) => (
-                <span key={g} className="gtag link" title={t('albumPage.viewGenre', g)}
-                      onClick={() => onOpenGenre(g)}>{g}</span>
-              ))}
-              {(al.secondaryGenres || []).map((g) => (
-                <span key={g} className="gtag sec link" onClick={() => onOpenGenre(g)}>
-                  {g}</span>
-              ))}
-            </div>
-          )}
-          {rym?.descriptors?.length > 0 && (
-            <div className="descriptors">{rym.descriptors.join(' · ')}</div>
-          )}
+            )}
+            {rym?.descriptors?.length > 0 && (
+              <div className="descriptors">{rym.descriptors.join(' · ')}</div>
+            )}
+          </div>
 
           <div className="hero-actions">
-            <button className="btn primary"
-                    onClick={() => onPlay(al, al.tracks)}>
-              <I.play size={15} /> {t('common.play')}</button>
+            <button className="btn primary album-play-action"
+                    aria-pressed={playback.playing}
+                    onClick={() => playback.current && onTogglePlayback
+                      ? onTogglePlayback() : onPlay(al, al.tracks)}>
+              {playback.playing ? <I.pause size={14} /> : <I.play size={15} />}
+              {t(playback.playing ? 'common.pause' : 'common.play')}</button>
             <span className="hero-heart">
               <Heart on={favAlbums.has(al.id)} canEdit={isAdmin} size={18}
                      onToggle={() => toggleFav('album', al.id)} />

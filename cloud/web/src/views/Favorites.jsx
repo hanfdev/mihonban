@@ -27,6 +27,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
                                         isAdmin, favTracks, toggleFav, onReorder,
                                         onOpen, onOpenArtist, onPlay,
                                         onPlayTracks, currentId, playingId,
+                                        currentAlbumId, onTogglePlayback,
                                         playerShuffle, onClearQuery,
                                         tab = 'albums', onTabChange }) {
   const { t } = useI18n()
@@ -296,7 +297,9 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
                 </span>
               )}
               <AlbumCard a={a} onOpen={onOpen}
-                         onOpenArtist={onOpenArtist} onPlay={playAlbum} />
+                         onOpenArtist={onOpenArtist} onPlay={playAlbum}
+                         currentAlbumId={currentAlbumId} playingId={playingId}
+                         onTogglePlayback={onTogglePlayback} />
             </div>
           ))}
         </div>

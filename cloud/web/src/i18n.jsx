@@ -104,6 +104,7 @@ const en = {
   },
   common: {
     play: 'Play',
+    pause: 'Pause',
     playAll: 'Play all',
     shuffle: 'Shuffle',
     shuffleOn: 'Shuffle on (takes effect when you press Play)',
@@ -420,7 +421,7 @@ const zhHans = {
   },
   common: {
     ...en.common,
-    play: '播放', playAll: '播放全部',
+    play: '播放', pause: '暂停', playAll: '播放全部',
     shuffle: '随机', shuffleOn: '随机：开（点播放键生效）',
     shuffleOff: '随机：关', locate: '定位正在播放',
     save: '保存', cancel: '取消', clearFilters: '清除筛选', delete: '删除',
@@ -687,7 +688,7 @@ const zhHant = {
   },
   common: {
     ...zhHans.common,
-    play: '播放', playAll: '播放全部',
+    play: '播放', pause: '暫停', playAll: '播放全部',
     shuffle: '隨機', shuffleOn: '隨機：開（按播放鍵生效）',
     shuffleOff: '隨機：關', locate: '定位正在播放',
     save: '儲存', cancel: '取消', clearFilters: '清除篩選', delete: '刪除',
@@ -918,7 +919,7 @@ const ja = {
   },
   common: {
     ...en.common,
-    play: '再生', playAll: 'すべて再生',
+    play: '再生', pause: '一時停止', playAll: 'すべて再生',
     shuffle: 'シャッフル', shuffleOn: 'シャッフル：オン（再生で反映）',
     shuffleOff: 'シャッフル：オフ', locate: '再生中の曲へ',
     save: '保存', cancel: 'キャンセル', clearFilters: '絞り込みを解除', delete: '削除',
@@ -1135,7 +1136,7 @@ const ko = {
   },
   common: {
     ...en.common,
-    play: '재생', playAll: '전체 재생',
+    play: '재생', pause: '일시정지', playAll: '전체 재생',
     shuffle: '셔플', shuffleOn: '셔플: 켜짐 (재생 시 적용)',
     shuffleOff: '셔플: 꺼짐', locate: '지금 재생 중으로',
     save: '저장', cancel: '취소', clearFilters: '필터 지우기', delete: '삭제',
@@ -1352,7 +1353,7 @@ const fr = {
   },
   common: {
     ...en.common,
-    play: 'Lecture', playAll: 'Tout lire',
+    play: 'Lecture', pause: 'Pause', playAll: 'Tout lire',
     shuffle: 'Aléatoire', shuffleOn: 'Aléatoire : activé (au prochain Play)',
     shuffleOff: 'Aléatoire : désactivé', locate: 'Aller au titre en cours',
     save: 'Enregistrer', cancel: 'Annuler', clearFilters: 'Effacer les filtres', delete: 'Supprimer',
@@ -1568,7 +1569,7 @@ const es = {
   },
   common: {
     ...en.common,
-    play: 'Reproducir', playAll: 'Reproducir todo',
+    play: 'Reproducir', pause: 'Pausar', playAll: 'Reproducir todo',
     shuffle: 'Aleatorio', shuffleOn: 'Aleatorio: on (al pulsar Play)',
     shuffleOff: 'Aleatorio: off', locate: 'Ir a la pista actual',
     save: 'Guardar', cancel: 'Cancelar', clearFilters: 'Borrar filtros', delete: 'Eliminar',

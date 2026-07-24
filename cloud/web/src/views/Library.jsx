@@ -4,12 +4,15 @@ import { ClearFilters, FilterSel, I, Rating, VisibilityToggle, goBack, useToast 
 import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
+import { albumPlaybackState } from '../album-playback.js'
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 
-export function AlbumCard({ a, onOpen, onOpenArtist, onPlay }) {
+export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
+                            currentAlbumId, playingId, onTogglePlayback }) {
   const { t } = useI18n()
   const toast = useToast()
+  const playback = albumPlaybackState(a.id, currentAlbumId, playingId)
   const openAlbumWithKey = (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
@@ -23,10 +26,18 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay }) {
            onKeyDown={openAlbumWithKey} onClick={() => onOpen(a.id)}>
         <img loading="lazy" src={artUrl(a.id, 400)} alt={`${a.title} · ${a.artist}`} />
         {a.hidden && <span className="badge-hidden">{t('albumPage.hiddenBadge')}</span>}
-        <button className="play-fab" title={t('common.play')}
-                aria-label={`${t('common.play')} ${a.title}`}
-                onClick={(e) => { e.stopPropagation(); onPlay(a) }}>
-          <I.play size={18} />
+        <button className={`play-fab ${playback.current ? 'is-current' : ''} ${
+                  playback.playing ? 'is-playing' : ''}`}
+                title={t(playback.playing ? 'common.pause' : 'common.play')}
+                aria-label={`${t(playback.playing
+                  ? 'common.pause' : 'common.play')} ${a.title}`}
+                aria-pressed={playback.playing}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (playback.current && onTogglePlayback) onTogglePlayback()
+                  else onPlay(a)
+                }}>
+          {playback.playing ? <I.pause size={17} /> : <I.play size={18} />}
         </button>
       </div>
       <div className="card-meta">
@@ -47,7 +58,8 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay }) {
 
 export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
                                   genreFromRoute, isAdmin,
-                                  showHidden, setShowHidden, onClearQuery }) {
+                                  showHidden, setShowHidden, onClearQuery,
+                                  currentAlbumId, playingId, onTogglePlayback }) {
   const { t } = useI18n()
   const [minR, setMinR] = useState(0)
   const [genre, setGenre] = useState(genreFromRoute || '')
@@ -227,7 +239,9 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
         )}
         {shown && shown.map((a) =>
           <AlbumCard key={a.id} a={a} onOpen={onOpen}
-                     onOpenArtist={onOpenArtist} onPlay={playAlbum} />)}
+                     onOpenArtist={onOpenArtist} onPlay={playAlbum}
+                     currentAlbumId={currentAlbumId} playingId={playingId}
+                     onTogglePlayback={onTogglePlayback} />)}
       </div>
     </>
   )

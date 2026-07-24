@@ -194,7 +194,8 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
 export default function ArtistPage({ name, albums, artists, avatarVer,
                                      onAvatarChanged, isAdmin,
                                      onOpen, onOpenArtist, onOpenGenre, onPlay,
-                                     showHidden, setShowHidden }) {
+                                     showHidden, setShowHidden,
+                                     currentAlbumId, playingId, onTogglePlayback }) {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
   const [bioDlg, setBioDlg] = useState(false)
@@ -389,7 +390,9 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
         )}
         {mine.map((a) => (
           <AlbumCard key={a.id} a={a} onOpen={onOpen}
-                     onOpenArtist={onOpenArtist} onPlay={playAlbum} />
+                     onOpenArtist={onOpenArtist} onPlay={playAlbum}
+                     currentAlbumId={currentAlbumId} playingId={playingId}
+                     onTogglePlayback={onTogglePlayback} />
         ))}
       </div>
 

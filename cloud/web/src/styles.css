@@ -575,7 +575,9 @@ select option { background-color: var(--bg2); color: var(--ink); }
   display: flex;
   gap: 34px;
   padding: 26px;
-  align-items: flex-end;
+  /* Cover and title are the stable identity anchors. Their top edge must not
+     move when one album has more genres or descriptors than another. */
+  align-items: flex-start;
   flex-wrap: wrap;
 }
 .hero-cover {
@@ -3260,4 +3262,132 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   .sort-sel { height: 40px; }
   .import-wrap { padding: 16px; gap: 22px; }
   .import-wrap > .panel { padding: 18px; }
+}
+
+/* Tablet album composition: keep the useful two-column structure, but align
+   both visual anchors at the top. Bottom alignment pushed the cover into the
+   metadata/actions area on portrait iPads and similarly sized desktop views. */
+@media (min-width: 721px) and (max-width: 1100px) {
+  .album-page .hero {
+    display: grid;
+    grid-template-columns: clamp(220px, 29vw, 264px) minmax(0, 1fr);
+    align-items: start;
+    gap: clamp(26px, 3.5vw, 40px);
+  }
+  .album-page .hero-cover {
+    width: 100%;
+    align-self: start;
+  }
+  .album-page .hero-info {
+    min-width: 0;
+    padding-top: 2px;
+  }
+}
+
+/* Album grids can show many controls at once on touch screens. Use glass as
+   the quiet default and reserve the brand orange for intent and live state. */
+.cover .play-fab {
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(18, 15, 12, .66);
+  color: rgba(255, 250, 242, .96);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, .96),
+              inset 0 1px rgba(255, 255, 255, .10);
+  -webkit-backdrop-filter: blur(14px) saturate(125%);
+  backdrop-filter: blur(14px) saturate(125%);
+}
+.cover .play-fab.is-current {
+  border-color: rgba(240, 100, 62, .62);
+  color: var(--accent-hi);
+}
+.cover .play-fab.is-playing {
+  border-color: var(--accent-hi);
+  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 92%, rgba(18, 15, 12, .66));
+  color: #fff;
+  box-shadow: 0 12px 28px -10px rgba(232, 84, 47, .72),
+              inset 0 1px rgba(255, 255, 255, .14);
+}
+@media (hover: hover) {
+  .cover .play-fab:hover {
+    border-color: var(--accent-hi);
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 12px 28px -10px rgba(232, 84, 47, .72);
+  }
+}
+
+/* Genre lists are useful navigation, but they are supporting metadata rather
+   than the album's headline. Collapse only unusually dense sets. */
+.taxonomy-label { display: none; }
+.gtag.genre-more {
+  appearance: none;
+  background: rgba(255, 255, 255, .018);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--line) 82%, transparent);
+  color: var(--ink-faint);
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .gtag.genre-more:hover {
+    border-color: var(--gold-dim);
+    color: var(--gold);
+  }
+}
+
+/* Wide album pages use the available canvas as an editorial spread: identity
+   on the left, taxonomy on the right, controls below both, and a full-width
+   track table. This borrows Spotify's spatial logic without copying its UI. */
+@media (min-width: 1400px) {
+  .album-page .hero {
+    display: grid;
+    grid-template-columns: 264px minmax(0, 1fr);
+    align-items: start;
+  }
+  .album-page .hero-info {
+    display: grid;
+    grid-template-columns: minmax(420px, 1fr) clamp(520px, 40vw, 760px);
+    grid-template-areas:
+      "identity taxonomy"
+      "actions actions";
+    column-gap: clamp(48px, 4vw, 82px);
+    row-gap: 14px;
+    min-width: 0;
+  }
+  .album-page .hero-identity {
+    grid-area: identity;
+    min-width: 0;
+  }
+  .album-page .hero-taxonomy {
+    grid-area: taxonomy;
+    min-width: 0;
+    width: 100%;
+    justify-self: end;
+    padding-top: 3px;
+  }
+  .album-page .taxonomy-label {
+    display: block;
+    margin-bottom: 9px;
+    color: var(--ink-faint);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+  }
+  .album-page .hero-taxonomy .genre-row { margin-top: 0; }
+  .album-page .hero-taxonomy .descriptors {
+    max-width: 760px;
+    margin-top: 12px;
+  }
+  .album-page .hero-actions {
+    grid-area: actions;
+    margin-top: 0;
+  }
+}
+
+@media (min-width: 1101px) {
+  .album-page .tracks { max-width: none; }
+  .album-page .trow {
+    grid-template-columns: 34px minmax(320px, 1fr) 110px 64px 40px;
+  }
 }
