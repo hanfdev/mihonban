@@ -499,7 +499,7 @@ test("image size inputs are strict and temporary cloud redirects are not cached"
   }
 });
 
-test("R2 image redirects carry the stable mirror version", async () => {
+test("R2 image redirects carry the stable mirror version and cache publicly", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
   db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
@@ -526,7 +526,47 @@ test("R2 image redirects carry the stable mirror version", async () => {
     assert.equal(card.headers.get("location"),
       "https://cdn.example/img/art_album_original.jpg?v=123456");
     assert.equal(card.headers.get("location"), detail.headers.get("location"));
-    assert.equal(card.headers.get("cache-control"), "private, no-store");
+    assert.equal(card.headers.get("cache-control"),
+      "public, max-age=300, stale-while-revalidate=86400");
+  } finally {
+    db.close();
+  }
+});
+
+test("default artist art reuses the earliest visible album R2 mirror", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('media', 'Media', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, cover_path, storage_id, hidden, year,
+      created_at, updated_at)
+    VALUES
+      ('hidden', 'Artist', 'Hidden', 'Music/Library/Artist/Hidden',
+        'Music/Library/Artist/Hidden/cover.jpg', 'media', 1, 1990, 1, 1),
+      ('visible', 'Artist', 'Visible', 'Music/Library/Artist/Visible',
+        'Music/Library/Artist/Visible/cover.jpg', 'media', 0, 2000, 2, 2)`)
+    .run();
+  db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
+  db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at, cache_policy)
+    VALUES
+      ('art:hidden:original', 'img/art_hidden_original.jpg', 111, 1),
+      ('art:visible:original', 'img/art_visible_original.jpg', 222, 1)`)
+    .run();
+  const env = companionEnv(db, {
+    R2_ACCESS_KEY: "access",
+    R2_SECRET_KEY: "secret",
+    R2_ENDPOINT: "https://r2.example",
+    R2_BUCKET: "bucket",
+    R2_PUBLIC_URL: "https://cdn.example",
+  });
+  try {
+    const response = await companionRequest(env, "/api/artist-art/Artist");
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"),
+      "https://cdn.example/img/art_visible_original.jpg?v=222");
+    assert.equal(response.headers.get("cache-control"),
+      "public, max-age=300, stale-while-revalidate=86400");
   } finally {
     db.close();
   }

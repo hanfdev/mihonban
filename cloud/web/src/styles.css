@@ -1466,6 +1466,11 @@ body.reordering * { -webkit-touch-callout: none !important; }
   position: fixed;
   inset: 0;
   z-index: 110;
+  /* The focus target is the full-viewport dialog. Remove the browser's
+     default focus ring, which otherwise appears as an intermittent white
+     frame around the viewer after opening it. */
+  outline: none;
+  border: 0;
   background: rgba(5, 4, 3, 0.9);
   backdrop-filter: blur(10px);
   display: grid;

@@ -138,6 +138,20 @@ function temporaryRedirect(url) {
   });
 }
 
+// Public image redirects are versioned by the R2 mirror timestamp. Cache the
+// short-lived API redirect so a page refresh does not invoke the Worker for
+// every cover while still allowing a changed cover to roll out promptly.
+function publicImageRedirect(url) {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: url,
+      "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
+
 function imageMimeFromBytes(buffer) {
   const b = new Uint8Array(buffer);
   if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) {
@@ -792,9 +806,10 @@ app.get("/api/artist-art/:name", async (c) => {
     });
   }
   const ch = [...name][0]?.toUpperCase() || "♪";
-  // 无自定义头像：内联返回最早专辑封面字节（禁止任何 302 —— 浏览器会永久缓存重定向）
-  const albumVisibility = canSeeHidden(c)
-    ? "1=1" : "COALESCE(hidden,0)=0";
+  // 无自定义头像时复用最早可见专辑的原始封面镜像。公开回退必须始终
+  // 选择可见专辑；否则管理员可能把隐藏专辑封面写入公共 R2 缓存。
+  const albumVisibility = publiclyVisible
+    ? "COALESCE(hidden,0)=0" : "1=1";
   const alb = await c.env.DB.prepare(`
     SELECT id, folder, cover_path, storage_id FROM albums WHERE artist = ?
       AND ${albumVisibility}
@@ -802,36 +817,12 @@ app.get("/api/artist-art/:name", async (c) => {
   if (alb) {
     const cover = await resolveCover(c.env, alb);
     if (cover) {
-      try {
-        let bytes, ct;
-        const sid = alb.storage_id || null;
-        const url = (await storage.thumbnailUrl(c.env, cover, "c480x480", sid))
-          || (await storage.downloadUrl(c.env, cover, sid));
-        if (url) {
-          const img = await fetchWithTimeout(url);
-          if (img.ok) {
-            ct = img.headers.get("Content-Type") || "image/jpeg";
-            bytes = await readResponseLimited(img, MAX_BUFFERED_IMAGE_BYTES);
-          }
-        } else {
-          const r = await storage.getFile(c.env, cover, sid);
-          if (r) {
-            ct = r.headers.get("Content-Type") || "image/jpeg";
-            bytes = await readResponseLimited(r, MAX_BUFFERED_IMAGE_BYTES);
-          }
-        }
-        if (bytes) {
-          const detected = imageMimeFromBytes(bytes);
-          if (!detected) throw new Error("unsupported image content");
-          return new Response(bytes, {
-            headers: {
-              "Content-Type": detected,
-              "Cache-Control": "no-store, no-cache, must-revalidate",
-              Pragma: "no-cache",
-            },
-          });
-        }
-      } catch { /* fall through to placeholder */ }
+      const res = await serveImageR2(c, `art:${alb.id}:original`, cover, null,
+        publiclyVisible
+          ? "public, max-age=300, stale-while-revalidate=86400"
+          : "private, no-store",
+        alb.storage_id || null, !!publiclyVisible);
+      if (res) return res;
     }
   }
   return c.body(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
@@ -1583,7 +1574,7 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
         if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(upgrade);
         else version = (await upgrade) || version;
       }
-      return temporaryRedirect(
+      return publicImageRedirect(
         r2.r2PublicUrl(conf, row.r2_key, version));
     }
   }
