@@ -3326,6 +3326,27 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   .p-title .mq, .p-sub { width: max-content; max-width: 100%; }
 }
 
+/* The mobile mini player is a glanceable transport, not a full metadata row.
+   Keep it to title + artist so long artist and album names do not both lose
+   meaning through truncation. The album remains available in the full player. */
+@media (max-width: 900px) {
+  .player .p-sub {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+  .player .p-artist-link {
+    display: inline-block;
+    max-width: 100%;
+    width: auto;
+    vertical-align: top;
+  }
+  .player .p-sub-sep,
+  .player .p-album-link {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
   :root { --page-gutter: 16px; }
   .filters {
