@@ -415,6 +415,10 @@ export const adminLocales = {
     phClientIdGoogle: 'Google Cloud OAuth 用戶端 ID',
     phRootId: 'root 或資料夾 ID',
     phLocalRoot: 'F:\\Music\\Library  或  /data/mihonban',
+    legacyOd: '命名儲存', editLegacyOd: '編輯儲存憑證', editBackend: (n) => `編輯「${n}」`,
+    editHint: '機密欄位留空即可保留目前的值。', backendUpdated: '儲存已更新',
+    backendAddedPrimary: '已新增並設為新上傳的主要目標', firstBackendHint: '這會成為主要寫入目標（新上傳會儲存在這裡）。',
+    defaultStorage: '未指定儲存', unassignedStorage: '未指定儲存（請先遷移再操作）',
   },
 
   ja: {
@@ -613,6 +617,10 @@ export const adminLocales = {
     phClientIdGoogle: 'Google Cloud OAuth クライアント ID',
     phRootId: 'root またはフォルダ ID',
     phLocalRoot: 'F:\\Music\\Library  または  /data/mihonban',
+    legacyOd: '名前付きストレージ', editLegacyOd: 'ストレージ認証情報を編集', editBackend: (n) => `「${n}」を編集`,
+    editHint: '機密項目は空欄のままにすると現在の値を保持します。', backendUpdated: 'ストレージを更新しました',
+    backendAddedPrimary: '追加し、新規アップロードの書き込み先に設定しました', firstBackendHint: 'これが主な書き込み先になります（新規アップロードはここへ保存）。',
+    defaultStorage: '未指定のストレージ', unassignedStorage: '未指定のストレージ（先に移行してください）',
   },
 
   ko: {
@@ -811,6 +819,10 @@ export const adminLocales = {
     phClientIdGoogle: 'Google Cloud OAuth 클라이언트 ID',
     phRootId: 'root 또는 폴더 ID',
     phLocalRoot: 'F:\\Music\\Library  또는  /data/mihonban',
+    legacyOd: '이름 있는 스토리지', editLegacyOd: '스토리지 자격 증명 편집', editBackend: (n) => `「${n}」 편집`,
+    editHint: '비밀 필드는 비워 두면 현재 값이 유지됩니다.', backendUpdated: '스토리지가 업데이트되었습니다',
+    backendAddedPrimary: '추가하고 새 업로드의 기본 대상으로 설정했습니다', firstBackendHint: '이 위치가 기본 쓰기 대상이 됩니다 (새 업로드가 여기에 저장됨).',
+    defaultStorage: '지정되지 않은 스토리지', unassignedStorage: '지정되지 않은 스토리지 (먼저 이전하세요)',
   },
 
   fr: {
@@ -1009,6 +1021,10 @@ export const adminLocales = {
     phClientIdGoogle: 'ID client OAuth Google Cloud',
     phRootId: 'root ou ID de dossier',
     phLocalRoot: 'F:\\Music\\Library  ou  /data/mihonban',
+    legacyOd: 'Stockage nommé', editLegacyOd: 'Modifier les identifiants du stockage', editBackend: (n) => `Modifier « ${n} »`,
+    editHint: 'Laissez un champ secret vide pour conserver sa valeur actuelle.', backendUpdated: 'Stockage mis à jour',
+    backendAddedPrimary: 'Ajouté et défini comme destination principale des nouveaux envois', firstBackendHint: 'Ce sera la destination principale des nouveaux envois.',
+    defaultStorage: 'Stockage non attribué', unassignedStorage: 'Stockage non attribué (migrez d’abord les albums)',
   },
 
   es: {
@@ -1207,5 +1223,9 @@ export const adminLocales = {
     phClientIdGoogle: 'ID de cliente OAuth de Google Cloud',
     phRootId: 'root o ID de carpeta',
     phLocalRoot: 'F:\\Music\\Library  o  /data/mihonban',
+    legacyOd: 'Almacenamiento con nombre', editLegacyOd: 'Editar credenciales de almacenamiento', editBackend: (n) => `Editar «${n}»`,
+    editHint: 'Deja vacío un campo secreto para conservar su valor actual.', backendUpdated: 'Almacenamiento actualizado',
+    backendAddedPrimary: 'Añadido y definido como destino principal de nuevas subidas', firstBackendHint: 'Este será el destino principal de las nuevas subidas.',
+    defaultStorage: 'Almacenamiento no asignado', unassignedStorage: 'Almacenamiento no asignado (migra antes los álbumes)',
   },
 }

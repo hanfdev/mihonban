@@ -509,8 +509,8 @@ test("R2 image redirects carry the stable mirror version", async () => {
     VALUES ('album', 'Artist', 'Album', 'Music/Library/Artist/Album',
       'Music/Library/Artist/Album/cover.jpg', 'media', 1, 1)`).run();
   db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
-  db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at)
-    VALUES ('art:album:1000', 'img/art_album_1000.jpg', 123456)`).run();
+  db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at, cache_policy)
+    VALUES ('art:album:original', 'img/art_album_original.jpg', 123456, 1)`).run();
   const env = companionEnv(db, {
     R2_ACCESS_KEY: "access",
     R2_SECRET_KEY: "secret",
@@ -519,10 +519,14 @@ test("R2 image redirects carry the stable mirror version", async () => {
     R2_PUBLIC_URL: "https://cdn.example",
   });
   try {
-    const response = await companionRequest(env, "/api/art/album?s=1000");
-    assert.equal(response.status, 302);
-    assert.equal(response.headers.get("location"),
-      "https://cdn.example/img/art_album_1000.jpg?v=123456");
+    const card = await companionRequest(env, "/api/art/album?s=480");
+    const detail = await companionRequest(env, "/api/art/album?s=1000");
+    assert.equal(card.status, 302);
+    assert.equal(detail.status, 302);
+    assert.equal(card.headers.get("location"),
+      "https://cdn.example/img/art_album_original.jpg?v=123456");
+    assert.equal(card.headers.get("location"), detail.headers.get("location"));
+    assert.equal(card.headers.get("cache-control"), "private, no-store");
   } finally {
     db.close();
   }
@@ -540,7 +544,7 @@ test("a successful cover fallback repairs a missing public R2 mirror", async () 
       'Music/Library/Artist/Album/cover.jpg', 'media', 1, 1)`).run();
   db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
   db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at)
-    VALUES ('art:album:1000', 'img/stale.jpg', 1)`).run();
+    VALUES ('art:album:original', 'img/stale.jpg', 1)`).run();
   const env = companionEnv(db, {
     R2_ACCESS_KEY: "access",
     R2_SECRET_KEY: "secret",
@@ -571,8 +575,8 @@ test("a successful cover fallback repairs a missing public R2 mirror", async () 
     assert.equal(response.status, 200, await response.text());
     assert.deepEqual(uploaded, jpeg);
     const row = db.prepare(`SELECT r2_key, created_at FROM r2_cache
-      WHERE cache_key = 'art:album:1000'`).get();
-    assert.equal(row.r2_key, "img/art_album_1000.jpg");
+      WHERE cache_key = 'art:album:original'`).get();
+    assert.equal(row.r2_key, "img/art_album_original.jpg");
     assert.ok(row.created_at > 1);
   } finally {
     globalThis.fetch = realFetch;
@@ -674,6 +678,57 @@ test("Discogs image import never records a cover that failed to upload", async (
       "SELECT updated_at FROM albums WHERE id = 'discogs-album'").get().updated_at > 1);
     assert.equal(writes.filter((path) => path.includes("/artwork/")).length, 1);
     assert.equal(writes.filter((path) => /\/cover\.[^.]+$/i.test(path)).length, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
+test("Discogs crop source proxies only images belonging to the selected release", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('discogs-store', 'Discogs', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES ('discogs-crop', 'Artist', 'Album',
+      'Music/Library/Artist/Album', 'discogs-store', 1, 1)`).run();
+  db.prepare("INSERT INTO settings (k, v) VALUES ('discogs_token', 'token')").run();
+  const env = companionEnv(db);
+  const imageUrl = "https://img.discogs.com/allowed.jpg";
+  const realFetch = globalThis.fetch;
+  let imageFetches = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.startsWith("https://api.discogs.com/releases/1?")) {
+      return Response.json({ images: [{ type: "primary", uri: imageUrl }] });
+    }
+    if (url === imageUrl) {
+      imageFetches += 1;
+      assert.equal(init.headers.Referer, "https://www.discogs.com/");
+      return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00]));
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  try {
+    const response = await companionRequest(
+      env, "/api/album/discogs-crop/discogs-image-source", {
+        method: "POST", ...jsonBody({ ref: "1", uri: imageUrl }),
+      });
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.headers.get("content-type"), "image/jpeg");
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()),
+      new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00]));
+    assert.equal(imageFetches, 1);
+
+    const rejected = await companionRequest(
+      env, "/api/album/discogs-crop/discogs-image-source", {
+        method: "POST",
+        ...jsonBody({ ref: "1", uri: "https://img.discogs.com/not-listed.jpg" }),
+      });
+    assert.equal(rejected.status, 400);
+    assert.equal(imageFetches, 1);
   } finally {
     globalThis.fetch = realFetch;
     db.close();
@@ -1476,16 +1531,14 @@ test("R2 prewarm claims existing public objects without reading source images", 
     const body = await response.json();
     assert.equal(response.status, 200, body.error);
     assert.deepEqual(body, {
-      total: 1, processed: 1, done: 0, skipped: 2, failed: 0, finished: true,
+      total: 1, processed: 1, done: 0, skipped: 1, failed: 0, finished: true,
     });
     assert.deepEqual(calls, [
-      { url: "https://cdn.example/img/art_album-1_480.jpg", method: "HEAD" },
-      { url: "https://cdn.example/img/art_album-1_1000.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_original.jpg", method: "HEAD" },
     ]);
     assert.deepEqual(db.prepare(
       "SELECT cache_key, r2_key FROM r2_cache ORDER BY cache_key").all(), [
-      { cache_key: "art:album-1:1000", r2_key: "img/art_album-1_1000.jpg" },
-      { cache_key: "art:album-1:480", r2_key: "img/art_album-1_480.jpg" },
+      { cache_key: "art:album-1:original", r2_key: "img/art_album-1_original.jpg" },
     ]);
   } finally {
     globalThis.fetch = realFetch;
@@ -1527,11 +1580,10 @@ test("R2 prewarm never uploads when the public existence check is inconclusive",
     const body = await response.json();
     assert.equal(response.status, 200, body.error);
     assert.deepEqual(body, {
-      total: 1, processed: 1, done: 0, skipped: 0, failed: 2, finished: true,
+      total: 1, processed: 1, done: 0, skipped: 0, failed: 1, finished: true,
     });
     assert.deepEqual(calls, [
-      { url: "https://cdn.example/img/art_album-1_480.jpg", method: "HEAD" },
-      { url: "https://cdn.example/img/art_album-1_1000.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_original.jpg", method: "HEAD" },
     ]);
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM r2_cache").get().count, 0);
   } finally {

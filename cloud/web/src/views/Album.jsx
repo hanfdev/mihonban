@@ -4,7 +4,7 @@ import { api, artUrl, imgUrl, uploadFileToOneDrive } from '../api.js'
 import { parseRymHtml } from '../rym.js'
 import { parseDiscogsHtml } from '../discogs.js'
 import { readTags } from '../tags.js'
-import { I, Dialog, Heart, Md, NoteText, Rating, Reader,
+import { I, CropDialog, Dialog, Heart, Md, NoteText, Rating, Reader,
          fmtDur, fmtTotal, goBack, navigate, usePointerReorder, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { galleryImageLoadState, gallerySwipeDirection } from '../gallery-gesture.js'
@@ -31,6 +31,7 @@ function EditDialog({ album, onClose, onSaved }) {
     note: album.note || '',
   })
   const [cover, setCover] = useState(null)
+  const [cropFile, setCropFile] = useState(null)
   const [busy, setBusy] = useState(false)
   const saveInFlight = useRef(false)
   const toast = useToast()
@@ -74,7 +75,7 @@ function EditDialog({ album, onClose, onSaved }) {
     try {
       let coverPath
       if (cover) {
-        coverPath = `${album.folder}/cover.${ext}`
+        coverPath = `${album.folder}/cover-${Date.now().toString(36)}.${ext}`
         await api.uploadCover(coverPath, cover)
       }
       await api.patchAlbum(album.id, {
@@ -99,8 +100,12 @@ function EditDialog({ album, onClose, onSaved }) {
           {cover
             ? <img src={coverUrl} alt="" />
             : <img src={artUrl(album.id, 400)} alt="" />}
-          <input type="file" accept="image/*" hidden
-                 onChange={(e) => setCover(e.target.files[0] || null)} />
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden
+                 onChange={(e) => {
+                   const file = e.target.files[0]
+                   e.target.value = ''
+                   if (file) setCropFile(file)
+                 }} />
         </label>
         <div className="fields">
           <div className="frow"><label>{t('albumPage.artist')}</label>
@@ -133,6 +138,11 @@ function EditDialog({ album, onClose, onSaved }) {
           {busy ? <I.spin /> : t('common.save')}
         </button>
       </div>
+      {cropFile && (
+        <CropDialog file={cropFile} out={1200} title={t('crop.coverTitle')}
+                    onClose={() => setCropFile(null)}
+                    onDone={(blob) => { setCropFile(null); setCover(blob) }} />
+      )}
     </Dialog>
   )
 }
@@ -244,6 +254,7 @@ function DiscogsDialog({ album, onClose, onSaved }) {
   const [imgSel, setImgSel] = useState(new Set())
   const [imgAsCover, setImgAsCover] = useState(false)
   const [imgBusy, setImgBusy] = useState(false)
+  const [cropSource, setCropSource] = useState(null)
   const searchSeq = useRef(0)
   const fileReadSeq = useRef(0)
   const urlRequestSeq = useRef(0)
@@ -359,7 +370,11 @@ function DiscogsDialog({ album, onClose, onSaved }) {
     setter(n)
   }
 
-  const apply = async () => {
+  const selectedImageUris = () => (imgs || [])
+    .filter((image) => imgSel.has(image.uri))
+    .map((image) => image.uri)
+
+  const finishApply = async (croppedCover = null, selectedUris = selectedImageUris()) => {
     if (applyInFlight.current || !picked) return
     applyInFlight.current = true
     setBusy(true)
@@ -380,15 +395,39 @@ function DiscogsDialog({ album, onClose, onSaved }) {
       if (hasGenres) await api.patchAlbum(album.id, { genres, secondaryGenres: sec })
       // 顺带导入勾选的图片
       let imgMsg = ''
-      if (imgSel.size) {
+      if (selectedUris.length) {
         const r = await api.discogsImportImages(
-          album.id, pickedRef(), [...imgSel], imgAsCover)
-        imgMsg = t('discogsAlbum.images', r.imported, r.coverSet)
+          album.id, pickedRef(), selectedUris, false)
+        imgMsg = t('discogsAlbum.images', r.imported, !!croppedCover)
+      }
+      if (croppedCover) {
+        const coverPath = `${album.folder}/cover-${Date.now().toString(36)}.jpg`
+        await api.uploadCover(coverPath, croppedCover)
+        await api.patchAlbum(album.id, { coverPath })
       }
       toast((hasGenres ? t('discogsAlbum.stylesDone') : t('discogsAlbum.done')) + imgMsg, 'ok')
       onSaved()
     } catch (e) { toast(t('discogsAlbum.fail', e.message), 'err') }
     finally { applyInFlight.current = false; setBusy(false) }
+  }
+
+  const apply = async () => {
+    if (applyInFlight.current || !picked || busy) return
+    const selectedUris = selectedImageUris()
+    if (!imgAsCover || !selectedUris.length) {
+      await finishApply(null, selectedUris)
+      return
+    }
+    setBusy(true)
+    try {
+      const blob = await api.discogsImageSource(
+        album.id, pickedRef(), selectedUris[0])
+      setCropSource({ blob, selectedUris })
+    } catch (e) {
+      toast(t('discogsAlbum.imgFail', e.message), 'err')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const resetPick = () => {
@@ -541,6 +580,15 @@ function DiscogsDialog({ album, onClose, onSaved }) {
                 ? t('discogsAlbum.applyWithImg', imgSel.size) : t('discogsAlbum.apply')}
             </button>
           </div>
+          {cropSource && (
+            <CropDialog file={cropSource.blob} out={1200} title={t('crop.coverTitle')}
+                        onClose={() => setCropSource(null)}
+                        onDone={(blob) => {
+                          const selectedUris = cropSource.selectedUris
+                          setCropSource(null)
+                          finishApply(blob, selectedUris)
+                        }} />
+          )}
         </>
       )}
     </Dialog>
@@ -1139,8 +1187,8 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
 
   return (
     <div className={`album-page ${al.hidden ? 'is-hidden' : ''}`}>
-      <div className="backdrop"><img src={artUrl(al.id, 480)} alt=""
-        onError={(event) => retryCoverFromOrigin(event, 480)} /></div>
+      <div className="backdrop"><img src={artUrl(al.id, 1000)} alt=""
+        onError={(event) => retryCoverFromOrigin(event, 1000)} /></div>
       <button className="back-btn" onClick={goBack}>
         <I.back size={15} /> {t('common.back')}
       </button>

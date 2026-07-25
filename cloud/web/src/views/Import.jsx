@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { api, artUrl, uploadFileToOneDrive } from '../api.js'
 import { readTags } from '../tags.js'
 import { toJa } from '../aliases.js'
-import { I, useToast } from '../ui.jsx'
+import { CropDialog, I, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 
 const clean = (s) => (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
@@ -23,6 +23,7 @@ export default function ImportPage({ albums, onDone, onOpen }) {
   const [items, setItems] = useState([])       // readTags 结果
   const [form, setForm] = useState({ artist: '', title: '', year: '' })
   const [cover, setCover] = useState(null)     // {blob, url}
+  const [cropFile, setCropFile] = useState(null)
   const [progress, setProgress] = useState({}) // filename -> {pct, status}
   const [phase, setPhase] = useState('pick')   // pick | edit | uploading | done
   const doneId = useRef(null)
@@ -190,10 +191,11 @@ export default function ImportPage({ albums, onDone, onOpen }) {
                 {cover ? <img src={cover.url} alt="" /> : (
                   <span style={{ whiteSpace: 'pre-line' }}>{t('importPage.cover')}</span>
                 )}
-                <input type="file" accept="image/*" hidden
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden
                        onChange={(e) => {
-                         const f = e.target.files[0]
-                         if (f) setCover({ blob: f, url: URL.createObjectURL(f) })
+                         const file = e.target.files[0]
+                         e.target.value = ''
+                         if (file) setCropFile(file)
                        }} />
               </label>
               <div className="fields">
@@ -287,6 +289,14 @@ export default function ImportPage({ albums, onDone, onOpen }) {
           </div>
         </>}
       </div>
+      {cropFile && (
+        <CropDialog file={cropFile} out={1200} title={t('crop.coverTitle')}
+                    onClose={() => setCropFile(null)}
+                    onDone={(blob) => {
+                      setCropFile(null)
+                      setCover({ blob, url: URL.createObjectURL(blob) })
+                    }} />
+      )}
     </div>
   )
 }

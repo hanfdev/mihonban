@@ -318,10 +318,19 @@ async function ensureMigrations(env) {
     }
     try {
       await env.DB.prepare(`CREATE TABLE IF NOT EXISTS r2_cache (
-        cache_key TEXT PRIMARY KEY, r2_key TEXT NOT NULL, created_at INTEGER NOT NULL
+        cache_key TEXT PRIMARY KEY, r2_key TEXT NOT NULL, created_at INTEGER NOT NULL,
+        cache_policy INTEGER NOT NULL DEFAULT 0
       )`).run();
     } catch (e) {
       if (!/already exists/i.test(String(e?.message || e))) throw e;
+    }
+    try {
+      await env.DB.prepare(
+        "ALTER TABLE r2_cache ADD COLUMN cache_policy INTEGER NOT NULL DEFAULT 0").run();
+    } catch (e) {
+      if (!/duplicate column|already exists/i.test(String(e?.message || e))) {
+        throw e;
+      }
     }
     try {
       await env.DB.prepare(`CREATE TABLE IF NOT EXISTS storages (
@@ -1009,6 +1018,37 @@ app.post("/api/album/:id/discogs-image-list", async (c) => {
   }
 });
 
+// Return a verified Discogs image through the authenticated same-origin API so
+// the browser can load it into canvas without depending on Discogs CORS rules.
+app.post("/api/album/:id/discogs-image-source", async (c) => {
+  const token = await getSetting(c.env, "discogs_token");
+  if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
+  const album = await c.env.DB.prepare(
+    "SELECT 1 FROM albums WHERE id = ?").bind(c.req.param("id")).first();
+  if (!album) return c.json({ error: "not found" }, 404);
+  const body = await requestObject(c);
+  const d = discogsIdFrom(body?.ref);
+  if (!d || !isDiscogsImageUrl(body?.uri)) {
+    return c.json({ error: "Discogs 图片参数无效" }, 400);
+  }
+  try {
+    const { images } = await discogsImages(token, d.kind, d.id);
+    if (!images.some((image) => image.uri === body.uri)) {
+      return c.json({ error: "选择的图片不属于该发行" }, 400);
+    }
+    const { bytes, ct } = await fetchDiscogsBytes(body.uri);
+    return new Response(bytes, {
+      headers: {
+        "Content-Type": ct,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (e) {
+    return c.json({ error: String(e.message || e) }, 502);
+  }
+});
+
 // 导入选中的专辑图片：下载 → 传到 <folder>/artwork/ → 登记 album_images；
 // asCover=true 时把第一张设为封面
 app.post("/api/album/:id/discogs-import-images", async (c) => {
@@ -1432,12 +1472,14 @@ const r2ImageKeyBase = (cacheKey) =>
 const r2ImageObjectKey = (cacheKey, contentType) =>
   `${r2ImageKeyBase(cacheKey)}.${R2_IMAGE_EXT_BY_MIME[contentType] || "jpg"}`;
 
-async function recordR2Mirror(env, cacheKey, r2Key) {
+async function recordR2Mirror(env, cacheKey, r2Key, cachePolicy = 1) {
   await env.DB.prepare(
-    "INSERT INTO r2_cache (cache_key, r2_key, created_at) VALUES (?,?,?) " +
+    "INSERT INTO r2_cache (cache_key, r2_key, created_at, cache_policy) " +
+    "VALUES (?,?,?,?) " +
     "ON CONFLICT(cache_key) DO UPDATE SET " +
-    "r2_key = excluded.r2_key, created_at = excluded.created_at")
-    .bind(cacheKey, r2Key, Date.now()).run();
+    "r2_key = excluded.r2_key, created_at = excluded.created_at, " +
+    "cache_policy = excluded.cache_policy")
+    .bind(cacheKey, r2Key, Date.now(), cachePolicy).run();
 }
 
 async function mirrorImageBytes(c, conf, cacheKey, bytes, contentType) {
@@ -1505,7 +1547,9 @@ async function claimExistingR2Image(env, conf, cacheKey, srcPath) {
     const r2Key = `${r2ImageKeyBase(cacheKey)}.${ext}`;
     const exists = await r2.r2PublicObjectExists(conf, r2Key);
     if (!exists) continue;
-    await recordR2Mirror(env, cacheKey, r2Key);
+    // The object predates this deployment, so its browser-cache metadata is
+    // unknown. It will be upgraded in-place the next time it is served.
+    await recordR2Mirror(env, cacheKey, r2Key, 0);
     return true;
   }
   return false;
@@ -1517,10 +1561,30 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   // 1) R2 已镜像 → 直接 302 到公开 CDN（优先于边缘缓存，避免旧的 200 字节挡路）
   if (conf.ready && allowPublicMirror) {
     const row = await c.env.DB.prepare(
-      "SELECT r2_key, created_at FROM r2_cache WHERE cache_key = ?")
+      "SELECT r2_key, created_at, cache_policy FROM r2_cache WHERE cache_key = ?")
       .bind(cacheKey).first();
     if (row) {
-      return c.redirect(r2.r2PublicUrl(conf, row.r2_key, row.created_at), 302);
+      let version = row.created_at;
+      if (!row.cache_policy) {
+        const upgrade = (async () => {
+          const contentType = Object.entries(R2_IMAGE_EXT_BY_MIME)
+            .find(([, extension]) => row.r2_key.endsWith(`.${extension}`))?.[0]
+            || "image/jpeg";
+          if (!(await r2.r2ApplyImageCacheControl(
+            conf, row.r2_key, contentType))) return null;
+          const upgradedAt = Date.now();
+          await c.env.DB.prepare(`UPDATE r2_cache
+            SET cache_policy = 1, created_at = ?
+            WHERE cache_key = ? AND r2_key = ?`)
+            .bind(upgradedAt, cacheKey, row.r2_key).run();
+          return upgradedAt;
+        })().catch(() => null);
+        const ctx = await ctxOf(c);
+        if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(upgrade);
+        else version = (await upgrade) || version;
+      }
+      return temporaryRedirect(
+        r2.r2PublicUrl(conf, row.r2_key, version));
     }
   }
   // 2) 未镜像：查边缘缓存（R2 未启用时这是唯一的加速层）
@@ -1542,7 +1606,11 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   }
   const res = new Response(bytes, {
     headers: {
-      "Content-Type": ct, "Cache-Control": cacheControl,
+      "Content-Type": ct,
+      // When R2 is enabled this stable API URL is only the one-request
+      // fallback while the versioned mirror is being created. Caching it
+      // would let an old cover outlive a later mirror-version change.
+      "Cache-Control": conf.ready ? "private, no-store" : cacheControl,
       "X-Content-Type-Options": "nosniff",
     },
   });
@@ -1636,8 +1704,13 @@ app.get("/api/art/:albumId", async (c) => {
   if (!cover) return c.body(PLACEHOLDER_SVG, 200,
     { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=3600" });
 
-  const dim = size <= 480 ? "c480x480" : "c1000x1000";
-  const logicalKey = `art:${album.id}:${size <= 480 ? 480 : 1000}`;
+  // A cover is a visual identity, not a responsive thumbnail. Manual and
+  // Discogs cover crops are already square files; asking OneDrive for another
+  // square thumbnail can crop them again and even choose a different focal
+  // window at each size. Mirror the stored bytes once and let browsers scale
+  // that exact user-approved composition on every surface.
+  const dim = null;
+  const logicalKey = `art:${album.id}:original`;
   // proxy=1：始终回源字节（不 302 到 R2/Graph），供前端 canvas/裁剪用，避免跨域 Failed to fetch
   const wantProxy = c.req.query("proxy") === "1" || c.req.query("inline") === "1";
   if (wantProxy) {
@@ -2920,7 +2993,7 @@ async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim, storageId = nu
   return "done";
 }
 
-// 预热：把所有图片（专辑封面 480/1000 + 内页图 480/1000 + 歌手头像 480）
+// 预热：把所有图片（专辑封面原图 + 内页图 480/1000 + 歌手头像 480）
 // 批量镜像到 R2。已在 R2 的跳过。分批返回进度，前端轮询推进。
 app.post("/api/admin/r2/prewarm", async (c) => {
   const conf = await r2.r2Conf(c.env);
@@ -2942,7 +3015,7 @@ app.post("/api/admin/r2/prewarm", async (c) => {
     `SELECT id, folder, cover_path, storage_id FROM albums
      WHERE COALESCE(hidden,0)=0 ORDER BY created_at`).all();
   for (const album of albums) {
-    tasks.push({ kind: "cover", album, sizes: [[480, "c480x480"], [1000, "c1000x1000"]],
+    tasks.push({ kind: "cover", album, sizes: [["original", null]],
       sid: album.storage_id || null });
   }
   const { results: imgs } = await c.env.DB.prepare(`

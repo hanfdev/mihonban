@@ -1603,10 +1603,20 @@ body.lb-lock { overflow: hidden; }
 }
 .np-top, .np-body { position: relative; z-index: 1; }
 
-.np-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.np-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+}
 .np-top-pad { width: 38px; flex: none; }
 .np-from {
-  flex: 1;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 112px));
+  max-width: calc(100% - 112px);
   min-width: 0;
   padding: 0;
   border: 0;
@@ -2129,6 +2139,17 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 }
 .crop-vp:active { cursor: grabbing; }
 .crop-vp img { position: absolute; max-width: none; pointer-events: none; }
+.crop-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  text-align: center;
+}
+.crop-loading.error { color: #ff9a88; }
 .crop-mask {
   position: absolute;
   inset: 0;
@@ -2430,29 +2451,46 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 
 /* ---------- 手机横屏 / 矮视口：压缩壳高度，播放页转左右双栏 ---------- */
 
-@media (max-height: 520px) {
+@media (orientation: landscape) and (max-height: 600px) and (hover: none) {
   .app {
     padding-left: env(safe-area-inset-left);   /* 刘海手机横屏的安全区 */
     padding-right: env(safe-area-inset-right);
   }
   .hdr { padding: 7px 18px; }
   .m-search-row { padding: 2px 16px 6px; }
-  .tabbar { padding: 2px 4px calc(2px + env(safe-area-inset-bottom)); }
-  .tabbar a { grid-auto-flow: column; gap: 7px; padding: 7px 0; }
-  .player { padding: 6px 12px; }
+  .tabbar { padding: 1px 4px calc(1px + env(safe-area-inset-bottom)); }
+  /* Landscape has little vertical space. Text beside icons creates five
+     awkwardly wide controls on iPad/phone widths, so use a compact icon dock. */
+  .tabbar a { display: grid; place-items: center; padding: 6px 0; }
+  .tabbar a span { display: none; }
+  .player { margin: 4px 8px 5px; padding: 6px 12px; }
 
   /* 全屏播放页：封面居左、信息面板居右（窄宽也生效） */
   .np-sheet {
+    --np-edge-left: max(22px, env(safe-area-inset-left));
+    --np-edge-right: max(22px, env(safe-area-inset-right));
     padding: calc(10px + env(safe-area-inset-top))
-             max(22px, env(safe-area-inset-right))
+             var(--np-edge-right)
              calc(12px + env(safe-area-inset-bottom))
-             max(22px, env(safe-area-inset-left));
+             var(--np-edge-left);
+  }
+  /* The body respects asymmetric notch insets, but the album title belongs to
+     the viewport. Expand only the top row back to full-screen geometry. */
+  .np-top {
+    margin-left: calc(0px - var(--np-edge-left));
+    margin-right: calc(0px - var(--np-edge-right));
+  }
+  .np-top > .icon-btn:first-child { margin-left: var(--np-edge-left); }
+  .np-top .np-top-pad { margin-right: var(--np-edge-right); }
+  .np-top .np-from {
+    width: min(760px, calc(100% - 128px));
+    max-width: calc(100% - 128px);
   }
   .np-body {
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: clamp(24px, 5vw, 56px);
+    gap: clamp(28px, 5vw, 52px);
     width: 100%;
     max-width: 880px;
     margin: 0 auto;
@@ -2460,7 +2498,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   }
   .np-cover { flex: none; padding: 0; min-height: 0; }
   .np-cover img {
-    height: min(58vh, 300px);
+    height: min(72vh, 320px);
+    height: min(72dvh, 320px);
     width: auto;
     max-height: none;
     aspect-ratio: 1;
@@ -2469,10 +2508,40 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .np-title { font-size: 20px; }
   .np-artist { font-size: 13.5px; margin-top: 3px; }
   .np-panel .p-progress.big { margin: 10px 0 2px; }
-  .np-panel .p-ctrl.big { margin-top: 2px; justify-content: center; gap: 14px; }
-  .p-ctrl.big .icon-btn { width: 46px; height: 46px; }
-  .p-ctrl.big .icon-btn.main { width: 56px; height: 56px; }
-  .p-ctrl.big .icon-btn.mode { width: 40px; height: 40px; }
+  /* A fixed five-column transport cluster is calmer and prevents Safari from
+     stretching the primary button when its landscape viewport is unusual. */
+  .np-panel .p-ctrl.big {
+    display: grid;
+    grid-template-columns: 40px 46px 58px 46px 40px;
+    justify-content: center;
+    align-items: center;
+    gap: clamp(11px, 2.2vw, 18px);
+    width: 100%;
+    margin: 4px auto 0;
+  }
+  .np-panel .p-ctrl.big .icon-btn {
+    flex: 0 0 46px;
+    width: 46px;
+    min-width: 46px;
+    max-width: 46px;
+    height: 46px;
+    border-radius: 50%;
+  }
+  .np-panel .p-ctrl.big .icon-btn.main {
+    flex-basis: 58px;
+    width: 58px;
+    min-width: 58px;
+    max-width: 58px;
+    height: 58px;
+    box-shadow: 0 12px 28px -12px rgba(232, 84, 47, .9);
+  }
+  .np-panel .p-ctrl.big .icon-btn.mode {
+    flex-basis: 40px;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
+  }
   .np-vol { display: none; } /* 矮屏省掉音量条（手机有实体键） */
 
   /* 网格在横屏下多排几列，别让两列大封面撑爆高度 */
@@ -3398,4 +3467,36 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   .album-page .trow {
     grid-template-columns: 34px minmax(320px, 1fr) 110px 64px 40px;
   }
+}
+
+/* Playback controls are circular invariants, never flexible pills. Keep this
+   final so later layout work can change spacing without changing their shape. */
+.p-ctrl .icon-btn.main {
+  --play-control-size: 44px;
+  flex: 0 0 var(--play-control-size);
+  inline-size: var(--play-control-size);
+  min-inline-size: var(--play-control-size);
+  max-inline-size: var(--play-control-size);
+  block-size: var(--play-control-size);
+  min-block-size: var(--play-control-size);
+  max-block-size: var(--play-control-size);
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.p-ctrl.big .icon-btn.main { --play-control-size: 64px; }
+.p-mini-ctrl .mini-play,
+.play-big,
+.cover .play-fab {
+  flex-grow: 0;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+}
+@media (max-width: 720px) {
+  .p-ctrl.big .icon-btn.main { --play-control-size: 68px; }
+}
+@media (orientation: landscape) and (max-height: 600px) and (hover: none) {
+  .np-panel .p-ctrl.big .icon-btn.main { --play-control-size: 58px; }
 }

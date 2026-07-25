@@ -42,3 +42,28 @@ export function updateMediaPosition(session, audio, knownDuration) {
   session.setPositionState({ duration, playbackRate: rate, position })
   return true
 }
+
+/**
+ * `audio.play()` fires `play` before remote audio has buffered enough to be
+ * audible. Keep the system timeline frozen until `playing`; otherwise iOS
+ * extrapolates a head start that can only be corrected after Safari wakes.
+ */
+export function mediaSessionPlaybackState(eventType, audioPaused,
+                                          previousState = 'paused') {
+  if (eventType === 'playing') return 'playing'
+  if (['loadstart', 'waiting', 'stalled', 'pause', 'ended', 'emptied',
+       'abort', 'error'].includes(eventType)) return 'paused'
+  if (audioPaused) return 'paused'
+  return previousState === 'playing' ? 'playing' : 'paused'
+}
+
+/** Load the selected source without starting its media clock. */
+export function loadAudioUntilPlayable(audio, source, onPlayable) {
+  if (!audio) return () => {}
+  const ready = () => onPlayable?.()
+  audio.addEventListener('canplay', ready, { once: true })
+  audio.preload = 'auto'
+  audio.src = source
+  audio.load()
+  return () => audio.removeEventListener('canplay', ready)
+}

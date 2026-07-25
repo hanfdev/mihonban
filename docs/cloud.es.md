@@ -74,6 +74,8 @@ El JSON de configuración de administrador exporta un subconjunto de configuraci
 
 Sin R2, la API lee las imágenes desde el almacenamiento que las posee y aplica cabeceras de caché para el edge y el navegador. Cuando R2 está habilitado, la primera solicitud o el precalentamiento copia la imagen al espejo; las solicitudes posteriores pueden redirigirse a su URL pública. Sustituir una imagen invalida su índice para permitir que vuelva a reflejarse. Si se perdió el índice de D1 pero aún existe el mismo objeto público en R2, el precalentamiento lo registra de nuevo mediante un número limitado de solicitudes HEAD, sin volver a descargar ni subir los datos de la imagen.
 
+Las portadas de álbum leen directamente el archivo de origen almacenado. Es importante para las portadas recortadas manualmente o desde Discogs: las miniaturas del proveedor `c480x480` y `c1000x1000` pueden elegir encuadres distintos y volver a recortar una imagen vertical. Todas las vistas de portada comparten por eso el espejo `art:<album-id>:original`; el navegador reduce esa misma composición cuadrada sin pedir otro recorte al proveedor.
+
 Si una redirección al espejo público termina en un objeto ausente u obsoleto, la aplicación web vuelve a intentarlo desde el almacenamiento propietario. El Worker valida los bytes de la imagen, recurre del thumbnail del proveedor al archivo original cuando es necesario y, tras recuperarlo, repara el objeto R2 y su índice D1 versionado. Así, un 404 antiguo almacenado en caché se repara automáticamente sin exponer al navegador las credenciales del almacenamiento privado.
 
 R2 no es un backend de audio ni la base de datos del catálogo.

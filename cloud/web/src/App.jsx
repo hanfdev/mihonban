@@ -12,7 +12,8 @@ import ImportPage from './views/Import.jsx'
 import AdminPage from './views/Admin.jsx'
 import Player from './Player.jsx'
 import Login from './views/Login.jsx'
-import { seekAudio, updateMediaPosition } from './media.js'
+import { loadAudioUntilPlayable, mediaSessionPlaybackState,
+         seekAudio, updateMediaPosition } from './media.js'
 import { installTrackMediaSessionHandlers } from './media-session.js'
 import { adjacentQueuePosition } from './player-queue.js'
 import { sessionAfterLogout } from './session.js'
@@ -87,6 +88,10 @@ export default function App() {
   const [repeat, setRepeat] = useState('off') // off | all | one
   const [npOpen, setNpOpen] = useState(false) // 移动端全屏播放页
   const current = queue.pos >= 0 ? queue.list[queue.order[queue.pos]] : null
+  const currentRef = useRef(current)
+  const queueRef = useRef(queue)
+  currentRef.current = current
+  queueRef.current = queue
 
   useEffect(() => {
     const onHash = () => {
@@ -229,8 +234,13 @@ export default function App() {
   const skipRun = useRef(0) // 连续自动跳过计数：整条队列都不支持时防死循环
   const sourceRef = useRef({ id: null, proxy: false })
   const playAttemptRef = useRef(0)
+  // 锁屏系统按钮切歌不能先调 play()：iOS 会立即自行推进系统进度。
+  // 这里仅记住该次切歌，等 canplay 后再启动新的 <audio> source。
+  const deferSystemStartRef = useRef(false)
+  const pendingStartRef = useRef(null)
   const playAudio = useCallback((audio, sourceId = sourceRef.current.id) => {
     const attempt = ++playAttemptRef.current
+    if (pendingStartRef.current === sourceId) pendingStartRef.current = null
     // Playback controls represent the user's intent immediately. The promise
     // may remain pending while a remote source buffers.
     setPlaying(true)
@@ -238,6 +248,19 @@ export default function App() {
       if (playAttemptRef.current === attempt
           && sourceRef.current.id === sourceId && !audio.paused) {
         setPlaying(true)
+        // Safari can throttle DOM media events while locked. The fulfilled
+        // play promise is a second reliable signal that audio really started.
+        try {
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing'
+            const active = currentRef.current
+            updateMediaPosition(
+              navigator.mediaSession,
+              audio,
+              active?.id === sourceId ? active.duration : undefined,
+            )
+          }
+        } catch { /* partial Media Session implementation */ }
       }
       return true
     }).catch(() => {
@@ -248,6 +271,7 @@ export default function App() {
   }, [])
   const pauseAudio = useCallback((audio) => {
     playAttemptRef.current++
+    pendingStartRef.current = null
     audio.pause()
     setPlaying(false)
   }, [])
@@ -267,6 +291,8 @@ export default function App() {
     const audio = audioRef.current
     if (audio && first?.id) {
       playAttemptRef.current++
+      deferSystemStartRef.current = false
+      pendingStartRef.current = null
       sourceRef.current = { id: first.id, proxy: false }
       audio.src = streamUrl(first.id)
       playAudio(audio, first.id)
@@ -306,16 +332,35 @@ export default function App() {
     skipRun.current = 0
     // 不再整首预取下一曲：它会制造并发大文件请求并触发 OneDrive 503 限流。
     const alreadyStarted = sourceRef.current.id === current.id
+    const sourceId = current.id
+    let cancelWarmStart = null
     if (!alreadyStarted) {
       playAttemptRef.current++
+      const deferSystemStart = deferSystemStartRef.current
+      deferSystemStartRef.current = false
       sourceRef.current = { id: current.id, proxy: false }
-      a.src = streamUrl(current.id)
+      if (deferSystemStart) {
+        // Make the old source stop before assigning the new URL. Until canplay
+        // the element is genuinely paused, so iOS has no media clock to run.
+        pendingStartRef.current = sourceId
+        a.pause()
+        cancelWarmStart = loadAudioUntilPlayable(a, streamUrl(current.id), () => {
+          if (sourceRef.current.id !== sourceId
+              || pendingStartRef.current !== sourceId) return
+          playAudio(a, sourceId)
+        })
+        // The app still reflects the listener's play intent while its source
+        // is warming; tapping it during this interval cancels the pending start.
+        setPlaying(true)
+      } else {
+        pendingStartRef.current = null
+        a.src = streamUrl(current.id)
+      }
     }
-    const sourceId = current.id
     // playTracks already called play() inside the originating tap/click. Do
     // not issue a second asynchronous play request while that promise is in
     // flight: Android can treat the later call as detached from the gesture.
-    if (!alreadyStarted) playAudio(a, sourceId)
+    if (!alreadyStarted && !cancelWarmStart) playAudio(a, sourceId)
     if ('mediaSession' in navigator) {
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -325,6 +370,9 @@ export default function App() {
           artwork: [{ src: artUrl(current.albumId, 480), sizes: '480x480' }],
         })
       } catch { /* partial Media Session implementations */ }
+    }
+    return () => {
+      cancelWarmStart?.()
     }
   }, [current?.id, playAudio])
 
@@ -383,6 +431,27 @@ export default function App() {
       seekAudio(a, Number(details.seekTime), current?.duration, !!details.fastSeek)
       sync()
     }
+    const prepareTrackChange = () => {
+      // Stop iOS extrapolating the previous track while the next source is
+      // still loading. The new track effect publishes duration/position 0.
+      try {
+        ms.playbackState = 'paused'
+        if (typeof ms.setPositionState === 'function') ms.setPositionState()
+      } catch { /* partial Media Session implementation */ }
+    }
+    const stepFromSystem = (delta) => {
+      const snapshot = queueRef.current
+      const next = adjacentQueuePosition(
+        snapshot.pos, snapshot.order.length, delta, repeat,
+      )
+      // Do not defer a no-op (for example Next at the end with repeat off),
+      // nor a one-track restart. Only a genuinely new source needs warming.
+      if (next !== null && next !== snapshot.pos) {
+        deferSystemStartRef.current = true
+        prepareTrackChange()
+      }
+      step(delta)
+    }
     return installTrackMediaSessionHandlers(ms, {
       play: () => {
         const a = audio()
@@ -392,29 +461,42 @@ export default function App() {
         const a = audio()
         if (a) pauseAudio(a)
       },
-      previoustrack: () => step(-1),
-      nexttrack: () => step(1),
+      previoustrack: () => stepFromSystem(-1),
+      nexttrack: () => stepFromSystem(1),
       seekto: seekTo,
     })
-  }, [current?.id, current?.duration, pauseAudio, playAudio, step])
+  }, [current?.id, current?.duration, pauseAudio, playAudio, repeat, step])
 
   // iOS 不一定采用 <audio> 自己推断的 OGG 时长；主动提供曲库时长和当前位置。
+  // `play` 只代表播放意图，远端音源真正出声要等 `playing`。缓冲期间若把
+  // Media Session 标成 playing，锁屏进度会提前走且后台 timeupdate 无法及时纠偏。
   useEffect(() => {
     if (!('mediaSession' in navigator) || !current) return
     const a = audioRef.current
     if (!a) return
     const ms = navigator.mediaSession
-    const sync = () => {
+    let playbackState = 'paused'
+    const sync = (event) => {
       try {
-        ms.playbackState = a.paused ? 'paused' : 'playing'
+        playbackState = mediaSessionPlaybackState(
+          event?.type, a.paused, playbackState,
+        )
+        ms.playbackState = playbackState
         updateMediaPosition(ms, a, current.duration)
       } catch { /* 老 Safari 只支持部分 Media Session API */ }
     }
-    const events = ['loadedmetadata', 'durationchange', 'timeupdate', 'seeking',
-      'seeked', 'play', 'pause', 'ratechange']
+    const events = ['loadstart', 'loadedmetadata', 'durationchange', 'play',
+      'playing', 'waiting', 'stalled', 'timeupdate', 'seeking', 'seeked',
+      'pause', 'ended', 'emptied', 'abort', 'error', 'ratechange']
     events.forEach((event) => a.addEventListener(event, sync))
-    sync()
-    return () => events.forEach((event) => a.removeEventListener(event, sync))
+    document.addEventListener('visibilitychange', sync)
+    // A source effect may already have called play(); start frozen regardless
+    // of audio.paused and wait for the actual `playing` event.
+    sync({ type: 'loadstart' })
+    return () => {
+      events.forEach((event) => a.removeEventListener(event, sync))
+      document.removeEventListener('visibilitychange', sync)
+    }
   }, [current?.id, current?.duration])
 
   // 会话菜单：点外侧 / Esc 关闭
@@ -687,24 +769,36 @@ export default function App() {
       </nav>
       <audio ref={audioRef} preload="metadata" playsInline
              onEnded={() => { setPlaying(false); step(1) }}
-             onPlay={() => setPlaying(true)}
-             onPause={(event) => {
-               // A source switch can queue a stale pause event after a new
-               // play() call. Only accept it if the element is still paused.
-               if (event.currentTarget.paused) setPlaying(false)
-             }}
+              onPlay={() => setPlaying(true)}
+              onPause={(event) => {
+                // A source switch can queue a stale pause event after a new
+                // play() call. While a lock-screen-selected source is warming,
+                // retain the listener's play intent rather than flashing Play.
+                if (event.currentTarget.paused
+                    && pendingStartRef.current !== sourceRef.current.id) setPlaying(false)
+              }}
              onError={() => {
                const a = audioRef.current
                const source = sourceRef.current
                if (!current || source.id !== current.id) return
-               // 微软直链/CDN 失败时，同一首自动切到本站 Range 代理一次。
-               if (a && !source.proxy) {
+                // 微软直链/CDN 失败时，同一首自动切到本站 Range 代理一次。
+                if (a && !source.proxy) {
+                  const keepWarming = pendingStartRef.current === current.id
                   sourceRef.current = { id: current.id, proxy: true }
                   a.src = `${streamUrl(current.id)}?proxy=1`
-                  playAudio(a, current.id)
+                  if (keepWarming) {
+                    // The source effect's one-shot canplay listener remains on
+                    // this audio element and will start the proxy source.
+                    a.preload = 'auto'
+                    a.load()
+                    setPlaying(true)
+                  } else {
+                    playAudio(a, current.id)
+                  }
                   return
-               }
-               setPlaying(false)
+                }
+                pendingStartRef.current = null
+                setPlaying(false)
                if (current) toast(t('player.playFail', current.title), 'err')
              }} />
     </div>

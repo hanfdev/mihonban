@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { r2Conf, r2PublicObjectExists, r2PublicUrl, r2Test } from "../src/r2.js";
+import { R2_IMAGE_CACHE_CONTROL, r2ApplyImageCacheControl, r2Conf,
+  r2PublicObjectExists, r2PublicUrl, r2Put, r2Test } from "../src/r2.js";
 
 test("R2 public URLs use a stable cache-busting mirror version", () => {
   const conf = { publicUrl: "https://cdn.example" };
@@ -52,6 +53,56 @@ test("R2 connectivity probes use a unique object and remove it", async () => {
     assert.match(putKey, /^_probe\/mihonban-[a-z0-9-]+\.txt$/);
     assert.equal(getKey, putKey);
     assert.equal(deleteKey, putKey);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("R2 image objects carry an immutable browser cache policy", async () => {
+  const conf = {
+    accessKey: "access", secretKey: "secret",
+    endpoint: "https://r2.example", bucket: "bucket",
+  };
+  const realFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input, init = {}) => {
+    requests.push({ url: String(input), ...init });
+    return new Response(null, { status: 201 });
+  };
+  try {
+    assert.equal(await r2Put(
+      conf, "img/cover.jpg", new Uint8Array([1, 2, 3]), "image/jpeg"), true);
+    assert.equal(requests[0].headers["Cache-Control"], R2_IMAGE_CACHE_CONTROL);
+
+    requests.length = 0;
+    assert.equal(await r2Put(
+      conf, "_probe/test.txt", new Uint8Array([1]), "text/plain"), true);
+    assert.equal(requests[0].headers["Cache-Control"], undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("existing R2 images upgrade cache metadata with an internal copy", async () => {
+  const conf = {
+    accessKey: "access", secretKey: "secret",
+    endpoint: "https://r2.example", bucket: "bucket",
+  };
+  const realFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (input, init = {}) => {
+    request = { url: String(input), ...init };
+    return new Response(null, { status: 200 });
+  };
+  try {
+    assert.equal(await r2ApplyImageCacheControl(
+      conf, "img/art_album_480.jpg", "image/jpeg"), true);
+    assert.equal(request.method, "PUT");
+    assert.equal(request.headers["Cache-Control"], R2_IMAGE_CACHE_CONTROL);
+    assert.equal(request.headers["x-amz-copy-source"],
+      "/bucket/img/art_album_480.jpg");
+    assert.equal(request.headers["x-amz-metadata-directive"], "REPLACE");
+    assert.equal(request.body, undefined);
   } finally {
     globalThis.fetch = realFetch;
   }

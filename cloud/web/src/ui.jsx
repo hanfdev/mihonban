@@ -451,6 +451,7 @@ export const Md = ({ text, className = "" }) => (
  * 桌面居中卡片、移动端全屏上滑；开合都是合成器动画。 */
 
 export function Reader({ kicker, title, avatar, square, onClose, children }) {
+  const { t } = useI18n()
   const [closing, setClosing] = useState(false)
   const close = useCallback(() => setClosing(true), [])
 
@@ -480,7 +481,7 @@ export function Reader({ kicker, title, avatar, square, onClose, children }) {
             {kicker && <div className="reader-kicker">{kicker}</div>}
             <h2>{title}</h2>
           </div>
-          <button className="icon-btn" title="Close (Esc)" onClick={close}>
+          <button className="icon-btn" title={t('reader.close')} onClick={close}>
             <I.x size={20} />
           </button>
         </header>
@@ -522,15 +523,22 @@ export function CropDialog({ file, title, round = false,
   const [zoom, setZoom] = useState(1)      // 相对 cover-fit 的倍数
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const [busy, setBusy] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const drag = useRef(null)
   const VP = 300                           // 视口 CSS 像素（正方形）
 
   useEffect(() => {
+    let active = true
+    setImg(null)
+    setLoadError(false)
+    setZoom(1)
+    setPos({ x: 0, y: 0 })
     const url = URL.createObjectURL(file)
     const i = new Image()
-    i.onload = () => setImg(i)
+    i.onload = () => { if (active) setImg(i) }
+    i.onerror = () => { if (active) setLoadError(true) }
     i.src = url
-    return () => URL.revokeObjectURL(url)
+    return () => { active = false; URL.revokeObjectURL(url) }
   }, [file])
 
   const base = img ? Math.max(VP / img.width, VP / img.height) : 1
@@ -601,6 +609,8 @@ export function CropDialog({ file, title, round = false,
               top: VP / 2 - h / 2 + pos.y,
             }} />
           )}
+          {!img && !loadError && <span className="crop-loading"><I.spin size={22} /></span>}
+          {loadError && <span className="crop-loading error">{t('crop.loadFail')}</span>}
           {round && <div className="crop-mask" />}
         </div>
         <div className="crop-zoom">

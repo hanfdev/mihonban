@@ -14,7 +14,14 @@ async function req(method, url, body, raw = false) {
   }
   const r = await fetch(url, init);
   if (r.status === 401) throw new AuthError("unauthorized");
-  const data = raw ? r : await r.json().catch(() => ({}));
+  if (raw) {
+    if (!r.ok) {
+      const problem = await r.clone().json().catch(() => ({}));
+      throw new Error(problem.error || `${r.status}`);
+    }
+    return r;
+  }
+  const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `${r.status}`);
   return data;
 }
@@ -39,6 +46,11 @@ export const api = {
   discogsLookup: (url) => req("POST", "/api/discogs-lookup", { url }),
   discogsImageList: (id, ref) =>
     req("POST", `/api/album/${id}/discogs-image-list`, { ref }),
+  discogsImageSource: async (id, ref, uri) => {
+    const response = await req(
+      "POST", `/api/album/${id}/discogs-image-source`, { ref, uri }, true);
+    return response.blob();
+  },
   discogsImportImages: (id, ref, uris, asCover) =>
     req("POST", `/api/album/${id}/discogs-import-images`, { ref, uris, asCover }),
   artistDiscogsSearch: (name) =>

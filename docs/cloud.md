@@ -74,6 +74,8 @@ The Admin settings JSON exports an allowlisted subset of settings plus named sto
 
 Without R2, the API reads images from the owning storage and uses edge/browser cache headers. With R2 enabled, a first request or prewarm copies the image into the mirror and later requests can redirect to its public URL. Replacing an image invalidates its index so it can be mirrored again. If D1 lost the index but the same public R2 object still exists, prewarm uses a bounded HEAD probe to reclaim it without downloading or uploading the image again.
 
+Album covers use the stored source file directly. This is important for manually or Discogs-cropped covers: provider-generated `c480x480` and `c1000x1000` thumbnails may choose different focal windows and can crop a portrait source again. All cover surfaces therefore share the `art:<album-id>:original` mirror; the browser scales that exact square composition instead of requesting another provider crop.
+
 If a public mirror redirect resolves to a missing or stale object, the web app retries against the owning storage. The Worker validates the returned image bytes, falls back from a provider thumbnail to the original file when necessary, and repairs the R2 object plus its versioned D1 index after a successful recovery. This makes an old cached 404 self-healing without putting private storage credentials in the browser.
 
 R2 is not an audio backend and is not the catalog database.

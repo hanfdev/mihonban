@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { clampMediaTime, mediaDuration, seekAudio,
-         storedVolume, updateMediaPosition } from '../src/media.js'
+import { clampMediaTime, loadAudioUntilPlayable, mediaDuration,
+         mediaSessionPlaybackState, seekAudio, storedVolume,
+         updateMediaPosition } from '../src/media.js'
 
 test('a new origin starts audible while preserving an explicit zero volume', () => {
   assert.equal(storedVolume(null), 1)
@@ -38,4 +39,49 @@ test('media session receives the stable duration and a bounded position', () => 
   const audio = { duration: 900, currentTime: 500, playbackRate: 1 }
   assert.equal(updateMediaPosition(session, audio, 266), true)
   assert.deepEqual(state, { duration: 266, playbackRate: 1, position: 266 })
+})
+
+test('system playback stays paused while a remote track buffers', () => {
+  let state = mediaSessionPlaybackState('loadstart', false, 'playing')
+  assert.equal(state, 'paused')
+  state = mediaSessionPlaybackState('play', false, state)
+  assert.equal(state, 'paused')
+  state = mediaSessionPlaybackState('playing', false, state)
+  assert.equal(state, 'playing')
+  state = mediaSessionPlaybackState('waiting', false, state)
+  assert.equal(state, 'paused')
+})
+
+test('non-state media events preserve only real playback', () => {
+  assert.equal(mediaSessionPlaybackState('timeupdate', false, 'playing'), 'playing')
+  assert.equal(mediaSessionPlaybackState('timeupdate', false, 'paused'), 'paused')
+  assert.equal(mediaSessionPlaybackState('timeupdate', true, 'playing'), 'paused')
+})
+
+test('a lock-screen track source does not start before it can play', () => {
+  const listeners = new Map()
+  let loadCount = 0
+  let started = false
+  const audio = {
+    preload: 'metadata',
+    src: '',
+    addEventListener(event, handler) { listeners.set(event, handler) },
+    removeEventListener(event, handler) {
+      if (listeners.get(event) === handler) listeners.delete(event)
+    },
+    load() { loadCount++ },
+  }
+
+  const cleanup = loadAudioUntilPlayable(audio, '/api/stream/next', () => {
+    started = true
+  })
+
+  assert.equal(started, false)
+  assert.equal(audio.preload, 'auto')
+  assert.equal(audio.src, '/api/stream/next')
+  assert.equal(loadCount, 1)
+  listeners.get('canplay')()
+  assert.equal(started, true)
+  cleanup()
+  assert.equal(listeners.has('canplay'), false)
 })

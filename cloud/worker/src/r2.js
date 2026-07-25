@@ -9,6 +9,7 @@ import { getSetting } from "./auth.js";
 import { fetchWithTimeout } from "./net.js";
 
 const enc = new TextEncoder();
+export const R2_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const hex = (buf) => [...new Uint8Array(buf)]
   .map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -131,17 +132,83 @@ export async function r2Put(conf, key, bytes, contentType = "application/octet-s
     `AWS4-HMAC-SHA256 Credential=${conf.accessKey}/${scope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
+  const headers = {
+    "Authorization": authorization,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": amzDate,
+    "Content-Type": contentType,
+  };
+  if (/^image\//i.test(contentType)) {
+    headers["Cache-Control"] = R2_IMAGE_CACHE_CONTROL;
+  }
   const r = await fetchWithTimeout(url, {
     method: "PUT",
-    headers: {
-      "Authorization": authorization,
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": amzDate,
-      "Content-Type": contentType,
-    },
+    headers,
     body: bytes,
   }, 60_000);
   return r.ok;
+}
+
+/** Upgrade an existing image object's HTTP metadata without downloading or
+ * uploading its bytes. CopyObject runs entirely inside R2. */
+export async function r2ApplyImageCacheControl(
+  conf, key, contentType = "image/jpeg") {
+  const url = new URL(`${conf.endpoint}/${conf.bucket}/${key}`);
+  const host = url.host;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const region = "auto";
+  const service = "s3";
+  const payloadHash = hex(await sha256(new Uint8Array()));
+  const sourcePath = `/${encodeURIComponent(conf.bucket)}/` +
+    key.split("/").map(encodeURIComponent).join("/");
+  const canonicalHeaders =
+    `cache-control:${R2_IMAGE_CACHE_CONTROL}\n` +
+    `content-type:${contentType}\n` +
+    `host:${host}\n` +
+    `x-amz-content-sha256:${payloadHash}\n` +
+    `x-amz-copy-source:${sourcePath}\n` +
+    `x-amz-date:${amzDate}\n` +
+    `x-amz-metadata-directive:REPLACE\n`;
+  const signedHeaders = "cache-control;content-type;host;" +
+    "x-amz-content-sha256;x-amz-copy-source;x-amz-date;x-amz-metadata-directive";
+  const canonicalRequest = [
+    "PUT",
+    url.pathname.split("/").map(encodeURIComponent).join("/"),
+    "",
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+  const scope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    scope,
+    hex(await sha256(canonicalRequest)),
+  ].join("\n");
+  const kDate = await hmac(`AWS4${conf.secretKey}`, dateStamp);
+  const kRegion = await hmac(kDate, region);
+  const kService = await hmac(kRegion, service);
+  const kSigning = await hmac(kService, "aws4_request");
+  const signature = hex(await hmac(kSigning, stringToSign));
+  const authorization =
+    `AWS4-HMAC-SHA256 Credential=${conf.accessKey}/${scope}, ` +
+    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  const response = await fetchWithTimeout(url, {
+    method: "PUT",
+    headers: {
+      Authorization: authorization,
+      "Cache-Control": R2_IMAGE_CACHE_CONTROL,
+      "Content-Type": contentType,
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-copy-source": sourcePath,
+      "x-amz-date": amzDate,
+      "x-amz-metadata-directive": "REPLACE",
+    },
+  }, 60_000);
+  return response.ok;
 }
 
 /** Delete a mirrored object with SigV4. Missing objects are already purged. */

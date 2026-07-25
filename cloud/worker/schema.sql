@@ -107,7 +107,8 @@ CREATE INDEX IF NOT EXISTS idx_images_album ON album_images(album_id, sort, crea
 CREATE TABLE IF NOT EXISTS r2_cache (
   cache_key  TEXT PRIMARY KEY,   -- 逻辑键：art:<id>:<size> / img:<id>:<size> / artist:<name>:<size>
   r2_key     TEXT NOT NULL,      -- R2 对象 key
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  cache_policy INTEGER NOT NULL DEFAULT 0 -- 1 = immutable browser cache metadata applied
 );
 
 -- 存储后端（可多个共存：OneDrive / WebDAV / Google Drive / 本地文件夹）。
