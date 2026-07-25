@@ -654,6 +654,11 @@ select option { background-color: var(--bg2); color: var(--ink); }
 @media (hover: hover) { .rym-side a:hover { color: var(--gold); border-color: var(--gold); } }
 
 .genre-row { display: flex; gap: 7px; flex-wrap: wrap; margin: 12px 0 2px; }
+.genre-tail {
+  display: inline-flex;
+  flex: none;
+  gap: 7px;
+}
 .gtag {
   display: inline-flex;
   align-items: center;
@@ -678,8 +683,79 @@ select option { background-color: var(--bg2); color: var(--ink); }
   margin-top: 8px;
   line-height: 1.7;
 }
+.descriptor-summary {
+  position: relative;
+  max-width: 680px;
+  margin-top: 10px;
+}
+.descriptor-summary.has-overflow:not(.expanded) { padding-right: 52px; }
+.descriptor-summary .descriptors {
+  display: -webkit-box;
+  margin-top: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.descriptor-summary.expanded { padding-right: 0; }
+.descriptor-summary.expanded .descriptors {
+  display: block;
+  overflow: visible;
+}
+.descriptor-more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 0 2px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--gold-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.descriptor-more svg { transition: transform .16s ease; }
+.descriptor-summary.expanded .descriptor-more {
+  position: static;
+  margin-top: 3px;
+  padding-left: 0;
+  background: transparent;
+}
+.descriptor-summary.expanded .descriptor-more svg {
+  transform: rotate(-90deg);
+}
+@media (hover: hover) {
+  .descriptor-more:hover { color: var(--gold); }
+}
 
-.hero-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.hero-listen-actions,
+.hero-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hero-admin-actions {
+  padding-left: 14px;
+  border-left: 1px solid var(--line-soft);
+}
+.hero-admin-actions .btn {
+  padding: 9px 14px;
+  background: rgba(22, 18, 14, .44);
+  color: var(--ink-dim);
+}
+@media (hover: hover) {
+  .hero-admin-actions .btn:hover { color: var(--ink); }
+}
 
 .btn {
   display: inline-flex;
@@ -2112,16 +2188,69 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .note-edit.ghost { border-color: var(--line); border-style: dashed; }
 @media (hover: hover) { .note-edit.ghost:hover { border-color: var(--gold-dim); color: var(--gold); background: none; } }
 
-.album-note { padding: 4px 26px 18px; }
+.hero-context {
+  width: 100%;
+  min-width: 0;
+  margin-top: 24px;
+}
+.album-note {
+  max-width: 680px;
+  margin-top: 22px;
+  padding: 19px 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+.hero-context > .album-note:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
 .album-note h3 {
-  font-family: var(--serif);
-  font-size: 17px;
-  margin: 0 0 10px;
-  color: var(--ink-dim);
+  margin: 0 0 9px;
+  color: var(--ink-faint);
+  font-family: inherit;
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: .09em;
+  line-height: 1.4;
+}
+.hero-note .note-text { max-width: 44em; }
+.hero-note .note-body {
+  font-size: 13.5px;
+  line-height: 1.82;
+}
+.hero-note .bio-read {
+  margin-top: 2px;
+  padding: 6px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--gold-dim);
+}
+@media (hover: hover) {
+  .hero-note .bio-read:hover {
+    border-color: transparent;
+    background: transparent;
+    color: var(--gold);
+  }
 }
 @media (max-width: 720px) {
-  .album-note { padding-inline: 16px; }
+  .hero-context {
+    margin-top: 20px;
+    text-align: left;
+  }
+  .hero-context .genre-row { justify-content: flex-start; }
+  .hero-context .descriptor-summary { margin-inline: 0; }
+  .hero-context .descriptors { margin-inline: 0; }
+  .hero-actions { width: 100%; gap: 12px; }
+  .hero-listen-actions,
+  .hero-admin-actions { justify-content: center; }
+  .hero-admin-actions {
+    width: 100%;
+    margin-top: 2px;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--line-soft);
+    border-left: 0;
+  }
+  .album-note { margin-top: 18px; padding-top: 17px; }
   .artist-hero .bio { text-align: left; }
   .artist-hero .note-text { margin-inline: auto; }
 }
@@ -3366,6 +3495,58 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   }
 }
 
+/* Portrait tablets need an editorial bridge between the two-column hero and
+   the track list. Keep taxonomy with the album facts, then center the longer
+   note across the available canvas instead of leaving it stranded at right. */
+@media (min-width: 721px) and (max-width: 1100px) and (orientation: portrait) {
+  .album-page .hero {
+    --tablet-cover: clamp(220px, 29vw, 264px);
+    --tablet-gap: clamp(26px, 3.5vw, 40px);
+    grid-template-columns: var(--tablet-cover) minmax(0, 1fr);
+    column-gap: var(--tablet-gap);
+    row-gap: 0;
+  }
+  .album-page .hero-cover {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .album-page .hero-info { display: contents; }
+  .album-page .hero-identity {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    padding-top: 2px;
+  }
+  .album-page .hero-actions {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+  }
+  .album-page .hero-context {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    display: grid;
+    grid-template-columns: var(--tablet-cover) minmax(0, 1fr);
+    column-gap: var(--tablet-gap);
+    margin-top: 32px;
+  }
+  .album-page .hero-taxonomy { grid-column: 2; }
+  .album-page .hero-note {
+    grid-column: 1 / -1;
+    width: min(760px, 100%);
+    max-width: none;
+    justify-self: center;
+    margin-top: 28px;
+    padding-top: 22px;
+  }
+  .album-page .hero-note .note-text { max-width: 100%; }
+}
+
+@media (max-width: 720px) {
+  .album-page .hero-context { padding-bottom: 12px; }
+  .album-page .genre-row { align-items: center; }
+}
+
 /* Album grids can show many controls at once on touch screens. Use glass as
    the quiet default and reserve the brand orange for intent and live state. */
 .cover .play-fab {
@@ -3398,9 +3579,16 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   }
 }
 
-/* Genre lists are useful navigation, but they are supporting metadata rather
-   than the album's headline. Collapse only unusually dense sets. */
-.taxonomy-label { display: none; }
+/* Genre lists and notes form one quiet editorial column. Their shared label
+   treatment keeps the hierarchy stable whether either section is absent. */
+.taxonomy-label {
+  display: block;
+  margin: 0 0 9px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .09em;
+}
 .gtag.genre-more {
   appearance: none;
   background: rgba(255, 255, 255, .018);
@@ -3419,7 +3607,7 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
 }
 
 /* Wide album pages use the available canvas as an editorial spread: identity
-   on the left, taxonomy on the right, controls below both, and a full-width
+   and actions on the left, contextual metadata on the right, then a full-width
    track table. This borrows Spotify's spatial logic without copying its UI. */
 @media (min-width: 1400px) {
   .album-page .hero {
@@ -3431,35 +3619,38 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
     display: grid;
     grid-template-columns: minmax(420px, 1fr) clamp(520px, 40vw, 760px);
     grid-template-areas:
-      "identity taxonomy"
-      "actions actions";
+      "identity context"
+      "actions context";
     column-gap: clamp(48px, 4vw, 82px);
-    row-gap: 14px;
+    row-gap: 18px;
     min-width: 0;
+    align-items: start;
   }
   .album-page .hero-identity {
     grid-area: identity;
     min-width: 0;
   }
-  .album-page .hero-taxonomy {
-    grid-area: taxonomy;
+  .album-page .hero-context {
+    grid-area: context;
     min-width: 0;
     width: 100%;
     justify-self: end;
+    margin-top: 0;
     padding-top: 3px;
-  }
-  .album-page .taxonomy-label {
-    display: block;
-    margin-bottom: 9px;
-    color: var(--ink-faint);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .09em;
   }
   .album-page .hero-taxonomy .genre-row { margin-top: 0; }
   .album-page .hero-taxonomy .descriptors {
     max-width: 760px;
     margin-top: 12px;
+  }
+  .album-page .hero-note {
+    max-width: 680px;
+    margin-top: 24px;
+    padding-top: 20px;
+  }
+  .album-page .hero-context > .hero-note:first-child {
+    margin-top: 0;
+    padding-top: 0;
   }
   .album-page .hero-actions {
     grid-area: actions;
