@@ -4,6 +4,7 @@ import { ClearFilters, FilterSel, I, VisibilityToggle } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
+import { jaCollator } from '../format.js'
 
 export default function ArtistsPage({ albums, artists, q, avatarVer,
                                       onOpenArtist, isAdmin,
@@ -14,9 +15,9 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
 
   const SORTS = useMemo(() => ({
     name: { label: t('artists.sortName'),
-      fn: (a, b) => a.sort.localeCompare(b.sort, 'ja') },
+      fn: (a, b) => jaCollator.compare(a.sort, b.sort) },
     count: { label: t('artists.sortCount'),
-      fn: (a, b) => b.count - a.count || a.sort.localeCompare(b.sort, 'ja') },
+      fn: (a, b) => b.count - a.count || jaCollator.compare(a.sort, b.sort) },
     added: { label: t('artists.sortAdded'),
       fn: (a, b) => b.latest - a.latest },
   }), [t])
@@ -66,17 +67,25 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
       g.toLowerCase() === genre.toLowerCase())) setGenre('')
   }, [genre, genres])
 
+  // 搜索干草堆只随艺人集合重建；关键词击键只做廉价 includes。
+  const searchHay = useMemo(() => {
+    const m = new Map()
+    for (const e of data) {
+      m.set(e.name, zhNorm(`${e.name} ${e.sort} ${romajiOf(e.name)}`))
+    }
+    return m
+  }, [data])
+
   const shown = useMemo(() => {
     const needle = zhNorm(q.trim())
     const wantGenre = genre.toLowerCase()
     return data.filter((e) => {
-      if (needle && !zhNorm(`${e.name} ${e.sort} ${romajiOf(e.name)}`)
-        .includes(needle)) return false
+      if (needle && !searchHay.get(e.name).includes(needle)) return false
       if (wantGenre && ![...e.genres]
         .some((g) => g.toLowerCase() === wantGenre)) return false
       return true
     }).sort(SORTS[sort].fn)
-  }, [data, q, genre, sort, SORTS])
+  }, [data, searchHay, q, genre, sort, SORTS])
 
   const yearsOf = (e) => {
     if (!e.years.length) return ''

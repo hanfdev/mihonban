@@ -42,16 +42,16 @@ When the repository is under OneDrive, use:
 tools\cloud-dev.cmd
 ```
 
-The helper copies `cloud/` to `%TEMP%\mihonban-cloud-build` by default, installs dependencies there, builds React, applies the local schema, and starts Wrangler on `0.0.0.0:8787`. Set `MIHONBAN_STAGE` to another non-synchronized directory to retain its local D1 across temporary-directory cleanup.
+The helper copies `cloud/` to `%TEMP%\mihonban-cloud-build` by default, installs dependencies there, builds React, applies the local schema, and starts Wrangler on `127.0.0.1:8787` (loopback) by default. Set `MIHONBAN_DEV_LAN=1` before running it to expose `0.0.0.0:8787` for LAN/phone testing. Set `MIHONBAN_STAGE` to another non-synchronized directory to retain its local D1 across temporary-directory cleanup.
 
-On first run it generates `.dev.vars` with:
+On first run it generates `.dev.vars` where every value, including both passwords, is random:
 
 ```text
-APP_PASSWORD=mihonban-guest
-ADMIN_PASSWORD=mihonban-admin
+APP_PASSWORD=<random>
+ADMIN_PASSWORD=<random>
 ```
 
-The remaining secrets are random. These two passwords are local-development defaults only. Change them in Admin before allowing another person to connect.
+Read the listener and administrator passwords from `%TEMP%\mihonban-cloud-build\worker\.dev.vars` (or `%MIHONBAN_STAGE%\worker\.dev.vars`). Change them in Admin before allowing another person to connect.
 
 ### Manual Wrangler setup
 

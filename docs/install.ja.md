@@ -42,16 +42,16 @@ cd mihonban
 tools\cloud-dev.cmd
 ```
 
-ヘルパーはデフォルトで `cloud/` を`%TEMP%\mihonban-cloud-build`にコピーし、そこに依存関係をインストールし、Reactを構築し、ローカルスキーマを適用して`0.0.0.0:8787`でWranglerを始めます。`MIHONBAN_STAGE` を別の非同期ディレクトリに設定し、一時的なディレクトリのクリーンアップを通じてローカルD1を保持します。
+ヘルパーはデフォルトで `cloud/` を`%TEMP%\mihonban-cloud-build`にコピーし、そこに依存関係をインストールし、Reactを構築し、ローカルスキーマを適用して、デフォルトでは`127.0.0.1:8787`（ループバック）でWranglerを始めます。実行前に`MIHONBAN_DEV_LAN=1`を設定すると`0.0.0.0:8787`で公開され、LANのスマートフォンからテストできます。`MIHONBAN_STAGE` を別の非同期ディレクトリに設定し、一時的なディレクトリのクリーンアップを通じてローカルD1を保持します。
 
-初回実行時には以下の`.dev.vars`が生成されます:
+初回実行時には`.dev.vars`が生成され、両方のパスワードを含むすべての値がランダムになります:
 
 ```text
-APP_PASSWORD=mihonban-guest
-ADMIN_PASSWORD=mihonban-admin
+APP_PASSWORD=<ランダム>
+ADMIN_PASSWORD=<ランダム>
 ```
 
-残りの秘密はランダムです。これら2つのパスワードはローカル開発のデフォルトのみです。他の人が接続できるようにする前に、管理者で変更してください。
+リスナーパスワードと管理者パスワードは`%TEMP%\mihonban-cloud-build\worker\.dev.vars`（または`%MIHONBAN_STAGE%\worker\.dev.vars`）で確認できます。他の人が接続できるようにする前に、管理者で変更してください。
 
 ### Wrangler の手動設定
 

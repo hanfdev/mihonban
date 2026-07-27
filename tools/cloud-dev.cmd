@@ -25,7 +25,13 @@ if not exist node_modules call npm install --no-fund --no-audit || (popd & exit 
 if not exist .dev.vars powershell -NoProfile -ExecutionPolicy Bypass ^
   -File "%~dp0make-cloud-secrets.ps1" -OutFile "%STAGE%\worker\.dev.vars" || (popd & exit /b 1)
 call npx wrangler d1 execute DB --local --file schema.sql || (popd & exit /b 1)
+rem Loopback by default: the dev instance carries real storage credentials in
+rem its local D1, so LAN exposure (phone testing) must be an explicit opt-in.
+set "DEV_IP=127.0.0.1"
+if defined MIHONBAN_DEV_LAN set "DEV_IP=0.0.0.0"
 echo.
 echo dev server: http://127.0.0.1:8787  (password in .dev.vars APP_PASSWORD / ADMIN_PASSWORD)
-call npx wrangler dev --ip 0.0.0.0 --port 8787
+if defined MIHONBAN_DEV_LAN echo LAN mode: listening on all interfaces (MIHONBAN_DEV_LAN set)
+if not defined MIHONBAN_DEV_LAN echo LAN access for phone testing: set MIHONBAN_DEV_LAN=1 and rerun
+call npx wrangler dev --ip %DEV_IP% --port 8787
 popd

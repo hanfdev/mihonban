@@ -43,6 +43,17 @@ def _stub_retag(monkeypatch, changed=0):
     return calls
 
 
+def _stub_download(monkeypatch, calls=None):
+    def download(cfg, folder, dest, console):
+        if calls is not None:
+            calls.append((folder, dest))
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "01.mp3").write_bytes(b"audio")
+        return True
+
+    monkeypatch.setattr(cloud, "rclone_download", download)
+
+
 def test_local_dir_for_maps_od_folder(cloud_cfg):
     p = cloud._local_dir_for(cloud_cfg, "Music/Library/山下達郎/[1978] GO AHEAD!")
     assert p == cloud_cfg.music_root / "山下達郎" / "[1978] GO AHEAD!"
@@ -91,6 +102,36 @@ def test_payload_preserves_multidisc_relative_paths(cloud_cfg, monkeypatch):
         "Music/Library/Artist/Album/Disc 2/01.mp3",
     ]
     assert [track["disc"] for track in payload["tracks"]] == [1, 2]
+
+
+def test_payload_ignores_zero_originaldate_and_uses_release_date(
+        cloud_cfg, monkeypatch):
+    album_dir = cloud_cfg.music_root / "Artist" / "Album"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01.mp3").write_bytes(b"audio")
+
+    def fake_mutagen(_path, easy=False):
+        return SimpleNamespace(
+            tags={
+                "title": ["Song"],
+                "albumartist": ["Artist"],
+                "album": ["Album"],
+                "originaldate": ["0000"],
+                "date": ["1978"],
+                "tracknumber": ["1/0"],
+                "discnumber": ["0/0"],
+            },
+            info=SimpleNamespace(length=10.0, bitrate=320_000),
+        )
+
+    monkeypatch.setattr(cloud.mutagen, "File", fake_mutagen)
+
+    payload = cloud.payload_for_album(cloud_cfg, album_dir)
+
+    assert payload is not None
+    assert payload["year"] == 1978
+    assert payload["tracks"][0]["track"] == 1
+    assert payload["tracks"][0]["disc"] == 1
 
 
 @pytest.mark.parametrize("rating", ["not-a-number", "NaN", "Infinity"])
@@ -175,6 +216,7 @@ def test_merge_cloud_passwords_ignores_malformed_remote_values(
 def test_pull_skips_existing_albums(cloud_cfg, monkeypatch):
     local = cloud_cfg.music_root / "山下達郎" / "[1978] GO AHEAD!"
     local.mkdir(parents=True)
+    (local / "01.mp3").write_bytes(b"audio")
     monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [
         _remote("Music/Library/山下達郎/[1978] GO AHEAD!")])
     called = []
@@ -190,11 +232,7 @@ def test_pull_downloads_missing(cloud_cfg, monkeypatch):
         _remote("Music/Library/竹内まりや/[1984] VARIETY", "竹内まりや", "VARIETY")])
     downloaded = []
 
-    def fake_download(cfg, folder, dest, console):
-        downloaded.append((folder, dest))
-        return True
-
-    monkeypatch.setattr(cloud, "rclone_download", fake_download)
+    _stub_download(monkeypatch, downloaded)
     _stub_retag(monkeypatch, changed=0)
     rc = cloud.run_pull(cloud_cfg, _console())
     assert rc == 0
@@ -207,7 +245,7 @@ def test_pull_retags_and_uploads_back(cloud_cfg, monkeypatch):
     """拉回的专辑 tag 有改动 → 回传 OneDrive + 重新登记。"""
     monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [
         _remote("Music/Library/jenny01/Cluster", "jenny01", "Cluster")])
-    monkeypatch.setattr(cloud, "rclone_download", lambda *a: True)
+    _stub_download(monkeypatch)
     _stub_retag(monkeypatch, changed=3)
     uploads, registers = [], []
     monkeypatch.setattr(cloud, "rclone_upload",
@@ -225,6 +263,7 @@ def test_pull_retag_existing_repairs_local(cloud_cfg, monkeypatch):
     """--retag：本地已有的云端专辑也补 tag（修存量），没改动就不回传。"""
     local = cloud_cfg.music_root / "jenny01" / "Cluster"
     local.mkdir(parents=True)
+    (local / "01.mp3").write_bytes(b"audio")
     monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [
         _remote("Music/Library/jenny01/Cluster", "jenny01", "Cluster")])
     monkeypatch.setattr(cloud, "rclone_download",
@@ -243,7 +282,8 @@ def test_pull_reports_failure(cloud_cfg, monkeypatch):
     assert rc == 1
 
 
-def test_pull_removes_partial_download_on_failure(cloud_cfg, monkeypatch):
+def test_pull_preserves_partial_download_and_marker_on_failure(
+        cloud_cfg, monkeypatch):
     remote = _remote("Music/Library/A/B")
     monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [remote])
 
@@ -254,14 +294,89 @@ def test_pull_removes_partial_download_on_failure(cloud_cfg, monkeypatch):
 
     monkeypatch.setattr(cloud, "rclone_download", partial_download)
     assert cloud.run_pull(cloud_cfg, _console(), quiet=True) == 1
-    assert not (cloud_cfg.music_root / "A" / "B").exists()
+    dest = cloud_cfg.music_root / "A" / "B"
+    assert (dest / "partial.flac").read_bytes() == b"partial"
+    assert cloud._pull_marker(cloud_cfg, remote["folder"]).exists()
+
+
+def test_pull_retries_legacy_directory_containing_rclone_partial(
+        cloud_cfg, monkeypatch):
+    remote = _remote("Music/Library/A/B")
+    dest = cloud_cfg.music_root / "A" / "B"
+    dest.mkdir(parents=True)
+    partial = dest / "01.flac.12345678.partial"
+    partial.write_bytes(b"partial")
+    monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [remote])
+    calls = []
+
+    def finish_download(cfg, folder, album_dir, console):
+        calls.append(folder)
+        partial.unlink()
+        (album_dir / "01.flac").write_bytes(b"audio")
+        return True
+
+    monkeypatch.setattr(cloud, "rclone_download", finish_download)
+    _stub_retag(monkeypatch)
+    assert cloud.run_pull(cloud_cfg, _console(), quiet=True) == 0
+    assert calls == [remote["folder"]]
+
+
+def test_pull_retries_existing_directory_without_audio(cloud_cfg, monkeypatch):
+    remote = _remote("Music/Library/A/B")
+    dest = cloud_cfg.music_root / "A" / "B"
+    dest.mkdir(parents=True)
+    (dest / "cover.jpg").write_bytes(b"image")
+    monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [remote])
+    calls = []
+    _stub_download(monkeypatch, calls)
+    _stub_retag(monkeypatch)
+
+    assert cloud.run_pull(cloud_cfg, _console(), quiet=True) == 0
+    assert calls == [(remote["folder"], dest)]
+
+
+def test_pull_marker_recovers_interrupted_process_with_complete_files(
+        cloud_cfg, monkeypatch):
+    remote = _remote("Music/Library/A/B")
+    dest = cloud_cfg.music_root / "A" / "B"
+    dest.mkdir(parents=True)
+    (dest / "01.flac").write_bytes(b"audio")
+    assert cloud._mark_pull_incomplete(cloud_cfg, remote["folder"])
+    monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [remote])
+    calls = []
+    _stub_download(monkeypatch, calls)
+    _stub_retag(monkeypatch)
+
+    assert cloud.run_pull(cloud_cfg, _console(), quiet=True) == 0
+    assert calls == [(remote["folder"], dest)]
+    assert not cloud._pull_marker(cloud_cfg, remote["folder"]).exists()
+
+
+def test_pull_keeps_marker_until_retag_upload_and_registration_succeed(
+        cloud_cfg, monkeypatch):
+    remote = _remote("Music/Library/A/B")
+    monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [remote])
+    _stub_download(monkeypatch)
+    _stub_retag(monkeypatch, changed=1)
+    monkeypatch.setattr(cloud, "payload_for_album",
+                        lambda *a: {"tracks": []})
+    monkeypatch.setattr(cloud, "rclone_upload", lambda *a: True)
+    monkeypatch.setattr(cloud, "register_album",
+                        lambda *a: (False, "D1 unavailable"))
+
+    assert cloud.run_pull(cloud_cfg, _console(), quiet=True) == 1
+    assert cloud._pull_marker(cloud_cfg, remote["folder"]).exists()
+
+    monkeypatch.setattr(cloud, "register_album", lambda *a: (True, "id"))
+    assert cloud.run_pull(cloud_cfg, _console(), quiet=True) == 0
+    assert not cloud._pull_marker(cloud_cfg, remote["folder"]).exists()
 
 
 def test_pull_marks_upload_failure_instead_of_reporting_success(
         cloud_cfg, monkeypatch):
     monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [
         _remote("Music/Library/A/B")])
-    monkeypatch.setattr(cloud, "rclone_download", lambda *a: True)
+    _stub_download(monkeypatch)
     _stub_retag(monkeypatch, changed=1)
     monkeypatch.setattr(cloud, "rclone_upload", lambda *a: False)
     monkeypatch.setattr(cloud, "payload_for_album",
@@ -272,7 +387,7 @@ def test_pull_marks_upload_failure_instead_of_reporting_success(
 def test_pull_marks_registration_failure(cloud_cfg, monkeypatch):
     monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [
         _remote("Music/Library/A/B")])
-    monkeypatch.setattr(cloud, "rclone_download", lambda *a: True)
+    _stub_download(monkeypatch)
     _stub_retag(monkeypatch, changed=1)
     monkeypatch.setattr(cloud, "rclone_upload", lambda *a: True)
     monkeypatch.setattr(cloud, "payload_for_album",

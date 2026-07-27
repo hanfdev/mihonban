@@ -9,15 +9,24 @@ function BioDialog({ name, initialNote, onClose, onSaved }) {
   const { t } = useI18n()
   const [note, setNote] = useState(initialNote || '')
   const [bio, setBio] = useState(null)
+  const [bioLoadFailed, setBioLoadFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
     let active = true
+    setBioLoadFailed(false)
+    // 加载失败绝不能把 bio 置成 ''：空串保存时后端按「显式清空」处理
+    // （DELETE artistbio 行），一次网络抖动就会静默抹掉整篇长简介。
+    // 失败时保持 null（保存继续禁用）并给出错误提示。
     api.artistBio(name).then((r) => { if (active) setBio(r.bio) })
-      .catch(() => { if (active) setBio('') })
+      .catch((e) => {
+        if (!active) return
+        setBioLoadFailed(true)
+        toast(e.message, 'err')
+      })
     return () => { active = false }
-  }, [name])
+  }, [name, toast])
 
   const save = async () => {
     setBusy(true)
@@ -39,7 +48,9 @@ function BioDialog({ name, initialNote, onClose, onSaved }) {
                   onChange={(e) => setNote(e.target.value)} />
         <label>{t('artistPage.longBio')} <span>{t('artistPage.longBioHint')}</span></label>
         {bio === null
-          ? <div className="bio-form-loading"><I.spin size={16} /></div>
+          ? <div className="bio-form-loading">
+              {bioLoadFailed ? t('common.loadFailed') : <I.spin size={16} />}
+            </div>
           : <textarea className="tin bio-long" rows={12} value={bio}
                       placeholder={t('artistPage.longBioPh')}
                       onChange={(e) => setBio(e.target.value)} />}

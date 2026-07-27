@@ -1,15 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { artUrl } from '../api.js'
 import { ClearFilters, I, Heart, Marquee, fmtDur } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
+import { defaultCollator, jaCollator } from '../format.js'
 
-export function TrackRow({ t, i, currentId, playingId, isAdmin, fav,
-                           onToggleFav, onPlay, onOpen, onOpenArtist, showAlbum = true }) {
+function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
+                         onToggleFav, onPlay, onOpen, onOpenArtist, showAlbum = true }) {
   return (
     <div className={`trow flat ${t.hidden ? 'is-hidden' : ''} ${currentId === t.id ? 'playing' : ''}`}
-         data-tid={t.id} onClick={() => onPlay(i)}>
+         data-tid={t.id} role="button" tabIndex={0}
+         aria-label={`${t.title} — ${t.artist}`}
+         onClick={() => onPlay(i)}
+         onKeyDown={(e) => {
+           // 只响应落在行本身的按键；焦点在嵌套的收藏心/艺人链接上时放行，
+           // 否则回车会变成「播放」而不是「收藏」，把嵌套控件按死。
+           if (e.target !== e.currentTarget) return
+           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(i) }
+         }}>
       <img className="t-art" loading="lazy" src={artUrl(t.albumId, 120)} alt=""
            onClick={(e) => { e.stopPropagation(); onOpen(t.albumId) }} />
       <span className="t-main">
@@ -42,6 +51,18 @@ export function TrackRow({ t, i, currentId, playingId, isAdmin, fav,
   )
 }
 
+// 播放态每变一次（切歌/暂停）不该 reconcile 几千行；只有「本行数据变了」
+// 或「本行正是/曾是当前曲目」才重渲染。回调引用不稳定时退化为原行为。
+export const TrackRow = React.memo(TrackRowInner, (prev, next) =>
+  prev.t === next.t && prev.i === next.i && prev.fav === next.fav
+  && prev.isAdmin === next.isAdmin && prev.showAlbum === next.showAlbum
+  && prev.onToggleFav === next.onToggleFav && prev.onPlay === next.onPlay
+  && prev.onOpen === next.onOpen && prev.onOpenArtist === next.onOpenArtist
+  && (prev.currentId === next.currentId
+    || (prev.currentId !== prev.t.id && next.currentId !== next.t.id))
+  && (prev.playingId === next.playingId
+    || (prev.playingId !== prev.t.id && next.playingId !== next.t.id)))
+
 export default function TracksPage({ tracks, ensureTracks, q, isAdmin,
                                      favTracks, toggleFav, onOpen, onOpenArtist,
                                      onPlayTracks, currentId, playingId, playerShuffle,
@@ -53,13 +74,14 @@ export default function TracksPage({ tracks, ensureTracks, q, isAdmin,
 
   const SORTS = useMemo(() => ({
     title: { label: t('tracks.sortTitle'),
-      fn: (a, b) => a.title.localeCompare(b.title, 'ja') },
+      fn: (a, b) => jaCollator.compare(a.title, b.title) },
     artist: { label: t('tracks.sortArtist'),
-      fn: (a, b) => (a.artistSort || a.artist).localeCompare(b.artistSort || b.artist)
-        || (a.albumTitle || '').localeCompare(b.albumTitle || '')
+      fn: (a, b) => defaultCollator.compare(
+        a.artistSort || a.artist, b.artistSort || b.artist)
+        || defaultCollator.compare(a.albumTitle || '', b.albumTitle || '')
         || (a.track ?? 0) - (b.track ?? 0) },
     album: { label: t('tracks.sortAlbum'),
-      fn: (a, b) => (a.albumTitle || '').localeCompare(b.albumTitle || '', 'ja')
+      fn: (a, b) => jaCollator.compare(a.albumTitle || '', b.albumTitle || '')
         || (a.disc ?? 1) - (b.disc ?? 1) || (a.track ?? 0) - (b.track ?? 0) },
     yearNew: { label: t('tracks.sortYearNew'),
       fn: (a, b) => (b.year ?? 0) - (a.year ?? 0) },
@@ -71,19 +93,33 @@ export default function TracksPage({ tracks, ensureTracks, q, isAdmin,
 
   useEffect(() => { if (tracks === null) ensureTracks() }, [tracks, ensureTracks])
 
+  // 搜索/排序/过滤拆成三级 memo：搜索关键词只触发最后一级的廉价 includes；
+  // zhNorm 干草堆（每字符查 4000 项映射表）只随曲目列表本身重建，
+  // 排序只随排序键/可见性重算。输出与单一 memo 版逐字节一致。
+  const withHay = useMemo(() => tracks && tracks.map((tr) => ({
+    tr,
+    hay: zhNorm(`${tr.title} ${tr.artist} ${tr.artistSort || ''} ` +
+      `${romajiOf(tr.artist)} ${tr.albumTitle}`),
+  })), [tracks])
+
+  const sorted = useMemo(() => {
+    if (!withHay) return null
+    const fn = SORTS[sort].fn
+    return withHay
+      .filter(({ tr }) => !tr.hidden || (isAdmin && showHidden))
+      .sort((x, y) => fn(x.tr, y.tr))
+  }, [withHay, sort, SORTS, isAdmin, showHidden])
+
   const shown = useMemo(() => {
-    if (!tracks) return null
+    if (!sorted) return null
     const needle = zhNorm(q.trim())
-    const visible = tracks.filter((tr) =>
-      !tr.hidden || (isAdmin && showHidden))
-    const out = needle
-      ? visible.filter((tr) =>
-          zhNorm(`${tr.title} ${tr.artist} ${tr.artistSort || ''} ` +
-            `${romajiOf(tr.artist)} ${tr.albumTitle}`)
-            .includes(needle))
-      : visible
-    return out.sort(SORTS[sort].fn)
-  }, [tracks, q, sort, SORTS, isAdmin, showHidden])
+    const out = needle ? sorted.filter(({ hay }) => hay.includes(needle)) : sorted
+    return out.map(({ tr }) => tr)
+  }, [sorted, q])
+
+  const handleToggleFav = useCallback((id) => toggleFav('track', id), [toggleFav])
+  const handlePlay = useCallback((idx) => onPlayTracks(shown, idx),
+    [onPlayTracks, shown])
 
   const hasHidden = isAdmin && (tracks?.some((tr) => tr.hidden)
     || albums?.some((album) => album.hidden))
@@ -154,8 +190,8 @@ export default function TracksPage({ tracks, ensureTracks, q, isAdmin,
           <TrackRow key={tr.id} t={tr} i={i}
                     currentId={currentId} playingId={playingId}
                     isAdmin={isAdmin} fav={favTracks.has(tr.id)}
-                    onToggleFav={(id) => toggleFav('track', id)}
-                    onPlay={(idx) => onPlayTracks(shown, idx)}
+                    onToggleFav={handleToggleFav}
+                    onPlay={handlePlay}
                     onOpen={onOpen} onOpenArtist={onOpenArtist} />
         ))}
       </div>

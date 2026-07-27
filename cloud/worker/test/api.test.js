@@ -2086,3 +2086,51 @@ test("audio streaming preserves an unsatisfiable local range response", async ()
     rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test("catalog endpoints revalidate with ETag and return 304 until data changes", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main-store', 'Main', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  try {
+    const folder = "Music/Library/Artist/Cached";
+    const created = await companionRequest(env, "/api/albums", {
+      method: "POST",
+      ...jsonBody({
+        folder, artist: "Artist", title: "Cached",
+        tracks: [{ path: `${folder}/01.mp3`, title: "One" }],
+      }),
+    });
+    assert.equal(created.status, 200);
+    const albumId = (await created.json()).id;
+
+    for (const path of ["/api/library", "/api/tracks"]) {
+      const first = await companionRequest(env, path);
+      assert.equal(first.status, 200);
+      const etag = first.headers.get("ETag");
+      assert.ok(etag, `${path} must expose an ETag`);
+      assert.equal(first.headers.get("Cache-Control"), "private, no-cache");
+
+      const revalidated = await companionRequest(env, path, {
+        headers: { "If-None-Match": etag },
+      });
+      assert.equal(revalidated.status, 304, `${path} unchanged -> 304`);
+
+      // 任何目录写入（这里改一首曲名，会回写 albums.updated_at）都要打破 304。
+      // 版本戳含 MAX(updated_at) 毫秒值：先等 2ms 保证时间戳前进。
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      const bump = await companionRequest(env, `/api/album/${albumId}`, {
+        method: "PATCH", ...jsonBody({ title: `Renamed for ${path}` }),
+      });
+      assert.equal(bump.status, 200);
+      const changed = await companionRequest(env, path, {
+        headers: { "If-None-Match": etag },
+      });
+      assert.equal(changed.status, 200, `${path} changed -> full body`);
+      assert.notEqual(changed.headers.get("ETag"), etag);
+    }
+  } finally {
+    db.close();
+  }
+});

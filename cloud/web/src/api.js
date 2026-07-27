@@ -26,6 +26,9 @@ async function req(method, url, body, raw = false) {
   return data;
 }
 
+// getSettingsShared 的 in-flight/结果缓存（写入或失败即失效）
+let settingsShared = null;
+
 export const api = {
   AuthError,
   login: (password) => req("POST", "/api/login", { password }),
@@ -98,7 +101,21 @@ export const api = {
   changePassword: (target, current, next) =>
     req("POST", "/api/admin/password", { target, current, next }),
   getSettings: () => req("GET", "/api/admin/settings"),
-  putSettings: (s) => req("PUT", "/api/admin/settings", s),
+  // 后台页四个卡片挂载时各自要读设置：共享同一个 in-flight 请求，
+  // 一次网络往返喂所有卡片。写入或失败后失效，下次重新拉取。
+  getSettingsShared: () => {
+    if (!settingsShared) {
+      settingsShared = req("GET", "/api/admin/settings")
+        .catch((e) => { settingsShared = null; throw e; });
+    }
+    return settingsShared;
+  },
+  putSettings: (s) => {
+    // PUT 前后都失效：请求在途时若有挂载点缓存了写前快照，完成后也会被清掉
+    settingsShared = null;
+    return req("PUT", "/api/admin/settings", s)
+      .finally(() => { settingsShared = null; });
+  },
   scanSource: (deep) => req("POST", "/api/admin/source/scan", { deep: !!deep }),
   sourcePosts: (params = {}) => {
     const qs = new URLSearchParams(

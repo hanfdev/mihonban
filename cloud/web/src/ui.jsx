@@ -227,9 +227,12 @@ export function ToastHost({ children }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toasts">
+      {/* aria-live：toast 是许多结果（播放失败/格式跳过/保存）的唯一反馈，
+          读屏用户否则完全无感。容器常驻，新增子节点会被朗读。 */}
+      <div className="toasts" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`}>{t.msg}</div>
+          <div key={t.id} className={`toast ${t.kind}`}
+               role={t.kind === 'err' ? 'alert' : undefined}>{t.msg}</div>
         ))}
       </div>
     </ToastCtx.Provider>
@@ -240,12 +243,53 @@ export function ToastHost({ children }) {
 
 /* 所有全屏弹层都 portal 到 body：
  * 若渲染在 .main 滚动容器里，iOS 会把 position:fixed 降级成绝对定位
- * （被困在容器里、跟着内容滚、被壳的栏盖住）。挂到 body 一劳永逸。 */
+ * （被困在容器里、跟着内容滚、被壳的栏盖住）。挂到 body 一劳永逸。
+ * 语义与键盘：role=dialog + aria-modal，打开时把焦点移进弹层（否则 Tab
+ * 仍在背后的整页游走、读屏不知道弹层开了），Escape 关闭，关闭时还焦点。 */
+let dialogTitleSeq = 0
+// 弹层栈：裁剪弹层会嵌套在编辑弹层里（两层都是 Dialog、都 portal 到 body）。
+// 每层各自在 window 上挂 Escape 监听且互不知晓，一次按键会同时关掉两层——
+// 连带把父编辑表单里未保存的内容一并丢弃。改为共享一个栈，只有栈顶那层响应
+// Escape。onClose 用 ref 持有最新引用，监听只在挂载时注册一次。
+const dialogStack = []
 export function Dialog({ title, onClose, children }) {
+  const boxRef = useRef(null)
+  const [titleId] = useState(() => `dlg-t-${++dialogTitleSeq}`)
+  // 在 render 阶段捕获打开者：子元素的 autoFocus 在 commit 阶段才生效，
+  // 若等到 effect 里再读 document.activeElement 会误捕到刚被聚焦的输入框，
+  // 导致关闭时无法把焦点还给真正的触发按钮。
+  const [opener] = useState(() => document.activeElement)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  useEffect(() => {
+    const token = {}
+    dialogStack.push(token)
+    // 弹层内已有 autoFocus 元素（多数表单弹层）就尊重它；否则聚焦容器
+    if (!boxRef.current?.contains(document.activeElement)) {
+      boxRef.current?.focus()
+    }
+    const h = (e) => {
+      if (e.key !== 'Escape') return
+      if (dialogStack[dialogStack.length - 1] !== token) return // 只有栈顶响应
+      onCloseRef.current()
+    }
+    window.addEventListener('keydown', h)
+    return () => {
+      window.removeEventListener('keydown', h)
+      const i = dialogStack.indexOf(token)
+      if (i !== -1) dialogStack.splice(i, 1)
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+    }
+    // 挂载/卸载各执行一次；onClose 走 ref、opener 已定格
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog">
-        <h3>{title}</h3>
+      <div className="dialog" role="dialog" aria-modal="true"
+           aria-labelledby={titleId} tabIndex={-1} ref={boxRef}>
+        <h3 id={titleId}>{title}</h3>
         {children}
       </div>
     </div>,
@@ -525,6 +569,7 @@ export function CropDialog({ file, title, round = false,
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const drag = useRef(null)
+  const vpRef = useRef(null)
   const VP = 300                           // 视口 CSS 像素（正方形）
 
   useEffect(() => {
@@ -571,10 +616,21 @@ export function CropDialog({ file, title, round = false,
     }))
   }
   const onPointerUp = () => { drag.current = null }
-  const onWheel = (e) => {
-    e.preventDefault()
-    setZoomKeep(zoom * (1 - e.deltaY * 0.0012))
-  }
+  // React 18 的 onWheel 走根委托、被注册为 passive，e.preventDefault() 无效，
+  // 滚轮缩放会连带滚动弹层/页面。改用非 passive 的原生监听让 preventDefault 生效。
+  // 处理器经 ref 取最新闭包，监听只在挂载时注册一次。
+  const wheelZoom = useRef(null)
+  wheelZoom.current = (delta) => setZoomKeep(zoom * (1 - delta * 0.0012))
+  useEffect(() => {
+    const el = vpRef.current
+    if (!el) return
+    const handler = (e) => {
+      e.preventDefault()
+      wheelZoom.current?.(e.deltaY)
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
 
   const done = async () => {
     if (!img) return
@@ -598,10 +654,9 @@ export function CropDialog({ file, title, round = false,
   return (
     <Dialog title={title || t('crop.title')} onClose={onClose}>
       <div className="crop-wrap">
-        <div className={`crop-vp ${round ? 'round' : ''}`}
+        <div className={`crop-vp ${round ? 'round' : ''}`} ref={vpRef}
              onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-             onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-             onWheel={onWheel}>
+             onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
           {img && (
             <img src={img.src} alt="" draggable={false} style={{
               width: w, height: h,
@@ -616,6 +671,7 @@ export function CropDialog({ file, title, round = false,
         <div className="crop-zoom">
           <I.img size={13} />
           <input type="range" min="1" max="5" step="0.01" value={zoom}
+                 aria-label={t('common.zoom')}
                  style={{ '--fill': `${(zoom - 1) / 4 * 100}%` }}
                  onChange={(e) => setZoomKeep(Number(e.target.value))} />
           <I.img size={19} />

@@ -66,9 +66,24 @@ $lnk.TargetPath = $inbox
 $lnk.Description = "Drop RAR here - auto-ingest into your library"
 $lnk.Save()
 
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object { $_.CommandLine -match "mihonban watch" } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+# The Windows Store/venv launcher can create python.exe -> python3.11.exe ->
+# rclone.exe. Stopping only the first name leaves the real watcher and its
+# current transfer alive, so repeated installs can create duplicate watchers.
+$allProcesses = @(Get-CimInstance Win32_Process)
+$watchRoots = @($allProcesses | Where-Object {
+  $_.Name -match '^python(?:\d+(?:\.\d+)*)?\.exe$' -and
+  $_.CommandLine -match 'mihonban watch'
+})
+$watchTree = New-Object 'System.Collections.Generic.HashSet[int]'
+function Add-WatchProcessTree([int]$RootProcessId) {
+  if (-not $watchTree.Add($RootProcessId)) { return }
+  $allProcesses | Where-Object { $_.ParentProcessId -eq $RootProcessId } |
+    ForEach-Object { Add-WatchProcessTree ([int]$_.ProcessId) }
+}
+$watchRoots | ForEach-Object { Add-WatchProcessTree ([int]$_.ProcessId) }
+if ($watchTree.Count) {
+  Stop-Process -Id @($watchTree) -Force -ErrorAction SilentlyContinue
+}
 Start-Sleep 1
 wscript.exe $vbs
 

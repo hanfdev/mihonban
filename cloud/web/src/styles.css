@@ -9,7 +9,10 @@
   --line-soft: #221d16;
   --ink: #f4ecdd;
   --ink-dim: #b0a58f;
-  --ink-faint: #7c7260;
+  /* 提亮以过 WCAG AA：原 #7c7260 在小字号（10.5–13px）文本上对比度仅
+     3.3–4.2:1，未达 4.5:1；#8d8370 在各背景上达 4.6–5.3:1，仍明显比
+     --ink-dim 淡，层级不变。 */
+  --ink-faint: #8d8370;
   --accent: #e8542f;
   --accent-hi: #ff6b42;
   --accent-line: rgba(232, 84, 47, 0.45);
@@ -133,6 +136,7 @@ img { display: block; }
   font-size: 21px;
   letter-spacing: 0.04em;
   color: var(--ink);
+  text-decoration: none;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -199,6 +203,12 @@ img { display: block; }
 }
 .search:focus-within { border-color: #4a4132; }
 .search svg { color: var(--ink-faint); flex: none; }
+/* 清除搜索：无样式按钮，渲染与原裸 SVG 像素一致，但可聚焦、有可访问名 */
+.search-clear {
+  background: none; border: 0; padding: 0; margin: 0;
+  cursor: pointer; display: grid; place-items: center;
+  color: var(--ink-faint); flex: none;
+}
 .search input {
   flex: 1;
   min-width: 0;
@@ -399,6 +409,10 @@ select option { background-color: var(--bg2); color: var(--ink); }
   min-width: 0; /* 可收缩，长标题不撑破网格轨道 */
   display: flex;
   flex-direction: column;
+  /* 注意：这里不能用 content-visibility——它会启用 paint containment，把封面的
+     悬停浮起、阴影和键盘焦点框（都溢出卡片盒子）裁掉。专辑网格规模远小于全库
+     曲目列表，收益本就有限，视觉回归不值当。曲目行（.trow.flat）才是该优化真正
+     划算的场景。 */
 }
 .cover {
   position: relative;
@@ -887,9 +901,8 @@ select option { background-color: var(--bg2); color: var(--ink); }
   overflow: hidden;
 }
 .p-sub-link { color: var(--ink-faint); }
-.p-artist-link { flex: 0 1 auto; max-width: 48%; }
-.p-album-link { flex: 1 1 auto; }
-.p-sub-sep { flex: none; }
+/* 副行只有歌手名（专辑名已移除：冗余且会把长歌手名挤没），可占满整行 */
+.p-artist-link { flex: 0 1 auto; max-width: 100%; }
 .p-sub-link:disabled { cursor: default; }
 @media (hover: hover) {
   .p-title:hover,
@@ -1319,6 +1332,10 @@ select.tin { appearance: auto; }
 .trow.flat {
   grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 52px 34px;
   padding: 7px 12px;
+  /* 全库曲目一次全渲染：跳过屏外行的布局/绘制（DOM 结构不变，
+     locate/flash 的 querySelector 照常工作）。42px 封面 + 上下 7px。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
 }
 .t-art {
   width: 42px; height: 42px;
@@ -3340,10 +3357,6 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
     max-width: 100%;
     width: auto;
     vertical-align: top;
-  }
-  .player .p-sub-sep,
-  .player .p-album-link {
-    display: none;
   }
 }
 

@@ -69,6 +69,30 @@ def _write_id3(path: Path, vals: dict[str, str], comment: str,
         tags = ID3(path)
     except ID3NoHeaderError:
         tags = ID3()
+    changed = _apply_id3_frames(tags, vals, comment, genres)
+    if changed and apply:
+        tags.save(path)
+    return changed
+
+
+def _write_id3_container(path: Path, vals: dict[str, str], comment: str,
+                         apply: bool, genres: list[str]) -> bool:
+    """WAV/AIFF/DSF：ID3 藏在容器 chunk 里，须经 mutagen.File 读写。
+    直接 ID3(path) 找不到 chunk，而 Vorbis 路径的纯字符串赋值会被
+    ID3Tags 以 TypeError 拒绝（帧对象才合法）——两头都走不通，只能分派。"""
+    audio = mutagen.File(path)
+    if audio is None:
+        return False
+    if audio.tags is None:
+        audio.add_tags()
+    changed = _apply_id3_frames(audio.tags, vals, comment, genres)
+    if changed and apply:
+        audio.save()
+    return changed
+
+
+def _apply_id3_frames(tags, vals: dict[str, str], comment: str,
+                      genres: list[str]) -> bool:
     changed = False
     for key in FIELDS:
         val = vals.get(key)
@@ -102,8 +126,6 @@ def _write_id3(path: Path, vals: dict[str, str], comment: str,
         if not cur or list(cur[0].text) != genres:
             tags.setall("TCON", [TCON(encoding=3, text=genres)])
             changed = True
-    if changed and apply:
-        tags.save(path)
     return changed
 
 
@@ -186,15 +208,21 @@ def write_album(album_path: Path, row, apply: bool) -> tuple[int, int]:
         if not (f.is_file() and f.suffix.lower() in AUDIO_EXTS):
             continue
         total += 1
+        suffix = f.suffix.lower()
         try:
-            if f.suffix.lower() == ".mp3":
+            if suffix == ".mp3":
                 did = _write_id3(f, vals, comment, apply, genres)
-            elif f.suffix.lower() in (".m4a", ".mp4"):
+            elif suffix in (".m4a", ".mp4"):
                 did = _write_mp4(f, vals, comment, apply, genres)
+            elif suffix in (".wav", ".aiff", ".dsf"):
+                did = _write_id3_container(f, vals, comment, apply, genres)
             else:
                 did = _write_vorbis(f, vals, comment, apply, genres)
             changed += bool(did)
-        except (mutagen.MutagenError, OSError, ValueError, UnicodeError) as e:
+        # TypeError 兜底：任何标签容器与写法不匹配的个例只跳过该文件，
+        # 绝不让一个坏文件中断整轮写入（半写状态很难人工恢复）。
+        except (mutagen.MutagenError, OSError, ValueError, UnicodeError,
+                TypeError) as e:
             log.error("rym write failed on %s: %s", f, e)
     return changed, total
 

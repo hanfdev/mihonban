@@ -8,7 +8,7 @@ Mihonban es una biblioteca musical privada y autoalojada con un reproductor web 
 
 - Vistas adaptables de álbumes, pistas, artistas, favoritos, importación y administración
 - Contraseñas separadas para oyentes y administradores, además de un modo invitado opcional, sin contraseña y de solo lectura
-- Cola persistente, inicio móvil dentro del gesto del usuario, reproducción aleatoria/repetición, búsqueda Range y controles Media Session
+- Cola persistente, controles móviles completos de pista anterior／reproducir-pausar／pista siguiente, inicio dentro del gesto del usuario, reproducción aleatoria/repetición, búsqueda Range y controles Media Session
 - Almacenamientos con nombre para OneDrive, WebDAV, Google Drive y carpetas locales exclusivas del runtime Node
 - Espejo de imágenes R2 opcional y autorreparable para portadas, galerías y retratos de artistas
 - Importación mediante la API de Discogs y análisis de HTML de RYM guardado manualmente, sin solicitudes automatizadas a RYM
@@ -37,13 +37,13 @@ cd mihonban
 
 ### Aplicación Wrangler local
 
-En Windows, el script auxiliar prepara los archivos de compilación fuera de OneDrive e inicia Wrangler en todas las interfaces de red.
+En Windows, el script auxiliar prepara los archivos de compilación fuera de OneDrive e inicia Wrangler.
 
 ```powershell
 tools\cloud-dev.cmd
 ```
 
-Abre `http://127.0.0.1:8787`. Un teléfono conectado a la misma red local puede usar `http://<computer-lan-ip>:8787` después de permitir Node.js en el cortafuegos de Windows. El primer archivo de secretos locales generado por el asistente usa `mihonban-guest` como contraseña de oyente y `mihonban-admin` como contraseña de administrador. Cambia ambas en Administración antes de compartir el servicio.
+Abre `http://127.0.0.1:8787`; por defecto, el servidor de desarrollo solo escucha en `http://127.0.0.1:8787` (loopback). Establece `MIHONBAN_DEV_LAN=1` y permite Node.js en el cortafuegos de Windows para probar desde un teléfono mediante `http://<computer-lan-ip>:8787`. El primer archivo de secretos generado por el asistente contiene contraseñas de oyente y de administrador generadas aleatoriamente (consulta `.dev.vars` en el directorio de preparación). Cambia ambas en Administración antes de compartir el servicio.
 
 Para configurar Wrangler manualmente, consulta [Instalación y despliegue](docs/install.es.md).
 

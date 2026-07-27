@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import mutagen
+from mutagen.id3 import ID3, TALB, TDRC, TPE1, TPE2
 
 from .extract import AUDIO_EXTS
 
@@ -91,33 +92,66 @@ def synthesize_tags(album_dir: Path, apply: bool = True) -> list[str]:
         if audio is None:
             continue
         handles.append((f, audio))
-        artists.update(str(value).strip() for value in audio.get("artist", [])
-                       if str(value).strip())
+        artists.update(value.strip() for value in _get_tag(audio, "artist")
+                       if value.strip())
 
     common_artist = artists.pop() if len(artists) == 1 else None
 
     for f, audio in handles:
         changed = False
         file_notes: list[str] = []
-        if guess.album and not audio.get("album"):
-            audio["album"] = guess.album
-            file_notes.append(f"{f.name}: album <- {guess.album!r}")
-            changed = True
-        if not audio.get("date") and (guess.date or guess.year):
-            audio["date"] = guess.date or guess.year
-            file_notes.append(f"{f.name}: date <- {guess.date or guess.year}")
-            changed = True
-        if not audio.get("albumartist"):
-            aa = common_artist or (audio.get("artist") or [None])[0]
-            if aa:
-                audio["albumartist"] = aa
-                file_notes.append(f"{f.name}: albumartist <- {aa!r}")
+        try:
+            if guess.album and not _get_tag(audio, "album"):
+                _set_tag(audio, "album", guess.album)
+                file_notes.append(f"{f.name}: album <- {guess.album!r}")
                 changed = True
+            if not _get_tag(audio, "date") and (guess.date or guess.year):
+                _set_tag(audio, "date", guess.date or guess.year)
+                file_notes.append(f"{f.name}: date <- {guess.date or guess.year}")
+                changed = True
+            if not _get_tag(audio, "albumartist"):
+                aa = common_artist or (_get_tag(audio, "artist") or [None])[0]
+                if aa:
+                    _set_tag(audio, "albumartist", aa)
+                    file_notes.append(f"{f.name}: albumartist <- {aa!r}")
+                    changed = True
+        except (mutagen.MutagenError, ValueError, TypeError, KeyError) as e:
+            # 单个文件的标签容器不配合，跳过它即可——绝不能让 TypeError 逃出
+            # 本函数：那会把整个收件项打进隔离区（WAV 专辑曾因此永远无法入库）
+            log.warning("cannot synthesize tags for %s: %s", f, e)
+            continue
         if changed and apply:
             try:
                 audio.save()
-            except (mutagen.MutagenError, OSError, ValueError, UnicodeError) as e:
+            except (mutagen.MutagenError, OSError, ValueError, UnicodeError,
+                    TypeError) as e:
                 log.warning("cannot save synthesized tags for %s: %s", f, e)
                 continue
         notes.extend(file_notes)
     return notes
+
+
+# WAV/AIFF/DSF 的 easy=True 不存在 Easy 包装器：mutagen.File 返回裸容器，
+# .tags 是 ID3 家族对象，只收 Frame 实例、纯字符串赋值直接 TypeError。
+# 读写都在这里按容器分派，easy 键语义在两个世界保持一致。
+_ID3_FRAME = {"album": TALB, "date": TDRC, "albumartist": TPE2, "artist": TPE1}
+
+
+def _get_tag(audio, key: str) -> list[str]:
+    tags = getattr(audio, "tags", None)
+    if isinstance(tags, ID3):
+        frames = tags.getall(_ID3_FRAME[key].__name__)
+        return [str(text) for frame in frames for text in frame.text
+                if str(text)]
+    return [str(value) for value in (audio.get(key) or []) if str(value)]
+
+
+def _set_tag(audio, key: str, value) -> None:
+    if getattr(audio, "tags", None) is None:
+        audio.add_tags()
+    tags = audio.tags
+    if isinstance(tags, ID3):
+        frame = _ID3_FRAME[key]
+        tags.setall(frame.__name__, [frame(encoding=3, text=[str(value)])])
+    else:
+        audio[key] = value

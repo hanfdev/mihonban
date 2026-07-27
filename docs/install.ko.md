@@ -42,16 +42,16 @@ Wrangler 로컬 Cloudflare 가장 가깝습니다. Node 영구적인 로컬/NAS 
 tools\cloud-dev.cmd
 ```
 
-헬퍼는 기본적으로 `cloud/`를 `%TEMP%\mihonban-cloud-build`에 복사하고, 그곳에 의존성을 설치하며, React를 빌드하고, 로컬 스키마를 적용한 후 `0.0.0.0:8787`에서 Wrangler을 시작합니다. `MIHONBAN_STAGE` 다른 비동기화 디렉터리로 설정하여 임시 디렉터리 정리 과정에서 로컬 D1을 유지합니다.
+헬퍼는 기본적으로 `cloud/`를 `%TEMP%\mihonban-cloud-build`에 복사하고, 그곳에 의존성을 설치하며, React를 빌드하고, 로컬 스키마를 적용한 후 기본값으로 `127.0.0.1:8787`(루프백)에서 Wrangler을 시작합니다. 실행 전에 `MIHONBAN_DEV_LAN=1`을 설정하면 `0.0.0.0:8787`로 노출되어 LAN의 휴대폰에서 테스트할 수 있습니다. `MIHONBAN_STAGE` 다른 비동기화 디렉터리로 설정하여 임시 디렉터리 정리 과정에서 로컬 D1을 유지합니다.
 
-첫 실행 시 다음과 같은 `.dev.vars`을 생성합니다:
+첫 실행 시 `.dev.vars`을 생성하며, 두 비밀번호를 포함한 모든 값이 무작위입니다:
 
 ```text
-APP_PASSWORD=mihonban-guest
-ADMIN_PASSWORD=mihonban-admin
+APP_PASSWORD=<무작위>
+ADMIN_PASSWORD=<무작위>
 ```
 
-나머지 비밀은 무작위입니다. 이 두 비밀번호는 로컬 개발 기본값입니다. 다른 사람이 접속할 수 있도록 하기 전에 관리자 모드에서 변경하세요.
+리스너 비밀번호와 관리자 비밀번호는 `%TEMP%\mihonban-cloud-build\worker\.dev.vars`(또는 `%MIHONBAN_STAGE%\worker\.dev.vars`)에서 확인할 수 있습니다. 다른 사람이 접속할 수 있도록 하기 전에 관리자 모드에서 변경하세요.
 
 ### 수동 Wrangler 설정
 

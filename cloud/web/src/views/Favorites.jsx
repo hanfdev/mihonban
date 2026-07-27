@@ -6,6 +6,7 @@ import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { AlbumCard } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
+import { defaultCollator, jaCollator } from '../format.js'
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 const storedSort = (key, allowed) => {
@@ -20,7 +21,8 @@ const saveSort = (key, value) => {
 
 // 收藏专用排序：不含评分（歌曲没有评分；音盤也统一不按评分排，避免与曲库重复）
 const cmpArtist = (a, b) =>
-  (a.artistSort || a.artist || '').localeCompare(b.artistSort || b.artist || '') ||
+  defaultCollator.compare(a.artistSort || a.artist || '',
+    b.artistSort || b.artist || '') ||
   (a.year ?? 0) - (b.year ?? 0)
 
 export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
@@ -49,7 +51,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
     fav: { label: t('favs.sortOrder'), fn: null },
     artist: { label: t('library.sortArtist'), fn: cmpArtist },
     title: { label: t('library.sortTitle'),
-      fn: (a, b) => a.title.localeCompare(b.title, 'ja') },
+      fn: (a, b) => jaCollator.compare(a.title, b.title) },
     yearNew: { label: t('library.sortYearNew'),
       fn: (a, b) => (b.year ?? 0) - (a.year ?? 0) },
     yearOld: { label: t('library.sortYearOld'),
@@ -58,11 +60,12 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   const TRACK_SORTS = useMemo(() => ({
     fav: { label: t('favs.sortOrder'), fn: null },
     title: { label: t('tracks.sortTitle'),
-      fn: (a, b) => a.title.localeCompare(b.title, 'ja') },
+      fn: (a, b) => jaCollator.compare(a.title, b.title) },
     artist: { label: t('library.sortArtist'),
-      fn: (a, b) => cmpArtist(a, b) || (a.albumTitle || '').localeCompare(b.albumTitle || '') },
+      fn: (a, b) => cmpArtist(a, b)
+        || defaultCollator.compare(a.albumTitle || '', b.albumTitle || '') },
     album: { label: t('tracks.sortAlbum'),
-      fn: (a, b) => (a.albumTitle || '').localeCompare(b.albumTitle || '', 'ja')
+      fn: (a, b) => jaCollator.compare(a.albumTitle || '', b.albumTitle || '')
         || (a.track ?? 0) - (b.track ?? 0) },
     yearNew: { label: t('library.sortYearNew'),
       fn: (a, b) => (b.year ?? 0) - (a.year ?? 0) },

@@ -71,7 +71,8 @@ function AccessCard() {
   const toast = useToast()
 
   useEffect(() => {
-    api.getSettings().then((st) => setOpen(!!st.guestOpen)).catch(() => setOpen(false))
+    api.getSettingsShared().then((st) => setOpen(!!st.guestOpen))
+      .catch(() => setOpen(false))
   }, [])
 
   const toggle = async () => {
@@ -117,7 +118,7 @@ function DiscogsCard() {
 
   useEffect(() => {
     let active = true
-    api.getSettings().then((st) => {
+    api.getSettingsShared().then((st) => {
       if (active) setCurrent(st.discogsToken || '')
     }).catch((e) => { if (active) toast(e.message, 'err') })
     return () => { active = false }
@@ -187,7 +188,7 @@ function SourceCard() {
   }, [tab, pq, toast])
 
   useEffect(() => {
-    api.getSettings().then((st) => setS({
+    api.getSettingsShared().then((st) => setS({
       sourceUrl: st.sourceUrl,
       passwords: (st.archivePasswords || []).join('\n'),
     })).catch((e) => {
@@ -1043,7 +1044,7 @@ export default function AdminPage({ onOpen }) {
     let active = true
     api.adminOverview().then((next) => { if (active) setOv(next) })
       .catch((e) => { if (active) setOvError(e.message) })
-    api.getSettings().then((s) => {
+    api.getSettingsShared().then((s) => {
       if (!active) return
       setMods({
         moduleSource: !!s.moduleSource,

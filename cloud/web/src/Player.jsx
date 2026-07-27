@@ -9,6 +9,7 @@ import { playbackControlState } from './player-control.js'
  * 松手 onSeek 立刻跳到目标位置（UI 同步更新，不等缓冲）。
  * big 版 = 播放页：满宽长条，时间挂在两端下方，右侧显示剩余时间（Spotify 式）。 */
 function SeekBar({ t, dur, big, onSeek }) {
+  const { t: __ } = useI18n()
   const barRef = useRef(null)
   const [scrub, setScrub] = useState(null) // 拖动中的预览进度 0..1
   const shown = scrub ?? (dur ? Math.min(t / dur, 1) : 0)
@@ -28,8 +29,26 @@ function SeekBar({ t, dur, big, onSeek }) {
     setScrub(null)
   }
 
+  const cur = scrub !== null && dur ? scrub * dur : t
+  // 键盘定位：左右方向键 ±5 秒，Home/End 跳首尾（与拖动共用 onSeek）
+  const onKeyDown = (e) => {
+    if (!dur) return
+    const step = e.shiftKey ? 30 : 5
+    let next = null
+    if (e.key === 'ArrowRight') next = Math.min(cur + step, dur)
+    else if (e.key === 'ArrowLeft') next = Math.max(cur - step, 0)
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = dur
+    if (next === null) return
+    e.preventDefault()
+    onSeek(next)
+  }
   const bar = (
     <div className={`p-bar ${scrub !== null ? 'scrubbing' : ''}`} ref={barRef}
+         role="slider" tabIndex={0} aria-label={__('player.seek')}
+         aria-valuemin={0} aria-valuemax={Math.round(dur || 0)}
+         aria-valuenow={Math.round(cur || 0)} aria-valuetext={fmtDur(cur || 0)}
+         onKeyDown={onKeyDown}
          onPointerDown={down} onPointerMove={move}
          onPointerUp={up} onPointerCancel={() => setScrub(null)}>
       <div className="rail">
@@ -38,7 +57,6 @@ function SeekBar({ t, dur, big, onSeek }) {
       </div>
     </div>
   )
-  const cur = scrub !== null && dur ? scrub * dur : t
 
   if (big) {
     return (
@@ -70,7 +88,8 @@ function Controls({ playing, buffering, shuffle, repeat, onToggle, onStep,
               title={t('player.shuffle')} onClick={onShuffle}>
         <I.shuffle size={big ? 20 : 16} />
       </button>
-      <button className="icon-btn" onClick={() => onStep(-1)}>
+      <button className="icon-btn" title={t('player.prev')}
+              aria-label={t('player.prev')} onClick={() => onStep(-1)}>
         <I.prev size={big ? 26 : 18} /></button>
       <button className={`icon-btn main ${playing ? 'on' : ''}`}
               title={t(`common.${control.action}`)}
@@ -81,7 +100,8 @@ function Controls({ playing, buffering, shuffle, repeat, onToggle, onStep,
           ? <I.pause size={big ? 28 : 18} />
           : <I.play size={big ? 28 : 18} />}
       </button>
-      <button className="icon-btn" onClick={() => onStep(1)}>
+      <button className="icon-btn" title={t('player.next')}
+              aria-label={t('player.next')} onClick={() => onStep(1)}>
         <I.next size={big ? 26 : 18} /></button>
       <button className={`icon-btn mode ${repeat !== 'off' ? 'on' : ''}`}
               title={repeat === 'one' ? t('player.repeatOne') : repeat === 'all' ? t('player.repeatAll') : t('player.repeatOff')}
@@ -111,8 +131,12 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
   const pendingSheetNav = useRef(null)
   const retryArtFromOrigin = (event, size) => {
     const image = event.currentTarget
-    if (image.dataset.originRetry === '1') return
-    image.dataset.originRetry = '1'
+    // 一次性回源标记按专辑记：迷你播放器的 <img> 是常驻 DOM 节点，
+    // React 换曲只改 src；标记若不随专辑变化，第一次回源后所有后续
+    // 专辑的封面失败都会被跳过，永远显示裂图。
+    const key = String(current.albumId)
+    if (image.dataset.originRetry === key) return
+    image.dataset.originRetry = key
     image.src = artUrl(current.albumId, size, true)
   }
 
@@ -273,6 +297,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
   }
   const volSlider = (
     <input type="range" min="0" max="1" step="0.02" value={vol}
+           aria-label={__('player.volume')}
            style={{ '--fill': `${vol * 100}%` }}
            onChange={(e) => setVolume(Number(e.target.value))} />
   )
@@ -388,6 +413,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
                   title={__('player.viewAlbum')} onClick={onOpenAlbum}>
             <Marquee text={current.title} />
           </button>
+          {/* 副行只显示歌手：专辑名会把长歌手名挤没，且封面/歌名都已能进
+              专辑页，这里再放专辑名信息冗余。 */}
           <div className="p-sub">
             <button type="button" className="p-sub-link p-artist-link"
                     title={current.artist}
@@ -395,19 +422,16 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
                     onClick={() => onOpenArtist(current.artist)}>
               {current.artist}
             </button>
-            <span className="p-sub-sep" aria-hidden>—</span>
-            <button type="button" className="p-sub-link p-album-link"
-                    title={current.albumTitle}
-                    onClick={onOpenAlbum}>
-              {current.albumTitle}
-            </button>
           </div>
         </div>
         {isAdmin && <span className="p-heart">
           <Heart on={fav} canEdit onToggle={onFav} size={17} /></span>}
         <Controls {...ctrl} />
-        {/* 移动端迷你控制：主图标始终保持可执行动作。 */}
+        {/* 移动端迷你控制：上一首 / 当前动作 / 下一首完整保留。 */}
         <div className="p-mini-ctrl">
+          <button className="icon-btn" title={__('player.prev')}
+                  aria-label={__('player.prev')} onClick={() => onStep(-1)}>
+            <I.prev size={20} /></button>
           <button className={`icon-btn mini-play ${playing ? 'on' : ''}`}
                   title={__(`common.${miniControl.action}`)}
                   aria-label={__(`common.${miniControl.action}`)}
@@ -416,7 +440,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
             {miniControl.action === 'pause'
               ? <I.pause size={22} /> : <I.play size={22} />}
           </button>
-          <button className="icon-btn" onClick={() => onStep(1)}>
+          <button className="icon-btn" title={__('player.next')}
+                  aria-label={__('player.next')} onClick={() => onStep(1)}>
             <I.next size={20} /></button>
         </div>
         <SeekBar t={t} dur={dur} onSeek={doSeek} />

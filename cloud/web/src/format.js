@@ -1,3 +1,8 @@
+// Collator 实例化开销大；localeCompare(x, 'ja') 每次比较都隐式新建一个。
+// 模块级单例快约一个数量级，排序结果与 localeCompare 完全一致。
+export const jaCollator = new Intl.Collator('ja')
+export const defaultCollator = new Intl.Collator()
+
 export function fmtDur(value) {
   if (value == null) return '–:––'
   const seconds = Number(value)

@@ -5,6 +5,7 @@ import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { albumPlaybackState } from '../album-playback.js'
+import { defaultCollator, jaCollator } from '../format.js'
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 
@@ -14,6 +15,8 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
   const toast = useToast()
   const playback = albumPlaybackState(a.id, currentAlbumId, playingId)
   const openAlbumWithKey = (event) => {
+    // 焦点在嵌套的播放按钮上时放行：否则回车会同时触发播放和打开专辑
+    if (event.target !== event.currentTarget) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onOpen(a.id)
@@ -61,6 +64,7 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
                                   showHidden, setShowHidden, onClearQuery,
                                   currentAlbumId, playingId, onTogglePlayback }) {
   const { t } = useI18n()
+  const toast = useToast()
   const [minR, setMinR] = useState(0)
   const [genre, setGenre] = useState(genreFromRoute || '')
   const [decade, setDecade] = useState('')
@@ -72,10 +76,11 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     rating: { label: t('library.sortRating'),
       fn: (a, b) => (b.rym?.rating ?? -1) - (a.rym?.rating ?? -1) },
     artist: { label: t('library.sortArtist'),
-      fn: (a, b) => (a.artistSort || a.artist).localeCompare(b.artistSort || b.artist)
+      fn: (a, b) => defaultCollator.compare(
+        a.artistSort || a.artist, b.artistSort || b.artist)
         || (a.year ?? 0) - (b.year ?? 0) },
     title: { label: t('library.sortTitle'),
-      fn: (a, b) => a.title.localeCompare(b.title, 'ja') },
+      fn: (a, b) => jaCollator.compare(a.title, b.title) },
     yearNew: { label: t('library.sortYearNew'),
       fn: (a, b) => (b.year ?? 0) - (a.year ?? 0) },
     yearOld: { label: t('library.sortYearOld'),
@@ -126,6 +131,18 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     if (decade && !decades.includes(decade)) setDecade('')
   }, [decade, decades])
 
+  // zhNorm 干草堆逐字符查 4000 项映射表，只随专辑列表重建；
+  // 每敲一个字只做廉价的 includes 过滤，不再全量重新归一化。
+  const searchHay = useMemo(() => {
+    const m = new Map()
+    for (const a of albums || []) {
+      m.set(a.id, zhNorm(
+        `${a.title} ${a.artist} ${a.artistSort || ''} ${romajiOf(a.artist)} ` +
+        `${(a.genres || []).join(' ')} ${(a.secondaryGenres || []).join(' ')}`))
+    }
+    return m
+  }, [albums])
+
   const shown = useMemo(() => {
     if (!albums) return null
     const needle = zhNorm(q.trim())
@@ -133,10 +150,7 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     const out = albums.filter((a) => {
       // 管理员默认隐藏「已隐藏」；开关打开后才列出
       if (a.hidden && !(isAdmin && showHidden)) return false
-      if (needle && !zhNorm(
-        `${a.title} ${a.artist} ${a.artistSort || ''} ${romajiOf(a.artist)} ` +
-        `${(a.genres || []).join(' ')} ${(a.secondaryGenres || []).join(' ')}`)
-        .includes(needle)) return false
+      if (needle && !searchHay.get(a.id).includes(needle)) return false
       if (minR && (a.rym?.rating ?? 0) < minR) return false
       if (decade && decadeOf(a.year) !== decade) return false
       if (artist && a.artist !== artist) return false
@@ -145,7 +159,8 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
       return true
     })
     return out.sort(SORTS[sort].fn)
-  }, [albums, q, minR, genre, decade, artist, sort, SORTS, isAdmin, showHidden])
+  }, [albums, searchHay, q, minR, genre, decade, artist, sort, SORTS, isAdmin,
+      showHidden])
 
   const playAlbum = async (a) => {
     try {

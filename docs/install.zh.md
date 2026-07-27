@@ -42,16 +42,16 @@ Wrangler 本地环境最接近 Cloudflare 生产环境。Node 更适合作为长
 tools\cloud-dev.cmd
 ```
 
-脚本默认把 `cloud/` 复制到 `%TEMP%\mihonban-cloud-build`，在同步盘外安装依赖、构建 React、应用本地 schema，并以 `0.0.0.0:8787` 启动 Wrangler。可以把 `MIHONBAN_STAGE` 指向另一个非同步目录，避免系统清理临时目录时丢失本地 D1。
+脚本默认把 `cloud/` 复制到 `%TEMP%\mihonban-cloud-build`，在同步盘外安装依赖、构建 React、应用本地 schema，并默认以 `127.0.0.1:8787`（仅回环）启动 Wrangler；运行前设置 `MIHONBAN_DEV_LAN=1` 可改为绑定 `0.0.0.0:8787`，便于局域网手机测试。可以把 `MIHONBAN_STAGE` 指向另一个非同步目录，避免系统清理临时目录时丢失本地 D1。
 
-首次运行会生成 `.dev.vars`，其中：
+首次运行会生成 `.dev.vars`，其中所有值（包括两个口令）均随机生成：
 
 ```text
-APP_PASSWORD=mihonban-guest
-ADMIN_PASSWORD=mihonban-admin
+APP_PASSWORD=<随机>
+ADMIN_PASSWORD=<随机>
 ```
 
-其余密钥随机生成。这两个口令只用于本地开发；允许其他人连接前，应在管理后台立即修改。
+听众口令和管理员口令可在 `%TEMP%\mihonban-cloud-build\worker\.dev.vars`（或 `%MIHONBAN_STAGE%\worker\.dev.vars`）中查看。允许其他人连接前，应在管理后台立即修改。
 
 ### 手动运行 Wrangler
 

@@ -6,7 +6,7 @@
 //     彻底避免大库封面把 OneDrive Graph API 打爆。
 
 import { getSetting } from "./auth.js";
-import { fetchWithTimeout } from "./net.js";
+import { discardResponse, fetchWithTimeout } from "./net.js";
 
 const enc = new TextEncoder();
 export const R2_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
@@ -271,6 +271,8 @@ export async function r2Test(conf) {
     if (!put) return { ok: false, error: "上传失败（检查密钥/endpoint/桶名）" };
     const readable = await fetchWithTimeout(
       r2PublicUrl(conf, key), { method: "GET" });
+    // 探测只看状态码；两个分支都要取消 body，别占着子请求连接
+    await discardResponse(readable);
     if (!readable.ok) {
       return { ok: false, error: `公开读失败 ${readable.status}（检查公开域名/桶公开权限）` };
     }

@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-import shutil
 import subprocess
 import sys
 import unicodedata
@@ -241,6 +240,30 @@ def _first(tags: dict, *keys) -> str:
     return ""
 
 
+def _tag_year(tags: dict) -> str:
+    """Return the first valid four-digit year, preferring originaldate.
+
+    Some taggers store ``originaldate=0000`` as an unknown-date sentinel while
+    keeping the real release year in ``date``. Treating that truthy string as
+    authoritative produces year 0, which the Worker correctly rejects.
+    """
+    for key in ("originaldate", "date"):
+        prefix = _first(tags, key).strip()[:4]
+        if len(prefix) == 4 and prefix.isdigit() and 1 <= int(prefix) <= 9999:
+            return prefix
+    return ""
+
+
+def _tag_index(text: str, default: int | None) -> int | None:
+    """Normalize track/disc fractions and ignore zero/oversized sentinels."""
+    token = text.strip().split("/", 1)[0]
+    if token.isdigit():
+        value = int(token)
+        if 1 <= value <= MAX_SAFE_INTEGER:
+            return value
+    return default
+
+
 def _audio_files(album_dir: Path) -> list[Path]:
     return sorted(f for f in album_dir.rglob("*")
                   if f.is_file() and f.suffix.lower() in AUDIO_EXTS)
@@ -283,7 +306,7 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         artists.append((_first(t, "albumartist")
                         or _first(t, "artist")).strip())
         albums_t.append(_first(t, "album").strip())
-        years.append((_first(t, "originaldate") or _first(t, "date"))[:4])
+        years.append(_tag_year(t))
         if not genres:
             g = t.get("genre")
             if g:
@@ -306,8 +329,8 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         tracks.append({
             "path": f"{folder}/{rel}",
             "title": title,
-            "track": int(tno) if tno.isdigit() else None,
-            "disc": int(dno) if dno.isdigit() else 1,
+            "track": _tag_index(tno, None),
+            "disc": _tag_index(dno, 1),
             "duration": duration,
             "bitrate": bitrate,
             "format": f.suffix.lstrip(".").lower(),
@@ -460,9 +483,16 @@ def register_album(cfg: Config, payload: dict) -> tuple[bool, str]:
 
 
 def album_dirs(cfg: Config) -> list[Path]:
+    # beets 把合辑放进 _compilations/（见 beets.yaml.tmpl 的 comp: 路径），
+    # watch 会按 library_path 单独登记它们；全量同步若跳过该目录，这些专辑
+    # 就永远无法被重新对账（D1 重建/改 tag 后失联）。除它以外的下划线目录
+    # 仍是内部用途（隔离区等），继续跳过。
+    included_underscore = {"_compilations"}
     out = []
     for artist in sorted(cfg.music_root.iterdir()):
-        if not artist.is_dir() or artist.name.startswith("_"):
+        if not artist.is_dir():
+            continue
+        if artist.name.startswith("_") and artist.name not in included_underscore:
             continue
         for album in sorted(artist.iterdir()):
             if album.is_dir() and _audio_files(album):
@@ -551,6 +581,53 @@ def rclone_download(cfg: Config, folder: str, dest: Path, console) -> bool:
         log.error("rclone pull failed for %s: %s", folder, r.stderr)
         return False
     return True
+
+
+def _pull_marker(cfg: Config, folder: str) -> Path:
+    """Persistent marker for a cloud pull that has not finished end to end."""
+    normalized = unicodedata.normalize("NFC", folder)
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return cfg.state_dir / "cloud_pull_incomplete" / f"{digest}.pending"
+
+
+def _mark_pull_incomplete(cfg: Config, folder: str) -> bool:
+    marker = _pull_marker(cfg, folder)
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(unicodedata.normalize("NFC", folder), encoding="utf-8")
+    except OSError as exc:
+        log.error("could not persist cloud pull marker for %s: %s", folder, exc)
+        return False
+    return True
+
+
+def _clear_pull_marker(cfg: Config, folder: str) -> bool:
+    marker = _pull_marker(cfg, folder)
+    try:
+        marker.unlink(missing_ok=True)
+    except OSError as exc:
+        log.error("could not clear cloud pull marker for %s: %s", folder, exc)
+        return False
+    return True
+
+
+def _has_partial_files(dest: Path) -> bool:
+    try:
+        return any(path.is_file() and path.name.lower().endswith(".partial")
+                   for path in dest.rglob("*"))
+    except OSError:
+        return True
+
+
+def _download_tree_complete(dest: Path) -> bool:
+    """A finished album has audio and no rclone temporary files."""
+    return dest.is_dir() and bool(_audio_files(dest)) and not _has_partial_files(dest)
+
+
+def _pull_needs_download(cfg: Config, folder: str, dest: Path) -> bool:
+    """Recover both marked pulls and legacy interrupted rclone directories."""
+    return (_pull_marker(cfg, folder).exists()
+            or not _download_tree_complete(dest))
 
 
 # --- 把云端元数据写进文件 tag ---------------------------------------
@@ -662,7 +739,7 @@ def run_pull(cfg: Config, console, quiet: bool = False,
             invalid += 1
             log.error("skipping unsafe cloud album folder: %r", a.get("folder"))
             continue
-        if not dest.exists():
+        if _pull_needs_download(cfg, a["folder"], dest):
             todo.append((a, dest, True))
         elif retag_existing:
             todo.append((a, dest, False))
@@ -676,19 +753,24 @@ def run_pull(cfg: Config, console, quiet: bool = False,
     ok = retagged = 0
     fail = invalid
     for a, dest, need_download in todo:
-        if need_download and not rclone_download(cfg, a["folder"], dest,
-                                                 console):
-            # rclone may create the destination before a network/error exit.
-            # Leaving that half-tree makes the next run mistake it for a
-            # complete album and skip the download forever.
-            if dest.exists():
-                shutil.rmtree(dest, ignore_errors=True)
-            fail += 1
-            continue
+        if need_download:
+            if not _mark_pull_incomplete(cfg, a["folder"]):
+                fail += 1
+                console.print(f"  [red]无法保存拉取状态[/red] {a.get('title', '')}")
+                continue
+            if not rclone_download(cfg, a["folder"], dest, console):
+                # Keep completed files and rclone artifacts so a later
+                # watcher/process retries the album instead of silently
+                # treating the half-tree as complete. Rclone itself does not
+                # resume bytes from a previous .partial file across runs.
+                fail += 1
+                continue
+            if not _download_tree_complete(dest):
+                fail += 1
+                console.print(f"  [red]下载内容不完整[/red] {a.get('title', '')}")
+                continue
         detail = cloud_album_detail(cfg, a["id"])
         if detail is None:
-            if need_download and dest.exists():
-                shutil.rmtree(dest, ignore_errors=True)
             fail += 1
             console.print(f"  [red]无法读取云端专辑详情[/red]: {a.get('title', '')}")
             continue
@@ -710,6 +792,10 @@ def run_pull(cfg: Config, console, quiet: bool = False,
                 fail += 1
                 console.print(f"  [red]重新登记失败[/red]: {info}")
                 continue
+        if need_download and not _clear_pull_marker(cfg, a["folder"]):
+            fail += 1
+            console.print(f"  [red]无法清除拉取状态[/red] {a.get('title', '')}")
+            continue
         if need_download or changed:
             ok += 1
             mark = "↓" if need_download else "写"  # GBK 控制台放不下花哨符号

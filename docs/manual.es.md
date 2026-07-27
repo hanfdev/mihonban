@@ -21,7 +21,7 @@ El Python compañero ni ningún reproductor de escritorio son necesarios para la
 - Modo invitado sin contraseña: acceso opcional de solo lectura sin introducir contraseña.
 - Clave complementaria: credencial de máquina para la tubería local opcional.
 
-`mihonban-guest` y `mihonban-admin` son valores predeterminados generados solo por `tools\cloud-dev.cmd`. Node y los despliegues manuales de Cloudflare no tienen contraseñas predeterminadas. Cambia los valores predeterminados del asistente local antes de compartir acceso.
+Todos los scripts auxiliares generan contraseñas aleatorias cuando no se proporciona ninguna; nada se distribuye con una contraseña predeterminada fija. Las contraseñas de desarrollo local se encuentran en el archivo `.dev.vars` del directorio de preparación.
 
 Las contraseñas guardadas en Admin anulan los valores de arranque del entorno de Bootstrap. Cambiar cualquiera de las contraseñas revoca las sesiones existentes.
 
@@ -30,6 +30,7 @@ Las contraseñas guardadas en Admin anulan los valores de arranque del entorno d
 - El volumen, el idioma y la ordenación se guardan por origin del navegador. Un nombre de host o dominio personalizado nuevo empieza con preferencias nuevas; si no hay volumen guardado, comienza al 100 %.
 - La reproducción comienza dentro del toque/clic original para que Android Chrome pueda establecer audio y una sesión multimedia del sistema. En navegadores compatibles, la pantalla de bloqueo/notificación permite reproducir, pausar, cambiar de pista y buscar.
 - En móvil, toca la portada o el espacio vacío del minirreproductor, o deslízalo hacia arriba, para abrir la pantalla de reproducción. Los enlaces del álbum y del artista siguen siendo independientes.
+- El minirreproductor móvil muestra siempre, en este orden, pista anterior, reproducir/pausar y pista siguiente. La reproducción aleatoria y la repetición siguen disponibles en la pantalla de reproducción completa.
 - Al cambiar una imagen del libreto se muestra un estado de carga; desliza horizontalmente para ver la imagen anterior o siguiente.
 
 ## Carpetas y archivos de la bandeja de entrada
@@ -58,6 +59,8 @@ El módulo fuente de Administrador lee los títulos y enlaces compatibles con RS
 5. Abre el álbum terminado, pon una pista y busca cerca del final.
 
 Usa `mihonban cloud pull` cuando la copia web deba regresar a la biblioteca local. Añade `--retag` solo cuando los metadatos en la nube deban actualizar las etiquetas locales existentes.
+
+Antes de descargar cada álbum ausente, el compañero escribe un marcador persistente en `data_dir/state/cloud_pull_incomplete/`. Solo lo elimina después de que terminen correctamente la descarga, la consulta de detalles en la nube, la reparación de etiquetas y cualquier subida y registro necesarios. Un directorio interrumpido con archivos `.partial`, o sin audio válido, se reintenta automáticamente en vez de confundirse con un álbum completo. Rclone reinicia un `.partial` antiguo desde el byte cero en lugar de continuar sus bytes existentes; en conexiones lentas, mantén el watcher y la red funcionando sin interrupciones.
 
 ## RYM metadatos
 

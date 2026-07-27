@@ -34,6 +34,17 @@ CREATE TABLE IF NOT EXISTS tracks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album_id, disc, track);
+CREATE INDEX IF NOT EXISTS idx_albums_hidden ON albums(hidden);
+CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist);
+
+-- genre 归一化副表（小写）：同 genre 推荐的索引点查来源。
+-- 同步触发器由 ensureMigrations 在运行时安装（wrangler d1 execute --file
+-- 对 BEGIN..END 触发器体有切分缺陷，故不写在本文件）；首次升级时回填。
+CREATE TABLE IF NOT EXISTS album_genres (
+  album_id TEXT NOT NULL,
+  genre    TEXT NOT NULL,
+  PRIMARY KEY (genre, album_id)
+);
 
 -- 大型专辑登记的临时写入区。曲目先分批落到这里，最后用一个 D1 batch
 -- 原子替换正式目录，避免中途失败留下半张专辑。

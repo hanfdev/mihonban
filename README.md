@@ -8,7 +8,7 @@ Mihonban is a private, self-hosted music library with a responsive web player. R
 
 - Responsive album, track, artist, favorites, import, and administration views
 - Listener and administrator passwords, plus an optional passwordless read-only guest mode
-- Persistent playback queue, gesture-safe mobile playback, shuffle/repeat, Range seeking, and Media Session controls
+- Persistent playback queue, complete mobile previous/play-pause/next controls, gesture-safe playback, shuffle/repeat, Range seeking, and Media Session controls
 - Named OneDrive, WebDAV, Google Drive, and Node-only local-folder storage backends
 - Optional self-healing R2 image mirror for covers, galleries, and artist avatars
 - Discogs API imports and manual RYM HTML parsing without automated RYM requests
@@ -37,13 +37,13 @@ cd mihonban
 
 ### Local Wrangler app
 
-On Windows, the helper stages build files outside OneDrive and starts Wrangler on all network interfaces:
+On Windows, the helper stages build files outside OneDrive and starts Wrangler:
 
 ```powershell
 tools\cloud-dev.cmd
 ```
 
-Open `http://127.0.0.1:8787`. A phone on the same LAN can use `http://<computer-lan-ip>:8787` after the Windows firewall permits Node.js. The helper's first local secrets file uses listener password `mihonban-guest` and administrator password `mihonban-admin`; change both in Admin before sharing the service.
+Open `http://127.0.0.1:8787`; the dev server listens on loopback only by default. Set `MIHONBAN_DEV_LAN=1` and allow Node.js through the Windows firewall to test from a phone via `http://<computer-lan-ip>:8787`. The helper's first secrets file contains randomly generated listener and administrator passwords (see `.dev.vars` in the stage directory); change both in Admin before sharing the service.
 
 For a manual Wrangler setup, see [Install and deploy](docs/install.md).
 

@@ -8,7 +8,7 @@ Mihonban은 반응형 웹 플레이어를 제공하는 개인용 셀프 호스�
 
 - 앨범, 트랙, 아티스트, 즐겨찾기, 가져오기, 관리 화면을 위한 반응형 UI
 - 청취자 및 관리자 비밀번호와 선택적으로 사용할 수 있는 비밀번호 없는 읽기 전용 게스트 모드
-- 영구 재생 대기열, 사용자 동작 안에서 시작되는 모바일 재생, 셔플／반복, Range 탐색, Media Session 제어
+- 영구 재생 대기열, 모바일 이전 곡／재생·일시 정지／다음 곡 전체 제어, 사용자 동작 안에서 시작되는 재생, 셔플／반복, Range 탐색, Media Session 제어
 - OneDrive, WebDAV, Google Drive와 Node 전용 로컬 폴더를 이름 있는 저장소로 관리
 - 표지, 갤러리, 아티스트 이미지를 위한 자동 복구 R2 이미지 미러
 - Discogs API 가져오기와 자동 RYM 요청 없이 수동 저장된 RYM HTML 분석
@@ -37,13 +37,13 @@ cd mihonban
 
 ### 로컬 Wrangler 앱
 
-Windows에서는 도우미가 OneDrive 외부에 빌드 파일을 준비하고 모든 네트워크 인터페이스에서 Wrangler를 시작합니다.
+Windows에서는 도우미가 OneDrive 외부에 빌드 파일을 준비하고 Wrangler를 시작합니다.
 
 ```powershell
 tools\cloud-dev.cmd
 ```
 
-`http://127.0.0.1:8787`을 여세요. 같은 LAN의 휴대폰에서는 Windows 방화벽에서 Node.js를 허용한 뒤 `http://<computer-lan-ip>:8787`로 접속할 수 있습니다. 도우미가 처음 생성하는 로컬 시크릿 파일의 청취자 비밀번호는 `mihonban-guest`, 관리자 비밀번호는 `mihonban-admin`입니다. 서비스를 공유하기 전에 관리 화면에서 두 비밀번호를 모두 변경하세요.
+`http://127.0.0.1:8787`을 여세요. 개발 서버는 기본적으로 `http://127.0.0.1:8787`(루프백)에서만 수신합니다. `MIHONBAN_DEV_LAN=1`을 설정하고 Windows 방화벽에서 Node.js를 허용하면 같은 LAN의 휴대폰에서 `http://<computer-lan-ip>:8787`로 테스트할 수 있습니다. 도우미가 처음 생성하는 시크릿 파일에는 무작위로 생성된 청취자 비밀번호와 관리자 비밀번호가 들어 있습니다(스테이지 디렉터리의 `.dev.vars` 참조). 서비스를 공유하기 전에 관리 화면에서 두 비밀번호를 모두 변경하세요.
 
 Wrangler를 수동으로 설정하려면 [설치 및 배포](docs/install.ko.md)를 참고하세요.
 

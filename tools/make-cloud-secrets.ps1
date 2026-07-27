@@ -16,10 +16,14 @@ function Rand-Hex([int]$bytes) {
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
   ($b | ForEach-Object { $_.ToString("x2") }) -join ""
 }
+# Blank passwords fall back to RANDOM values, never to a well-known default:
+# a fixed string in a public repo would ship as a live credential whenever an
+# operator leaves a prompt empty.
 if (-not $SessionSecret) { $SessionSecret = Rand-Hex 32 }
 if (-not $CompanionKey)  { $CompanionKey = Rand-Hex 24 }
-if (-not $AppPassword)   { $AppPassword = "mihonban-guest" }
-if (-not $AdminPassword) { $AdminPassword = "mihonban-admin" }
+$GeneratedPasswords = @()
+if (-not $AppPassword)   { $AppPassword = Rand-Hex 8; $GeneratedPasswords += "listener" }
+if (-not $AdminPassword) { $AdminPassword = Rand-Hex 8; $GeneratedPasswords += "admin" }
 
 @"
 APP_PASSWORD=$AppPassword
@@ -29,3 +33,7 @@ COMPANION_KEY=$CompanionKey
 "@ | Out-File -FilePath $OutFile -Encoding ascii -NoNewline
 
 Write-Output "secrets -> $OutFile"
+if ($GeneratedPasswords.Count) {
+  Write-Output ("random password(s) generated for: {0} (see {1})" -f `
+    ($GeneratedPasswords -join ", "), $OutFile)
+}

@@ -223,6 +223,10 @@ async function runD1Batches(db, statements, size = D1_BATCH_SIZE) {
 }
 
 function albumOut(row) {
+  // 每列只 JSON.parse 一次（原来 genres/sec_genres 在 rym 与顶层各解析一遍，
+  // /api/library 对每张专辑要多付 2-3 次解析；输出字节不变）
+  const genres = J(row.genres);
+  const secondaryGenres = J(row.sec_genres);
   return {
     id: row.id, artist: row.artist, artistSort: row.artist_sort,
     title: row.title, year: row.year, folder: row.folder,
@@ -231,16 +235,41 @@ function albumOut(row) {
     rym: row.rym_rating == null && !row.rym_url ? null : {
       rating: row.rym_rating, votes: row.rym_votes,
       rank: row.rym_rank || null, rymUrl: row.rym_url || null,
-      genres: J(row.genres), secondaryGenres: J(row.sec_genres),
+      genres, secondaryGenres,
       descriptors: J(row.descriptors),
     },
-    genres: J(row.genres), secondaryGenres: J(row.sec_genres),
+    genres, secondaryGenres,
     trackCount: row.track_count, duration: row.total_duration,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
 
 const canSeeHidden = (c) => ["admin", "companion"].includes(c.get("role"));
+
+// 目录版本戳：专辑/曲目的一切写入要么改变行数、要么回写 albums.updated_at
+// （各写入端点均已保证），所以 (COUNT, MAX(updated_at)) 可作为弱 ETag。
+// 命中 If-None-Match 时以 304 免去大 JOIN、序列化与全量传输。
+async function catalogEtag(c, variant) {
+  const stamp = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), 0) AS m FROM albums")
+    .first();
+  return `W/"${variant}-${stamp.n}-${stamp.m}"`;
+}
+
+const notModified = (etag) => new Response(null, {
+  status: 304,
+  headers: { "ETag": etag, "Cache-Control": "private, no-cache" },
+});
+
+// 一次往返读多个设置键（getSetting 每键一次 D1 查询，热路径上累积成本高）
+async function getSettingsMap(env, keys) {
+  const marks = keys.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT k, v FROM settings WHERE k IN (${marks})`).bind(...keys).all();
+  const map = Object.create(null);
+  for (const row of results) map[row.k] = row.v;
+  return map;
+}
 
 /* ---------- auth ---------- */
 
@@ -462,6 +491,64 @@ async function ensureMigrations(env) {
     } catch (e) {
       if (!/already exists/i.test(String(e?.message || e))) throw e;
     }
+    // 艺人维度查询（头像解析/删除清理/隐藏判定等 8 处 WHERE artist = ?）走索引
+    try {
+      await env.DB.prepare(
+        "CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist)").run();
+    } catch (e) {
+      if (!/already exists/i.test(String(e?.message || e))) throw e;
+    }
+    // genre 归一化副表：同 genre 推荐从「全表 json_each 扫描」变成索引点查。
+    // 同步交给触发器：任何写入者（API / 直接 SQL / 恢复的数据库）都保持一致。
+    // 触发器只在这里装（wrangler d1 execute --file 对 BEGIN..END 有切分缺陷，
+    // 不能放进 schema.sql；运行时单条 prepare 无此问题）。
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS album_genres (
+      album_id TEXT NOT NULL,
+      genre TEXT NOT NULL,
+      PRIMARY KEY (genre, album_id)
+    )`).run();
+    const GENRE_ROWS_SQL = (ref) => `
+      INSERT OR IGNORE INTO album_genres (album_id, genre)
+      SELECT ${ref}.id, lower(CAST(j.value AS TEXT))
+      FROM json_each(CASE WHEN json_valid(${ref}.genres)
+        THEN ${ref}.genres ELSE '[]' END) j
+      UNION
+      SELECT ${ref}.id, lower(CAST(j.value AS TEXT))
+      FROM json_each(CASE WHEN json_valid(${ref}.sec_genres)
+        THEN ${ref}.sec_genres ELSE '[]' END) j;`;
+    await env.DB.prepare(`
+      CREATE TRIGGER IF NOT EXISTS trg_album_genres_ins
+      AFTER INSERT ON albums
+      BEGIN
+        ${GENRE_ROWS_SQL("new")}
+      END`).run();
+    await env.DB.prepare(`
+      CREATE TRIGGER IF NOT EXISTS trg_album_genres_upd
+      AFTER UPDATE OF genres, sec_genres ON albums
+      BEGIN
+        DELETE FROM album_genres WHERE album_id = new.id;
+        ${GENRE_ROWS_SQL("new")}
+      END`).run();
+    await env.DB.prepare(`
+      CREATE TRIGGER IF NOT EXISTS trg_album_genres_del
+      AFTER DELETE ON albums
+      BEGIN
+        DELETE FROM album_genres WHERE album_id = old.id;
+      END`).run();
+    // 触发器安装前已有的专辑（既存部署首次升级）：回填一次
+    const seeded = await env.DB.prepare(
+      "SELECT 1 FROM album_genres LIMIT 1").first();
+    if (!seeded) {
+      await env.DB.prepare(`
+        INSERT OR IGNORE INTO album_genres (album_id, genre)
+        SELECT albums.id, lower(CAST(j.value AS TEXT))
+        FROM albums, json_each(CASE WHEN json_valid(albums.genres)
+          THEN albums.genres ELSE '[]' END) j
+        UNION
+        SELECT albums.id, lower(CAST(j.value AS TEXT))
+        FROM albums, json_each(CASE WHEN json_valid(albums.sec_genres)
+          THEN albums.sec_genres ELSE '[]' END) j`).run();
+    }
     migratedDbs.add(env.DB);
   })().finally(() => { migrationPromises.delete(env.DB); });
   migrationPromises.set(env.DB, migration);
@@ -495,6 +582,8 @@ app.use("/api/artists", (c, next) =>
 app.get("/api/library", async (c) => {
   // includeHidden=1：管理员看隐藏音盤（精选/后台用）；默认对所有人隐藏
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
+  const etag = await catalogEtag(c, `lib${showHidden ? "h" : ""}`);
+  if (c.req.header("If-None-Match") === etag) return notModified(etag);
   const { results } = await c.env.DB.prepare(`
     SELECT a.*, COUNT(t.id) AS track_count,
            SUM(t.duration) AS total_duration
@@ -502,7 +591,8 @@ app.get("/api/library", async (c) => {
     WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
     GROUP BY a.id
     ORDER BY a.artist_sort, a.artist, a.year, a.title`).all();
-  return c.json(results.map(albumOut));
+  return c.json(results.map(albumOut), 200,
+    { "ETag": etag, "Cache-Control": "private, no-cache" });
 });
 
 app.get("/api/album/:id", async (c) => {
@@ -516,40 +606,39 @@ app.get("/api/album/:id", async (c) => {
   if (album.hidden && !canSeeHidden(c)) {
     return c.json({ error: "not found" }, 404);
   }
-  const { results: tracks } = await c.env.DB.prepare(`
-    SELECT id, disc, track, title, duration, format, bitrate, size, path
-    FROM tracks WHERE album_id = ? ORDER BY disc, track, title`)
-    .bind(id).all();
   const out = albumOut(album);
-  out.tracks = tracks;
-  const noteRow = await c.env.DB.prepare(
-    "SELECT text FROM notes WHERE kind = 'album' AND id = ?").bind(id).first();
-  out.note = noteRow?.text || "";
-  const { results: images } = await c.env.DB.prepare(`
-    SELECT id FROM album_images WHERE album_id = ?
-    ORDER BY sort, created_at`).bind(id).all();
-  out.images = images.map((i) => i.id);
-  // 同 genre 推荐：主 genre 重合的其他专辑，按评分降序（不含隐藏）
-  out.similar = [];
+  // 四个子查询互不依赖：并行发出，省 3 次 D1 往返（专辑页是最热读路径之一）
   const main = out.genres[0];
-  if (main) {
-    const { results: sim } = await c.env.DB.prepare(`
-      SELECT id, artist, title, year, rym_rating FROM albums
-      WHERE id != ? AND COALESCE(hidden,0)=0 AND (
-        EXISTS (SELECT 1 FROM json_each(
-          CASE WHEN json_valid(albums.genres) THEN albums.genres ELSE '[]' END
-        ) g WHERE lower(CAST(g.value AS TEXT)) = lower(?))
-        OR EXISTS (SELECT 1 FROM json_each(
-          CASE WHEN json_valid(albums.sec_genres) THEN albums.sec_genres ELSE '[]' END
-        ) g WHERE lower(CAST(g.value AS TEXT)) = lower(?))
-      )
-      ORDER BY rym_rating IS NULL, rym_rating DESC LIMIT 12`)
-      .bind(id, main, main).all();
-    out.similar = sim.map((s) => ({
-      id: s.id, artist: s.artist, title: s.title, year: s.year,
-      rating: s.rym_rating,
-    }));
-  }
+  const [{ results: tracks }, noteRow, { results: images }, sim] =
+    await Promise.all([
+      c.env.DB.prepare(`
+        SELECT id, disc, track, title, duration, format, bitrate, size, path
+        FROM tracks WHERE album_id = ? ORDER BY disc, track, title`)
+        .bind(id).all(),
+      c.env.DB.prepare(
+        "SELECT text FROM notes WHERE kind = 'album' AND id = ?")
+        .bind(id).first(),
+      c.env.DB.prepare(`
+        SELECT id FROM album_images WHERE album_id = ?
+        ORDER BY sort, created_at`).bind(id).all(),
+      // 同 genre 推荐：主 genre 重合的其他专辑，按评分降序（不含隐藏）。
+      // album_genres 副表点查代替全表 json_each 扫描。
+      main
+        ? c.env.DB.prepare(`
+            SELECT a.id, a.artist, a.title, a.year, a.rym_rating
+            FROM album_genres g JOIN albums a ON a.id = g.album_id
+            WHERE g.genre = lower(?) AND a.id != ? AND COALESCE(a.hidden,0)=0
+            ORDER BY a.rym_rating IS NULL, a.rym_rating DESC LIMIT 12`)
+          .bind(main, id).all()
+        : null,
+    ]);
+  out.tracks = tracks;
+  out.note = noteRow?.text || "";
+  out.images = images.map((i) => i.id);
+  out.similar = (sim?.results || []).map((s) => ({
+    id: s.id, artist: s.artist, title: s.title, year: s.year,
+    rating: s.rym_rating,
+  }));
   return c.json(out);
 });
 
@@ -557,6 +646,8 @@ app.get("/api/album/:id", async (c) => {
 
 app.get("/api/tracks", async (c) => {
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
+  const etag = await catalogEtag(c, `trk${showHidden ? "h" : ""}`);
+  if (c.req.header("If-None-Match") === etag) return notModified(etag);
   const { results } = await c.env.DB.prepare(`
     SELECT t.id, t.title, t.duration, t.format, t.track, t.disc,
            a.id AS albumId, a.title AS albumTitle, a.artist,
@@ -564,7 +655,8 @@ app.get("/api/tracks", async (c) => {
            COALESCE(a.hidden,0) AS hidden
     FROM tracks t JOIN albums a ON a.id = t.album_id
     WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}`).all();
-  return c.json(results);
+  return c.json(results, 200,
+    { "ETag": etag, "Cache-Control": "private, no-cache" });
 });
 
 /* ---------- 收藏（管理员标记，所有人可看） ---------- */
@@ -1338,9 +1430,11 @@ app.get("/api/stream/:trackId", async (c) => {
   // stream_proxy=1：开启音源代理
   // stream_proxy_url：可选自定义代理（其它 Worker / 中转）；空则本站 /api/stream 自代理
   // ?proxy=1：单次强制本站代理（前端预取用，避 CORS）
-  const proxyTpl = ((await getSetting(c.env, "stream_proxy_url")) || "").trim();
+  const proxySettings = await getSettingsMap(c.env,
+    ["stream_proxy_url", "stream_proxy"]);
+  const proxyTpl = (proxySettings.stream_proxy_url || "").trim();
   const onceProxy = c.req.query("proxy") === "1";
-  const proxyOn = (await getSetting(c.env, "stream_proxy")) === "1";
+  const proxyOn = proxySettings.stream_proxy === "1";
   if (url) {
     // 自定义外部代理：把 OneDrive 直链交给代理地址（仅音频）
     // 模板：https://proxy.example.com/?url={url}  或  https://proxy.example.com/  （自动拼 ?url=）
@@ -1488,7 +1582,9 @@ async function mirrorImageBytes(c, conf, cacheKey, bytes, contentType) {
 }
 
 async function validImageResponse(response) {
-  if (!response?.ok) return null;
+  // 放弃的响应体要显式取消：Workers 每个隔离实例的并发子请求连接有限，
+  // 未读的 body 会一直占着连接直到 GC。
+  if (!response?.ok) { await discardResponse(response); return null; }
   let bytes;
   try { bytes = await readResponseLimited(response, MAX_BUFFERED_IMAGE_BYTES); }
   catch { return null; }
@@ -2685,18 +2781,21 @@ app.post("/api/scan", async (c) => {
 /* ---------- 管理后台 ---------- */
 
 app.get("/api/admin/overview", async (c) => {
-  const a = await c.env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM albums").first();
-  const t = await c.env.DB.prepare(
-    "SELECT COUNT(*) AS n, SUM(size) AS bytes FROM tracks").first();
-  const posts = await c.env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM source_posts WHERE status = 'new'").first();
+  const [a, t, posts, s] = await Promise.all([
+    c.env.DB.prepare("SELECT COUNT(*) AS n FROM albums").first(),
+    c.env.DB.prepare(
+      "SELECT COUNT(*) AS n, SUM(size) AS bytes FROM tracks").first(),
+    c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM source_posts WHERE status = 'new'").first(),
+    getSettingsMap(c.env,
+      ["companion_last_seen", "source_last_scan", "source_last_error"]),
+  ]);
   return c.json({
     albums: a.n, tracks: t.n, bytes: t.bytes || 0,
     newPosts: posts.n,
-    companionLastSeen: Number(await getSetting(c.env, "companion_last_seen")) || null,
-    sourceLastScan: Number(await getSetting(c.env, "source_last_scan")) || null,
-    sourceLastError: (await getSetting(c.env, "source_last_error")) || "",
+    companionLastSeen: Number(s.companion_last_seen) || null,
+    sourceLastScan: Number(s.source_last_scan) || null,
+    sourceLastError: s.source_last_error || "",
   });
 });
 
@@ -2722,21 +2821,24 @@ app.post("/api/admin/password", async (c) => {
 });
 
 app.get("/api/admin/settings", async (c) => {
-  const tok = (await getSetting(c.env, "discogs_token")) || "";
+  const s = await getSettingsMap(c.env, [
+    "discogs_token", "source_url", "archive_passwords", "guest_open",
+    "module_source", "stream_proxy", "stream_proxy_url",
+  ]);
+  const tok = s.discogs_token || "";
   return c.json({
-    sourceUrl: (await getSetting(c.env, "source_url")) || "",
-    archivePasswords: settingStringList(
-      (await getSetting(c.env, "archive_passwords")) || "[]"),
+    sourceUrl: s.source_url || "",
+    archivePasswords: settingStringList(s.archive_passwords || "[]"),
     // token 只回掩码（••••+末4位），置空表示未配置
     discogsToken: tok ? `••••${tok.slice(-4)}` : "",
-    guestOpen: (await getSetting(c.env, "guest_open")) === "1",
+    guestOpen: s.guest_open === "1",
     // 可插拔模块（默认关：这些是重度私人工作流，多数用户用不上）
-    moduleSource: (await getSetting(c.env, "module_source")) === "1",
+    moduleSource: s.module_source === "1",
     // 音源代理：强制所有有直链的音轨经 Worker 转发（大陆访问 OneDrive 慢时开）
-    streamProxy: (await getSetting(c.env, "stream_proxy")) === "1",
+    streamProxy: s.stream_proxy === "1",
     // 自定义代理地址（空 = 用本站 /api/stream 代理；可填其他 Worker）
     // 支持 {url} 占位：https://my-proxy.example.com/?u={url}
-    streamProxyUrl: (await getSetting(c.env, "stream_proxy_url")) || "",
+    streamProxyUrl: s.stream_proxy_url || "",
   });
 });
 
@@ -2920,35 +3022,48 @@ app.post("/api/admin/r2/purge-hidden", async (c) => {
       || limit === INVALID_INPUT || limit === null) {
     return c.json({ error: "offset / limit 参数无效" }, 400);
   }
-  const { results: hiddenAlbums } = await c.env.DB.prepare(
-    "SELECT id, artist, title FROM albums WHERE COALESCE(hidden,0)=1 " +
-    "ORDER BY created_at, id").all();
-  const { results: hiddenArtists } = await c.env.DB.prepare(`
-    SELECT ar.name FROM artists ar WHERE NOT EXISTS (
+  // 每步只取本批行：轮询推进时不再反复重建全量任务清单（原为 O(total²/limit) 行读）
+  const [{ n: nAlbums = 0 } = {}, { n: nArtists = 0 } = {}] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM albums WHERE COALESCE(hidden,0)=1").first(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS n FROM artists ar WHERE NOT EXISTS (
       SELECT 1 FROM albums a WHERE a.artist = ar.name
-      AND COALESCE(a.hidden,0)=0
-    ) ORDER BY ar.name COLLATE NOCASE`).all();
-  const tasks = [
-    ...hiddenAlbums.map((album) => ({ kind: "album", ...album })),
-    ...hiddenArtists.map((artist) => ({ kind: "artist", artist: artist.name })),
-  ];
-  const batch = tasks.slice(offset, offset + limit);
+      AND COALESCE(a.hidden,0)=0)`).first(),
+  ]);
+  const total = nAlbums + nArtists;
+  const tasks = [];
+  if (offset < nAlbums && tasks.length < limit) {
+    const { results } = await c.env.DB.prepare(
+      "SELECT id, artist, title FROM albums WHERE COALESCE(hidden,0)=1 " +
+      "ORDER BY created_at, id LIMIT ? OFFSET ?")
+      .bind(Math.min(limit, nAlbums - offset), offset).all();
+    tasks.push(...results.map((album) => ({ kind: "album", ...album })));
+  }
+  if (tasks.length < limit && offset + tasks.length >= nAlbums) {
+    const { results } = await c.env.DB.prepare(`
+      SELECT ar.name FROM artists ar WHERE NOT EXISTS (
+        SELECT 1 FROM albums a WHERE a.artist = ar.name
+        AND COALESCE(a.hidden,0)=0
+      ) ORDER BY ar.name COLLATE NOCASE LIMIT ? OFFSET ?`)
+      .bind(limit - tasks.length, Math.max(0, offset - nAlbums)).all();
+    tasks.push(...results.map((artist) => ({ kind: "artist", artist: artist.name })));
+  }
   let processed = offset;
-  for (const task of batch) {
+  for (const task of tasks) {
     const ok = task.kind === "album"
       ? await purgeAlbumR2(c.env, task.id, true)
       : await purgeArtistR2(c.env, task.artist, true);
     if (!ok) {
       return c.json({
         error: "无法删除隐藏内容的公开 R2 镜像；请检查 R2 凭据",
-        task, processed, total: tasks.length, finished: false,
+        task, processed, total, finished: false,
       }, 502);
     }
     processed += 1;
   }
   return c.json({
-    ok: true, processed, total: tasks.length,
-    finished: processed >= tasks.length,
+    ok: true, processed, total,
+    finished: processed >= total,
   });
 });
 
@@ -2965,7 +3080,7 @@ async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim, storageId = nu
     || (await storage.downloadUrl(env, srcPath, storageId));
   if (url) {
     const img = await fetchWithTimeout(url);
-    if (!img.ok) return "fail";
+    if (!img.ok) { await discardResponse(img); return "fail"; }
     ct = img.headers.get("Content-Type") || "image/jpeg";
     try { bytes = await readResponseLimited(img, MAX_BUFFERED_IMAGE_BYTES); }
     catch { return "fail"; }
@@ -3000,39 +3115,63 @@ app.post("/api/admin/r2/prewarm", async (c) => {
     return c.json({ error: "offset / limit 参数无效" }, 400);
   }
 
-  // 构建统一任务清单：[{key, path, dim}]（path 为 null 的封面需先 resolveCover）
+  // 每步只读本批的源行（原实现每次轮询都重建全量任务数组，O(total²/limit) 行读）。
+  // 任务粒度 = 数据库行：封面 1 行 1 任务；内页图 1 行 1 任务（内含 480/1000 两次镜像）；
+  // 头像 1 行 1 任务。offset/processed/total 均按行计。
+  const [{ n: nAlbums = 0 } = {}, { n: nImages = 0 } = {},
+    { n: nAvatars = 0 } = {}] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM albums WHERE COALESCE(hidden,0)=0").first(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS n FROM album_images i
+      JOIN albums a ON a.id = i.album_id
+      WHERE COALESCE(a.hidden,0)=0`).first(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS n FROM artists ar
+      WHERE ar.avatar_path != '' AND EXISTS (
+        SELECT 1 FROM albums a WHERE a.artist = ar.name
+        AND COALESCE(a.hidden,0)=0)`).first(),
+  ]);
+  const total = nAlbums + nImages + nAvatars;
   const tasks = [];
-  const { results: albums } = await c.env.DB.prepare(
-    `SELECT id, folder, cover_path, storage_id FROM albums
-     WHERE COALESCE(hidden,0)=0 ORDER BY created_at`).all();
-  for (const album of albums) {
-    tasks.push({ kind: "cover", album, sizes: [["original", null]],
-      sid: album.storage_id || null });
+  if (offset < nAlbums && tasks.length < limit) {
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, folder, cover_path, storage_id FROM albums
+       WHERE COALESCE(hidden,0)=0 ORDER BY created_at, id LIMIT ? OFFSET ?`)
+      .bind(Math.min(limit, nAlbums - offset), offset).all();
+    for (const album of results) {
+      tasks.push({ kind: "cover", album, sizes: [["original", null]],
+        sid: album.storage_id || null });
+    }
   }
-  const { results: imgs } = await c.env.DB.prepare(`
-    SELECT i.id, i.path, a.storage_id FROM album_images i
-    JOIN albums a ON a.id = i.album_id
-    WHERE COALESCE(a.hidden,0)=0 ORDER BY i.created_at`).all();
-  for (const im of imgs) {
-    for (const [size, dim] of [[480, "c480x480"], [1000, "c1000x1000"]]) {
-      tasks.push({ kind: "image", key: `img:${im.id}:${size}`, path: im.path, dim,
+  if (tasks.length < limit && offset + tasks.length >= nAlbums
+      && offset + tasks.length < nAlbums + nImages) {
+    const { results } = await c.env.DB.prepare(`
+      SELECT i.id, i.path, a.storage_id FROM album_images i
+      JOIN albums a ON a.id = i.album_id
+      WHERE COALESCE(a.hidden,0)=0 ORDER BY i.created_at, i.id
+      LIMIT ? OFFSET ?`)
+      .bind(limit - tasks.length,
+        Math.max(0, offset + tasks.length - nAlbums)).all();
+    for (const im of results) {
+      tasks.push({ kind: "image", id: im.id, path: im.path,
         sid: im.storage_id || null });
     }
   }
-  // 头像有独立的存储绑定；跨盘艺人不能再从任一专辑推断。
-  const { results: arts } = await c.env.DB.prepare(`
-    SELECT ar.avatar_path, ar.storage_id FROM artists ar
-    WHERE ar.avatar_path != '' AND EXISTS (
-      SELECT 1 FROM albums a WHERE a.artist = ar.name
-      AND COALESCE(a.hidden,0)=0
-    )`).all();
-  for (const a of arts) {
-    tasks.push({ kind: "avatar", path: a.avatar_path, key: null, dim: "c480x480",
-      sid: a.storage_id || null });
+  if (tasks.length < limit && offset + tasks.length >= nAlbums + nImages) {
+    // 头像有独立的存储绑定；跨盘艺人不能再从任一专辑推断。
+    const { results } = await c.env.DB.prepare(`
+      SELECT ar.avatar_path, ar.storage_id FROM artists ar
+      WHERE ar.avatar_path != '' AND EXISTS (
+        SELECT 1 FROM albums a WHERE a.artist = ar.name
+        AND COALESCE(a.hidden,0)=0
+      ) ORDER BY ar.name COLLATE NOCASE LIMIT ? OFFSET ?`)
+      .bind(limit - tasks.length,
+        Math.max(0, offset + tasks.length - nAlbums - nImages)).all();
+    for (const a of results) {
+      tasks.push({ kind: "avatar", path: a.avatar_path, key: null,
+        dim: "c480x480", sid: a.storage_id || null });
+    }
   }
 
-  const total = tasks.length;
-  const batch = tasks.slice(offset, offset + limit);
   let done = 0, skipped = 0, failed = 0;
   const mirror = async (...args) => {
     try {
@@ -3041,7 +3180,7 @@ app.post("/api/admin/r2/prewarm", async (c) => {
       return "fail";
     }
   };
-  for (const t of batch) {
+  for (const t of tasks) {
     if (t.kind === "cover") {
       let cover;
       try { cover = await resolveCover(c.env, t.album); } catch { cover = null; }
@@ -3050,6 +3189,17 @@ app.post("/api/admin/r2/prewarm", async (c) => {
         const r = await mirror(c.env, conf, `art:${t.album.id}:${size}`, cover, dim, t.sid);
         r === "done" ? done++ : r === "skip" ? skipped++ : failed++;
       }
+    } else if (t.kind === "image") {
+      // 每行计一次：done/skipped/failed 与 total（按行数）保持同一量纲，
+      // 完成 toast 的合计不会超过进度条显示的 total
+      const sizeResults = [];
+      for (const [size, dim] of [[480, "c480x480"], [1000, "c1000x1000"]]) {
+        sizeResults.push(
+          await mirror(c.env, conf, `img:${t.id}:${size}`, t.path, dim, t.sid));
+      }
+      if (sizeResults.includes("fail")) failed++;
+      else if (sizeResults.includes("done")) done++;
+      else skipped++;
     } else {
       let key = t.key;
       if (!key) {
@@ -3061,7 +3211,7 @@ app.post("/api/admin/r2/prewarm", async (c) => {
       r === "done" ? done++ : r === "skip" ? skipped++ : failed++;
     }
   }
-  const next = offset + batch.length;
+  const next = offset + tasks.length;
   return c.json({ total, processed: next, done, skipped, failed, finished: next >= total });
 });
 
@@ -3554,9 +3704,11 @@ async function migrateAlbumStep(env, albumId, targetId, fileIndex = 0) {
     return { ok: false, error: "fileIndex 超出迁移清单范围" };
   }
   if (fileIndex === files.length) {
+    // storageId 出现在 /api/library 载荷里：必须同时回写 updated_at，
+    // 否则目录 ETag 不变，浏览器 304 会继续提供迁移前的旧 storageId。
     const updates = [env.DB.prepare(
-      "UPDATE albums SET storage_id = ? WHERE id = ?")
-      .bind(targetId || null, albumId)];
+      "UPDATE albums SET storage_id = ?, updated_at = ? WHERE id = ?")
+      .bind(targetId || null, Date.now(), albumId)];
     if (avatarPath) {
       updates.push(env.DB.prepare(
         "UPDATE artists SET storage_id = ? WHERE name = ? AND avatar_path = ?")
@@ -3656,19 +3808,23 @@ app.post("/api/admin/storages/migrate-all", async (c) => {
       .bind(targetId).first();
     if (!t) return c.json({ error: "target not found" }, 404);
   }
-  const { results: allAlbums } = await c.env.DB.prepare(
-    "SELECT id, artist, title, storage_id FROM albums ORDER BY created_at").all();
-  const need = allAlbums.filter((a) => (a.storage_id || null) !== (targetId || null));
-  // ``need`` shrinks after each completed album. albumOffset is a cumulative
-  // done count, not an index into that newly-shrunk list; indexing need[offset]
-  // skipped every other album (A done -> [B,C] -> offset 1 selected C).
-  const totalAlbums = offset + need.length;
-  if (!need.length) {
+  // 只数一遍 + 取第一张待迁移专辑：不再每个文件步骤都全表加载过滤。
+  // targetId 经上方校验必为非空字符串，COALESCE('') 只用于兜底 NULL storage_id。
+  // ``need`` 随迁移完成而缩减。albumOffset 是累计完成数，不是下标；
+  // 永远处理「第一张还不在目标上」的专辑。
+  const [{ n: needCount = 0 } = {}, album] = await Promise.all([
+    c.env.DB.prepare(`SELECT COUNT(*) AS n FROM albums
+      WHERE COALESCE(storage_id, '') != ?`).bind(targetId).first(),
+    c.env.DB.prepare(`SELECT id, artist, title, storage_id FROM albums
+      WHERE COALESCE(storage_id, '') != ?
+      ORDER BY created_at, id LIMIT 1`).bind(targetId).first(),
+  ]);
+  const totalAlbums = offset + needCount;
+  if (!album) {
     return c.json({
       finished: true, totalAlbums, albumOffset: offset, doneAlbums: offset,
     });
   }
-  const album = need[0];
   const step = await migrateAlbumStep(c.env, album.id, targetId, index);
   if (!step.ok) {
     return c.json({
@@ -3680,7 +3836,7 @@ app.post("/api/admin/storages/migrate-all", async (c) => {
     // 这张完成 → 推进到下一张（fileIndex 归零）
     const nextOffset = offset + 1;
     return c.json({
-      finished: need.length === 1,
+      finished: needCount === 1,
       albumFinished: true,
       albumOffset: nextOffset,
       fileIndex: 0,

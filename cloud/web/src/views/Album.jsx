@@ -263,7 +263,7 @@ function RymDialog({ album, onClose, onSaved }) {
                  onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]) }}>
             <I.html size={28} />
             <div>{t('rym.drop')}</div>
-            <input type="file" accept=".html,.htm,.mhtml" hidden
+            <input type="file" accept=".html,.htm" hidden
                    onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])} />
           </label>
           {err && <div style={{ color: '#ff8b7a', marginTop: 12, fontSize: 13 }}>{err}</div>}
@@ -811,8 +811,13 @@ function Gallery({ album, isAdmin, onChanged }) {
 
   const upload = async (files) => {
     if (uploadInFlight.current) return
-    const list = [...files].filter((f) => imageExt(f))
-    if (!list.length) return
+    const picked = [...files]
+    const list = picked.filter((f) => imageExt(f))
+    if (!list.length) {
+      // 选了文件但都不是支持的图片类型（HEIC/BMP/SVG…）：给反馈而不是静默
+      if (picked.length) toast(t('gallery.noImage'), 'err')
+      return
+    }
     uploadInFlight.current = true
     setUploading(list.length)
     let succeeded = 0
@@ -889,7 +894,9 @@ function Gallery({ album, isAdmin, onChanged }) {
               : <><I.plus size={16} /> {baseImages.length ? t('gallery.add') : t('gallery.uploadFirst')}</>}
           </button>
         )}
-        <input ref={fileRef} type="file" accept="image/*" multiple hidden
+        <input ref={fileRef} type="file"
+               accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+               multiple hidden
                onChange={(e) => { upload(e.target.files); e.target.value = '' }} />
       </div>
 
@@ -1171,7 +1178,8 @@ function TracksDialog({ album, onClose, onChanged }) {
 export default function AlbumPage({ id, onPlay, playingId, currentId,
                                     currentAlbumId, onTogglePlayback,
                                     isAdmin, favAlbums, favTracks, toggleFav,
-                                    onChanged, onOpen, onOpenArtist, onOpenGenre }) {
+                                    onChanged, onOpen, onOpenArtist, onOpenGenre,
+                                    onAuthError }) {
   const { t } = useI18n()
   const [al, setAl] = useState(null)
   const [loadError, setLoadError] = useState('')
@@ -1180,6 +1188,8 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
   const [genresExpanded, setGenresExpanded] = useState(false)
   const compactTaxonomy = useMediaQuery('(max-width: 720px)')
   const loadSeq = useRef(0)
+  const delInFlight = useRef(false)
+  const [deleting, setDeleting] = useState(false)
   const toast = useToast()
 
   const load = async () => {
@@ -1191,6 +1201,9 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       setLoadError('')
     } catch (e) {
       if (seq !== loadSeq.current) return
+      // 会话过期走整站统一的登录流程；本地「重试」按钮重放同一个
+      // 未认证请求，永远不可能成功。
+      if (e instanceof api.AuthError && onAuthError) { onAuthError(); return }
       setLoadError(e.message || 'load failed')
     }
   }
@@ -1238,12 +1251,21 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
   }
 
   const del = async (files) => {
+    // 页面唯一不可逆操作：双击/连点两个删除按钮会发两次 DELETE，
+    // 第二次 404 又弹「删除失败」盖住成功提示。加在途守卫。
+    if (delInFlight.current) return
+    delInFlight.current = true
+    setDeleting(true)
     try {
       await api.deleteAlbum(al.id, files)
       toast(files ? t('albumPage.deletedFiles') : t('albumPage.deleted'), 'ok')
       onChanged()
       navigate('/')
-    } catch (e) { toast(t('albumPage.deleteFail', e.message), 'err') }
+    } catch (e) {
+      toast(t('albumPage.deleteFail', e.message), 'err')
+      delInFlight.current = false
+      setDeleting(false)
+    }
   }
 
   const toggleHide = async () => {
@@ -1412,7 +1434,14 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
         {al.tracks.map((t, i) => (
           <div key={t.id}
                className={`trow ${currentId === t.id ? 'playing' : ''}`}
-               onClick={() => onPlay(al, al.tracks, i)}>
+               role="button" tabIndex={0} aria-label={t.title}
+               onClick={() => onPlay(al, al.tracks, i)}
+               onKeyDown={(e) => {
+                 if (e.target !== e.currentTarget) return
+                 if (e.key === 'Enter' || e.key === ' ') {
+                   e.preventDefault(); onPlay(al, al.tracks, i)
+                 }
+               }}>
             <span className="num">
               {currentId === t.id && playingId
                 ? <span className="eq"><i /><i /><i /></span>
@@ -1468,10 +1497,12 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
             {t('albumPage.deleteBody')}
           </p>
           <div className="actions">
-            <button className="btn" onClick={() => setDlg('')}>{t('common.cancel')}</button>
-            <button className="btn" onClick={() => del(false)}>{t('albumPage.deleteKeep')}</button>
-            <button className="btn danger" onClick={() => del(true)}>
-              {t('albumPage.deleteFiles')}</button>
+            <button className="btn" disabled={deleting}
+                    onClick={() => setDlg('')}>{t('common.cancel')}</button>
+            <button className="btn" disabled={deleting}
+                    onClick={() => del(false)}>{t('albumPage.deleteKeep')}</button>
+            <button className="btn danger" disabled={deleting} onClick={() => del(true)}>
+              {deleting ? <I.spin /> : t('albumPage.deleteFiles')}</button>
           </div>
         </Dialog>
       )}

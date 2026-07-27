@@ -3,7 +3,7 @@
 // 同一套业务代码（index.js），D1/KV 换成本地 SQLite 文件。
 // 环境变量（或同目录 .env）：
 //   APP_PASSWORD ADMIN_PASSWORD SESSION_SECRET COMPANION_KEY
-//   OD_ROOT=Music/Library  DATA_DIR=./data  PORT=8788
+//   OD_ROOT=Music/Library  DATA_DIR=./data  PORT=8788  HOST=0.0.0.0
 //   SOURCE_SCAN_HOURS=6（0 关闭定时扫描）
 //   TRUST_PROXY=1（仅在受信任反向代理后启用，使用 X-Forwarded-For）
 
@@ -89,11 +89,34 @@ root.get("*", (c) => {
 });
 
 const port = Number(process.env.PORT || 8788);
-serve({ fetch: root.fetch, port }, () =>
-  console.log(`mihonban cloud (node) on http://0.0.0.0:${port}`));
+// HOST=127.0.0.1 可在反向代理后收紧监听面；默认保持 0.0.0.0（VPS 直连场景）
+const hostname = process.env.HOST || "0.0.0.0";
+const server = serve({ fetch: root.fetch, port, hostname }, () =>
+  console.log(`mihonban cloud (node) on http://${hostname}:${port}`));
 
 const hours = Number(process.env.SOURCE_SCAN_HOURS ?? 6);
 if (hours > 0) {
-  setInterval(() => scanSource(env).catch(() => {}), hours * 3600_000);
-  setTimeout(() => scanSource(env).catch(() => {}), 30_000);
+  // unref：定时任务不阻止进程自然退出
+  setInterval(() => scanSource(env).catch(() => {}), hours * 3600_000).unref();
+  setTimeout(() => scanSource(env).catch(() => {}), 30_000).unref();
+}
+
+// 优雅停机：托管平台（Render/Railway/Fly/Docker/systemd）停止或重新部署时
+// 先发 SIGTERM（本地控制台 Ctrl+C 是 SIGINT）。停止接收新连接、关闭 SQLite
+// （写清 WAL，避免下次启动走恢复流程），以 0 退出。既有连接 5 秒兜底强退。
+// 注：Windows 无法投递 SIGTERM，taskkill /F 硬杀仍会报非零退出码——那是
+// 平台限制，不代表应用出错。
+let closing = false;
+function shutdown(signal) {
+  if (closing) return;
+  closing = true;
+  console.log(`${signal} received — shutting down`);
+  setTimeout(() => process.exit(0), 5000).unref();
+  server.close(() => {
+    try { db.close(); } catch { /* 已关闭 */ }
+    process.exit(0);
+  });
+}
+for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"]) {
+  process.on(signal, () => shutdown(signal));
 }

@@ -1,6 +1,7 @@
 import shutil
 import sqlite3
 
+import mutagen
 import pytest
 from mutagen.id3 import COMM, ID3, TXXX
 
@@ -120,6 +121,24 @@ def test_write_handles_multiple_disc_directories(tmp_path, silent_mp3,
 
     changed, total = write_album(tmp_path, match_row, apply=True)
     assert (changed, total) == (2, 2)
+
+
+def test_write_embeds_rym_id3_frames_in_wav(tmp_path, silent_wav, match_row):
+    album = tmp_path / "album"
+    album.mkdir()
+    path = album / "track.wav"
+    shutil.copy(silent_wav, path)
+
+    changed, total = write_album(album, match_row, apply=True)
+
+    assert (changed, total) == (1, 1)
+    tags = mutagen.File(path).tags
+    assert str(tags.getall("TXXX:RYM_RATING")[0]) == "3.87"
+    assert list(tags.getall("TCON")[0].text) == ["City Pop", "Funk", "Boogie"]
+    assert str(tags.getall("COMM:RYM:eng")[0]).startswith("RYM 3.87")
+
+    # The container-specific save path must remain idempotent.
+    assert write_album(album, match_row, apply=True) == (0, 1)
 
 
 def test_mp4_writer_is_idempotent_when_optional_fields_are_empty(monkeypatch):

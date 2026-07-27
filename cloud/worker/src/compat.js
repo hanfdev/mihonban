@@ -56,15 +56,16 @@ export function kvFromSqlite(db) {
       db.prepare("DELETE FROM _kv WHERE k = ?").run(k);
     },
     list: async ({ prefix = "", cursor = "", limit = 1000 } = {}) => {
+      // 键集分页（cursor = 上一页最后一个键）。调用方（graph/gdrive 的缓存清理）
+      // 会边翻页边删除已返回的键；OFFSET 分页在这种用法下会跳过存活的键。
       const rows = db.prepare(
         "SELECT k FROM _kv WHERE (exp IS NULL OR exp >= ?) " +
-        "AND substr(k, 1, length(?)) = ? ORDER BY k LIMIT ? OFFSET ?")
-        .all(now(), prefix, prefix, limit, Number(cursor) || 0);
-      const next = (Number(cursor) || 0) + rows.length;
+        "AND substr(k, 1, length(?)) = ? AND k > ? ORDER BY k LIMIT ?")
+        .all(now(), prefix, prefix, String(cursor || ""), limit);
       return {
         keys: rows.map((row) => ({ name: row.k })),
         list_complete: rows.length < limit,
-        cursor: rows.length < limit ? "" : String(next),
+        cursor: rows.length < limit ? "" : rows[rows.length - 1].k,
       };
     },
   };

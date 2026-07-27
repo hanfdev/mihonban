@@ -6,11 +6,19 @@
     <meta name="theme-color" content="#0d0b09" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- 字体非阻塞加载：首屏立即用系统字体（styles.css 的 --serif/--sans 已含
+         system-ui/serif 兜底），Google Fonts 可达时再异步替换。大陆等无法访问
+         fonts.googleapis.com 的网络下，页面不再等被墙请求超时而白屏。 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600;700&family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap"
-      rel="stylesheet" />
+      rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600;700&family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+        rel="stylesheet" />
+    </noscript>
     <title>見本盤 — 非売品・MIHONBAN</title>
   </head>
   <body>

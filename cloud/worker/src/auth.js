@@ -99,12 +99,12 @@ export async function checkPassword(env, password) {
   const adminHash = await getSetting(env, "admin_pass_hash");
   const admin = adminHash
     ? await verifyPassword(password, adminHash)
-    : (env.ADMIN_PASSWORD && password === env.ADMIN_PASSWORD);
+    : (!!env.ADMIN_PASSWORD && timingSafeEqual(password, env.ADMIN_PASSWORD));
   if (admin) return "admin";
   const userHash = await getSetting(env, "user_pass_hash");
   const user = userHash
     ? await verifyPassword(password, userHash)
-    : (env.APP_PASSWORD && password === env.APP_PASSWORD);
+    : (!!env.APP_PASSWORD && timingSafeEqual(password, env.APP_PASSWORD));
   return user ? "user" : null;
 }
 
@@ -138,7 +138,8 @@ export async function sessionCookie(env, role, days = 30) {
   const exp = Date.now() + days * DAY;
   const epoch = await sessionEpoch(env);
   const sig = await hmac(secret, `${exp}.${role}.${epoch}`);
-  const secure = env.DEV_INSECURE_COOKIE ? "" : " Secure;";
+  // 与全项目开关约定一致：只有显式 "1" 才关闭 Secure（"0"/"false" 不算开启）
+  const secure = env.DEV_INSECURE_COOKIE === "1" ? "" : " Secure;";
   return `${COOKIE}=${exp}.${role}.${sig}; Path=/; HttpOnly;${secure} ` +
     `SameSite=Lax; Max-Age=${days * 86400}`;
 }

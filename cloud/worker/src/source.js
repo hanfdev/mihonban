@@ -3,6 +3,7 @@
 // 明确不做的事：不下载任何音频/压缩包文件（GOAL 红线 #1 + 版权边界）。
 
 import { getSetting, setSetting } from "./auth.js";
+import { discardResponse } from "./net.js";
 
 export const SOURCE_FETCH_TIMEOUT_MS = 15_000;
 export const MAX_FEED_BYTES = 8 * 1024 * 1024;
@@ -83,7 +84,7 @@ async function fetchBloggerPage(base, startIndex, pageSize) {
     `${base}/feeds/posts/default?alt=json&max-results=${pageSize}` +
     `&start-index=${startIndex}`,
     { headers: { "User-Agent": "mihonban-feed-reader/1.0" } });
-  if (!r.ok) return null;
+  if (!r.ok) { await discardResponse(r); return null; }
   const j = JSON.parse(await readTextLimited(r));
   const entries = (j.feed?.entry || []).map((e) => safeEntry({
     title: e.title?.$t || "(untitled)",
@@ -123,7 +124,7 @@ async function fetchEntries(sourceUrl, deep = false) {
     try {
       const r = await fetchWithTimeout(base + path,
         { headers: { "User-Agent": "mihonban-feed-reader/1.0" } });
-      if (!r.ok) continue;
+      if (!r.ok) { await discardResponse(r); continue; }
       const xml = await readTextLimited(r);
       const items = [...xml.matchAll(
         /<(?:item|entry)[\s\S]*?<\/(?:item|entry)>/g)].map((m) => m[0]);

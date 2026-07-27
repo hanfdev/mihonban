@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import shutil
 import subprocess
+import wave
 import zipfile
 from pathlib import Path
 
@@ -70,6 +71,18 @@ def silent_mp3(tmp_path_factory) -> Path:
          str(base)],
         check=True)
     return base
+
+
+@pytest.fixture
+def silent_wav(tmp_path: Path) -> Path:
+    """A tiny valid PCM WAV that can carry an embedded ID3 chunk."""
+    path = tmp_path / "silence.wav"
+    with wave.open(str(path), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes(b"\0\0" * 800)
+    return path
 
 
 def tag_mp3(path: Path, title: str | None = None, artist: str | None = None,

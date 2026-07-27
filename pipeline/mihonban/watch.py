@@ -113,35 +113,92 @@ def run_watch(cfg: Config, console) -> int:
 
     stability: dict[Path, StabilityState] = {}
     last_heartbeat = 0.0
+    # 有过同步失败（rclone/登记非零退出或异常）时置位：下个心跳周期做一次
+    # 全量对账重试，成功即清。否则一次瞬时网络故障会让专辑本地有、云端无，
+    # 且没有任何自动补救路径。
+    pending_sync_retry = False
     try:
         while True:
             # 每 10 分钟报一次心跳（后台「守望在线」状态），顺带拉新解压密码，
-            # 并把网页上传的新专辑拉回本地库。
+            # 并把网页上传的新专辑拉回本地库。网络抖动只记日志，不中断守望。
             if cloud_ready(cfg) and time.time() - last_heartbeat > 600:
-                merge_cloud_passwords(cfg)
+                try:
+                    merge_cloud_passwords(cfg)
+                except Exception:  # noqa: BLE001 — 守望不能死
+                    log.exception("cloud password refresh failed inside watch")
                 pull_quietly(cfg, console)
+                if pending_sync_retry:
+                    try:
+                        if run_sync(cfg, console, upload=True) == 0:
+                            pending_sync_retry = False
+                            log.info("deferred sync retry succeeded")
+                    except Exception:  # noqa: BLE001
+                        log.exception("deferred sync retry crashed inside watch")
                 last_heartbeat = time.time()
-            ready = _stable(_inbox_items(cfg), stability)
+            # 收件箱本身也可能瞬时不可用（网络盘断连、目录被重建、权限抖动）；
+            # 模块契约是「任何一步失败都不会中断守望」，扫描同样要兜住。
+            try:
+                ready = _stable(_inbox_items(cfg), stability)
+            except OSError as e:
+                log.warning("inbox scan failed, retrying: %s", e)
+                time.sleep(POLL_SECONDS)
+                continue
             if ready:
                 names = ", ".join(p.name for p in ready)
                 console.print(f"\n发现 {len(ready)} 个稳定收件项：{names}")
                 log.info("watch picked up: %s", names)
                 if cloud_ready(cfg):
-                    merge_cloud_passwords(cfg)   # 用最新密码解压
+                    try:
+                        merge_cloud_passwords(cfg)   # 用最新密码解压
+                    except Exception:  # noqa: BLE001
+                        log.exception("cloud password refresh failed inside watch")
                     last_heartbeat = time.time()
+                imported: list[Path] = []
+                need_full_sync = False
                 try:
                     # 只喂内容已连续稳定的清单，别让 ingest 自己重扫收件箱
                     # 撞上还在拷贝的半截文件或目录树。
-                    run_ingest(cfg, apply=True, items=ready)
+                    results = run_ingest(cfg, apply=True, items=ready)
+                    seen: set[str] = set()
+                    for result in results:
+                        # 只有 status="error"（逐项异常被吞、albums 被清空）才可能
+                        # 存在「已被 beets 搬进库却拿不到 library_path」的专辑，
+                        # 需要全量对账兜底。"quarantined"（密码不对/没有音频）根本
+                        # 没有东西入库，绝不能为它扫全库——那会让每个坏压缩包都
+                        # 触发一次全库重读 tag + 全库 rclone。
+                        if result.status == "error":
+                            need_full_sync = True
+                        for album in result.albums:
+                            if (album.action == "imported" and album.library_path
+                                    and album.library_path not in seen):
+                                seen.add(album.library_path)
+                                imported.append(Path(album.library_path))
                 except Exception:  # noqa: BLE001 — 守望不能死
+                    need_full_sync = True
                     log.exception("ingest crashed inside watch")
                     console.print("[red]ingest 出错（见日志），继续守望[/red]")
-                if cloud_ready(cfg):
+                if cloud_ready(cfg) and (need_full_sync or imported):
                     try:
-                        run_sync(cfg, console, upload=True)
+                        if need_full_sync:
+                            # 有专辑可能已落库但未被逐项记录：全量对账兜底
+                            if run_sync(cfg, console, upload=True) != 0:
+                                pending_sync_retry = True
+                        else:
+                            # 只同步本批新入库的专辑；大库不再每批全库重读
+                            # tag / 全库 rclone。全量对账走 `mihonban cloud sync`。
+                            # run_sync 失败以退出码表达而非异常：必须接住，
+                            # 否则一次网络抖动就让这张专辑永远漂在本地。
+                            for directory in imported:
+                                if run_sync(cfg, console, upload=True,
+                                            only_dir=directory) != 0:
+                                    pending_sync_retry = True
                     except Exception:  # noqa: BLE001
+                        pending_sync_retry = True
                         log.exception("cloud sync crashed inside watch")
                         console.print("[red]云同步出错（见日志），继续守望[/red]")
+                    if pending_sync_retry:
+                        log.warning("sync incomplete; will retry a full "
+                                    "reconciliation on the next heartbeat")
                 stability.clear()
             time.sleep(POLL_SECONDS)
     except KeyboardInterrupt:

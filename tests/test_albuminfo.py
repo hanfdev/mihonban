@@ -2,6 +2,7 @@ import shutil
 
 import mutagen
 import pytest
+from mutagen.id3 import TALB, TDRC, TPE1, TPE2
 
 from conftest import tag_mp3
 from mihonban.albuminfo import guess_from_folder, strip_quality, synthesize_tags
@@ -66,3 +67,24 @@ def test_synthesize_tags_reaches_multidisc_subdirectories(tmp_path, silent_mp3):
         assert audio["album"] == ["MULTI DISC"]
         assert audio["date"] == ["1984"]
         assert audio["albumartist"] == ["Test Artist"]
+
+
+def test_synthesize_tags_writes_id3_frames_inside_wav(tmp_path, silent_wav):
+    album = tmp_path / "[1984] WAV ALBUM"
+    album.mkdir()
+    path = album / "01.wav"
+    shutil.copy(silent_wav, path)
+
+    audio = mutagen.File(path)
+    audio.add_tags()
+    audio.tags.add(TPE1(encoding=3, text=["Test Artist"]))
+    audio.save()
+
+    notes = synthesize_tags(album, apply=True)
+
+    assert len(notes) == 3
+    tags = mutagen.File(path).tags
+    assert str(tags.getall(TALB.__name__)[0]) == "WAV ALBUM"
+    assert str(tags.getall(TDRC.__name__)[0]) == "1984"
+    assert str(tags.getall(TPE2.__name__)[0]) == "Test Artist"
+    assert str(tags.getall(TPE1.__name__)[0]) == "Test Artist"

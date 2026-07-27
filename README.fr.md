@@ -8,7 +8,7 @@ Mihonban est une bibliothèque musicale privée et auto-hébergée dotée d’un
 
 - Interfaces adaptatives pour les albums, morceaux, artistes, favoris, importations et réglages d’administration
 - Mots de passe distincts pour les auditeurs et les administrateurs, avec un mode invité facultatif, sans mot de passe et en lecture seule
-- File d’attente persistante, démarrage mobile lié au geste utilisateur, lecture aléatoire/répétée, navigation Range et contrôles Media Session
+- File d’attente persistante, commandes mobiles complètes piste précédente／lecture-pause／piste suivante, démarrage lié au geste utilisateur, lecture aléatoire/répétée, navigation Range et contrôles Media Session
 - Stockages nommés OneDrive, WebDAV, Google Drive et dossiers locaux réservés au runtime Node
 - Miroir d’images R2 facultatif et auto-réparable pour les pochettes, galeries et portraits d’artistes
 - Importation via l’API Discogs et analyse de pages HTML RYM enregistrées manuellement, sans requêtes RYM automatisées
@@ -37,13 +37,13 @@ cd mihonban
 
 ### Application Wrangler locale
 
-Sous Windows, le script d’assistance prépare les fichiers de build en dehors de OneDrive et démarre Wrangler sur toutes les interfaces réseau.
+Sous Windows, le script d’assistance prépare les fichiers de build en dehors de OneDrive et démarre Wrangler.
 
 ```powershell
 tools\cloud-dev.cmd
 ```
 
-Ouvrez `http://127.0.0.1:8787`. Un téléphone connecté au même réseau local peut utiliser `http://<computer-lan-ip>:8787` après avoir autorisé Node.js dans le pare-feu Windows. Le premier fichier local de secrets généré par l’assistant utilise `mihonban-guest` comme mot de passe auditeur et `mihonban-admin` comme mot de passe administrateur. Modifiez-les tous les deux dans l’administration avant de partager le service.
+Ouvrez `http://127.0.0.1:8787` ; par défaut, le serveur de développement n’écoute que sur `http://127.0.0.1:8787` (boucle locale). Définissez `MIHONBAN_DEV_LAN=1` et autorisez Node.js dans le pare-feu Windows pour tester depuis un téléphone via `http://<computer-lan-ip>:8787`. Le premier fichier de secrets généré par l’assistant contient des mots de passe auditeur et administrateur générés aléatoirement (voir `.dev.vars` dans le répertoire de préparation). Modifiez-les tous les deux dans l’administration avant de partager le service.
 
 Pour une installation manuelle avec Wrangler, consultez [Installer et déployer](docs/install.fr.md).
 

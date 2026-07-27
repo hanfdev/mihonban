@@ -469,9 +469,12 @@ def _extract_7z(archive: Path, dest: Path, cfg: Config,
 def extract_archive(archive: Path, dest: Path, cfg: Config,
                     _budget: _ExtractBudget | None = None) -> None:
     """Extract one archive into dest, trying configured passwords."""
-    # Configured passwords first (extra passwords are ignored by unencrypted
-    # archives), then a dummy to avoid any interactive prompt.
-    passwords = list(dict.fromkeys([*cfg.passwords, ""]))
+    # Empty password FIRST: 7z passes passwords as `-p{pw}` argv elements,
+    # visible to same-user processes for the whole run. Most archives are
+    # unencrypted, so leading with "" keeps real passwords (including ones
+    # merged from the cloud backend) off the command line in the common case;
+    # encrypted archives simply fail the first attempt and continue.
+    passwords = list(dict.fromkeys(["", *cfg.passwords]))
     budget = _budget or _ExtractBudget()
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:

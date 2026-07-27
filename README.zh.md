@@ -8,7 +8,7 @@ Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。�
 
 - 完整适配桌面与手机的专辑、歌曲、艺人、精选、导入和管理页面
 - 听众与管理员双口令，以及可选的免密只读访客模式
-- 播放队列、移动端手势安全首播、随机/循环、Range 拖动和系统媒体控制
+- 播放队列、移动端上一首/播放暂停/下一首完整控制、手势安全首播、随机/循环、Range 拖动和系统媒体控制
 - 命名 OneDrive、WebDAV、Google Drive，以及仅 Node 支持的本地文件夹后端
 - 可自动回源修复的 R2 图片镜像，用于封面、内页和艺人头像
 - Discogs 官方 API 导入；手动保存 RYM HTML 后解析，不自动请求 RYM
@@ -37,13 +37,13 @@ cd mihonban
 
 ### 本地 Wrangler 应用
 
-Windows 可使用辅助脚本，把构建目录放到 OneDrive 外并监听全部网卡：
+Windows 可使用辅助脚本，把构建目录放到 OneDrive 外并启动 Wrangler：
 
 ```powershell
 tools\cloud-dev.cmd
 ```
 
-电脑打开 `http://127.0.0.1:8787`。同一局域网的手机在 Windows 防火墙允许 Node.js 后，可打开 `http://<电脑内网 IP>:8787`。辅助脚本首次生成的本地听众口令是 `mihonban-guest`，管理员口令是 `mihonban-admin`；对外分享前必须在管理后台修改。
+电脑打开 `http://127.0.0.1:8787`；开发服务器默认只监听回环地址。设置 `MIHONBAN_DEV_LAN=1` 并在 Windows 防火墙允许 Node.js 后，同一局域网的手机可打开 `http://<电脑内网 IP>:8787` 测试。辅助脚本首次生成的密钥文件包含随机生成的听众口令和管理员口令（见暂存目录中的 `.dev.vars`）；对外分享前必须在管理后台修改。
 
 手动配置 Wrangler 见[安装与部署](docs/install.zh.md)。
 

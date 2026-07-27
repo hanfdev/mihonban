@@ -35,6 +35,27 @@ const AUDIO_MIME = {
   wav: 'audio/wav', aiff: 'audio/aiff', aif: 'audio/aiff',
 }
 
+// 导航链接的点击处理：普通左键走应用内路由（保留自定义历史深度跟踪），
+// 修饰键点击交还浏览器——Ctrl/Cmd 新标签页、Shift 新窗口、Alt 下载。
+// 无条件 preventDefault 会让刚加上的真实 href 形同虚设。
+const navClick = (hash) => (e) => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0) return
+  e.preventDefault()
+  navigate(hash)
+}
+
+// 初始数据加载失败（非 401）时的兜底视图：与专辑页错误态同一套视觉。
+// 骨架屏永远转圈 + 只能整页刷新，是比错误提示更糟的 UI。
+function LoadFailed({ message, onRetry }) {
+  const { t } = useI18n()
+  return (
+    <div className="empty" style={{ paddingTop: 60 }}>
+      <div>{message}</div>
+      <button className="btn" onClick={onRetry}>{t('common.retry')}</button>
+    </div>
+  )
+}
+
 // 播放顺序：非随机 = 自然顺序从 startIdx 起；随机 = 当前曲优先 + 其余洗牌
 const buildOrder = (n, startIdx, shuffled) => {
   if (!shuffled) return { order: [...Array(n).keys()], pos: startIdx }
@@ -60,6 +81,13 @@ export default function App() {
   const [albums, setAlbums] = useState(null)
   const [tracksAll, setTracksAll] = useState(null) // 懒加载的全曲目
   const [artists, setArtists] = useState([])       // [{name, hasAvatar}]
+  // 初始数据加载失败（非 401）时的错误文案；不设置则视图渲染骨架屏。
+  // 没有它，一次网络抖动会让曲库/歌曲页永远停在骨架屏且无从重试。
+  const [loadErrors, setLoadErrors] = useState({})
+  const noteLoadError = useCallback((key, message) =>
+    setLoadErrors((prev) => ({ ...prev, [key]: message || 'load failed' })), [])
+  const clearLoadError = useCallback((key) =>
+    setLoadErrors((prev) => (prev[key] ? { ...prev, [key]: '' } : prev)), [])
   const [avatarVer, setAvatarVer] = useState(0)    // 头像换过后破缓存
   const [favs, setFavs] = useState({ albums: [], tracks: [] })
   const favsRef = useRef(favs)
@@ -111,15 +139,16 @@ export default function App() {
       if (requestId !== libraryRequestRef.current
           || roleRef.current !== requestedRole || !authedRef.current) return
       setAlbums(next)
+      clearLoadError('library')
       // 初次登录/切换身份时已经在请求前失效，不能在较慢的 library 请求完成后
       // 再把刚加载好的歌曲覆盖成 null。编辑/隐藏专辑等普通刷新仍默认失效。
       if (options?.invalidateTracks !== false) setTracksAll(null)
     } catch (e) {
-      if (requestId === libraryRequestRef.current && e instanceof api.AuthError) {
-        setAuthed(false)
-      }
+      if (requestId !== libraryRequestRef.current) return
+      if (e instanceof api.AuthError) setAuthed(false)
+      else noteLoadError('library', e.message)
     }
-  }, [role])
+  }, [role, clearLoadError, noteLoadError])
 
   const ensureTracks = useCallback(async () => {
     const requestId = ++tracksRequestRef.current
@@ -129,12 +158,13 @@ export default function App() {
       if (requestId !== tracksRequestRef.current
           || roleRef.current !== requestedRole || !authedRef.current) return
       setTracksAll(next)
+      clearLoadError('tracks')
     } catch (e) {
-      if (requestId === tracksRequestRef.current && e instanceof api.AuthError) {
-        setAuthed(false)
-      }
+      if (requestId !== tracksRequestRef.current) return
+      if (e instanceof api.AuthError) setAuthed(false)
+      else noteLoadError('tracks', e.message)
     }
-  }, [role])
+  }, [role, clearLoadError, noteLoadError])
 
   const refreshArtists = useCallback(async () => {
     const requestId = ++artistsRequestRef.current
@@ -144,12 +174,13 @@ export default function App() {
       if (requestId !== artistsRequestRef.current
           || roleRef.current !== requestedRole || !authedRef.current) return
       setArtists(next)
+      clearLoadError('artists')
     } catch (e) {
-      if (requestId === artistsRequestRef.current && e instanceof api.AuthError) {
-        setAuthed(false)
-      }
+      if (requestId !== artistsRequestRef.current) return
+      if (e instanceof api.AuthError) setAuthed(false)
+      else noteLoadError('artists', e.message)
     }
-  }, [role])
+  }, [role, clearLoadError, noteLoadError])
 
   useEffect(() => { favsRef.current = favs }, [favs])
   const applyFavs = useCallback((next) => {
@@ -201,6 +232,14 @@ export default function App() {
   }, [isAdmin])
   const favAlbums = useMemo(() => new Set(favs.albums.map((f) => f.id)), [favs])
   const favTracks = useMemo(() => new Set(favs.tracks.map((f) => f.id)), [favs])
+
+  // 稳定引用（navigate 是模块级常量）：否则每次 App 重渲染（切歌/暂停都触发）
+  // 都新建这些闭包，会让 TrackRow 的 React.memo 比较器整表失效、白白 reconcile。
+  const openAlbum = useCallback((id) => navigate(`/album/${id}`), [])
+  const openArtist = useCallback(
+    (name) => navigate(`/artist/${encodeURIComponent(name)}`), [])
+  const openGenre = useCallback(
+    (g) => navigate(`/genre/${encodeURIComponent(g)}`), [])
 
   const toggleFav = useCallback(async (kind, id) => {
     if (roleRef.current !== 'admin') return
@@ -569,9 +608,6 @@ export default function App() {
   }
 
   const nav = navigate
-  const openAlbum = (id) => nav(`/album/${id}`)
-  const openArtist = (name) => nav(`/artist/${encodeURIComponent(name)}`)
-  const openGenre = (g) => nav(`/genre/${encodeURIComponent(g)}`)
 
   const searchable = ['library', 'tracks', 'genre', 'favs', 'artists'].includes(route.view)
   // 主导航（所有人）与管理员入口分离，避免长文案语言下搜索框盖住选项
@@ -609,13 +645,15 @@ export default function App() {
     <div className={`app ${current ? 'has-player' : ''}`}>
       <header className={`hdr ${scrolled ? 'on-scroll' : ''}`}>
         <div className="hdr-left">
-          <div className="logo" onClick={() => nav('/')}>
+          <a className="logo" href="#/" aria-label={t('brand')}
+             onClick={navClick('/')}>
             <Logo /> <span className="logo-t">{t('brand')} <em>{t('brandSub')}</em></span>
-          </div>
+          </a>
           <nav className="nav nav-main">
             {NAV_MAIN.map((n) => (
-              <a key={n.key} className={n.on ? 'on' : ''}
-                 onClick={() => nav(n.hash)}>{n.label}</a>
+              <a key={n.key} className={n.on ? 'on' : ''} href={`#${n.hash}`}
+                 aria-current={n.on ? 'page' : undefined}
+                 onClick={navClick(n.hash)}>{n.label}</a>
             ))}
           </nav>
         </div>
@@ -627,8 +665,9 @@ export default function App() {
               <I.search size={15} />
               <input placeholder={t('search.placeholder')} value={q}
                      onChange={(e) => setQ(e.target.value)} />
-              {q && <I.x size={14} style={{ cursor: 'pointer' }}
-                         onClick={() => setQ('')} />}
+              {q && <button type="button" className="search-clear"
+                            aria-label={t('common.clearFilters')}
+                            onClick={() => setQ('')}><I.x size={14} /></button>}
             </div>
           )}
         </div>
@@ -636,6 +675,7 @@ export default function App() {
         <div className="hdr-right">
           {searchable && (
             <button className={`icon-btn m-search ${mSearch ? 'on' : ''}`}
+                    aria-label={t('search.placeholder')} aria-expanded={mSearch}
                     onClick={() => { setMSearch(!mSearch); if (mSearch) setQ('') }}>
               <I.search size={18} />
             </button>
@@ -643,8 +683,9 @@ export default function App() {
           {NAV_ADMIN.length > 0 && (
             <nav className="nav nav-admin">
               {NAV_ADMIN.map((n) => (
-                <a key={n.key} className={n.on ? 'on' : ''}
-                   onClick={() => nav(n.hash)}>{n.label}</a>
+                <a key={n.key} className={n.on ? 'on' : ''} href={`#${n.hash}`}
+                   aria-current={n.on ? 'page' : undefined}
+                   onClick={navClick(n.hash)}>{n.label}</a>
               ))}
             </nav>
           )}
@@ -695,18 +736,30 @@ export default function App() {
             <I.search size={15} />
             <input autoFocus placeholder={t('search.placeholder')} value={q}
                    onChange={(e) => setQ(e.target.value)} />
-            {q && <I.x size={14} onClick={() => setQ('')} />}
+            {q && <button type="button" className="search-clear"
+                          aria-label={t('common.clearFilters')}
+                          onClick={() => setQ('')}><I.x size={14} /></button>}
           </div>
         </div>
       )}
 
       <main className="main" ref={mainRef}
             onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
-        {route.view === 'library' && <Library {...shared} />}
-        {route.view === 'genre' && <Library {...shared} genreFromRoute={route.arg}
-                                            key={`g:${route.arg}`} />}
+        {['library', 'genre'].includes(route.view) && !albums
+          && loadErrors.library && (
+          <LoadFailed message={loadErrors.library}
+                      onRetry={() => { clearLoadError('library'); refreshLibrary() }} />
+        )}
+        {route.view === 'library' && (albums || !loadErrors.library)
+          && <Library {...shared} />}
+        {route.view === 'genre' && (albums || !loadErrors.library)
+          && <Library {...shared} genreFromRoute={route.arg}
+                      key={`g:${route.arg}`} />}
         {route.view === 'tracks' && (
-          <TracksPage {...shared} tracks={tracksAll} ensureTracks={ensureTracks} />
+          !tracksAll && loadErrors.tracks
+            ? <LoadFailed message={loadErrors.tracks}
+                          onRetry={() => { clearLoadError('tracks'); ensureTracks() }} />
+            : <TracksPage {...shared} tracks={tracksAll} ensureTracks={ensureTracks} />
         )}
         {route.view === 'artists' && (
           <ArtistsPage albums={albums} artists={artists} q={q}
@@ -731,6 +784,7 @@ export default function App() {
         )}
         {route.view === 'album' && (
           <AlbumPage key={route.arg} id={route.arg} onPlay={playFrom}
+                     onAuthError={() => setAuthed(false)}
                      playingId={playing ? current?.id : null}
                      currentId={current?.id}
                      currentAlbumId={current?.albumId}
@@ -762,7 +816,9 @@ export default function App() {
               onOpenArtist={openArtist} />
       <nav className="tabbar">
         {NAV.map((n) => (
-          <a key={n.key} className={n.on ? 'on' : ''} onClick={() => nav(n.hash)}>
+          <a key={n.key} className={n.on ? 'on' : ''} href={`#${n.hash}`}
+             aria-label={n.label} aria-current={n.on ? 'page' : undefined}
+             onClick={navClick(n.hash)}>
             <n.icon size={21} /><span>{n.label}</span>
           </a>
         ))}

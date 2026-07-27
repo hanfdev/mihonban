@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 from pathlib import Path
 from typing import Callable
 
@@ -31,6 +32,7 @@ from .extract import AUDIO_EXTS
 log = logging.getLogger("mihonban.mb_artist")
 
 MIN_SCORE = 95
+MB_TIMEOUT_SECONDS = 30
 
 Resolver = Callable[[str], dict | None]
 
@@ -55,12 +57,19 @@ def _default_resolver(name: str) -> dict | None:
     # the plain `artist` search field does NOT cover aliases — romaji names
     # of Japanese artists only surface through an explicit alias clause
     esc = _lucene_escape(name)
+    # musicbrainzngs 没有 timeout 参数，底层 opener.open() 不限时：断网/静默
+    # 防火墙会让常驻的 watch 守望者永久卡死。临时设 socket 级默认超时兜底；
+    # 超时以 socket.timeout 抛出，走下面的 best-effort 分支缓存为「未命中」。
+    old_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(MB_TIMEOUT_SECONDS)
     try:
         res = mb.search_artists(query=f'artist:"{esc}" OR alias:"{esc}"',
                                 limit=5)
     except Exception as e:  # noqa: BLE001 — network best-effort
         log.warning("MB artist search failed for %r: %s", name, e)
         return None
+    finally:
+        socket.setdefaulttimeout(old_timeout)
     want = name.lower()
     for top in (res.get("artist-list") or []):
         if int(top.get("ext:score", 0)) < MIN_SCORE:

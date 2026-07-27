@@ -21,7 +21,7 @@ The Python companion and any desktop player are not required for web playback.
 - Passwordless guest mode: optional read-only listener access without entering a password.
 - Companion key: machine credential for the optional local pipeline.
 
-`mihonban-guest` and `mihonban-admin` are defaults generated only by `tools\cloud-dev.cmd`. Node and manual Cloudflare deployments have no default passwords. Change local helper defaults before sharing access.
+All helper scripts generate random passwords when none are supplied; nothing ships with a fixed default password. Local-development passwords live in the stage directory's `.dev.vars`.
 
 Passwords saved in Admin override environment bootstrap values. Changing either password revokes existing sessions.
 
@@ -30,6 +30,7 @@ Passwords saved in Admin override environment bootstrap values. Changing either 
 - Volume, language, and sort preferences are local to each browser origin. Opening a new hostname or custom domain starts with fresh preferences; an unset volume starts at 100%.
 - Playback is initiated inside the originating tap/click so Android Chrome can establish audible playback and a system media session. The lock-screen/notification controls expose play, pause, previous, next, and seeking where the browser supports them.
 - On mobile, tap the cover or the empty part of the mini-player, or swipe the mini-player upward, to open Now Playing. Album and artist links remain independently tappable.
+- The compact mobile transport keeps previous, play/pause, and next visible in that order. Shuffle and repeat remain available in the full Now Playing view.
 - Gallery images show a loading state while switching; swipe horizontally to move between pages on touch devices.
 
 ## Inbox folders and archives
@@ -58,6 +59,8 @@ The Admin source module reads supported RSS/Atom/Blogger titles and links. Cloud
 5. Open the completed album, play a track, and seek near the end.
 
 Use `mihonban cloud pull` when the web copy must return to the local library. Add `--retag` only when cloud metadata should update existing local tags.
+
+Before downloading each missing album, the companion writes a persistent marker under `data_dir/state/cloud_pull_incomplete/`. It clears the marker only after download, cloud-detail lookup, tag repair, and any required upload and registration all succeed. An interrupted directory containing `.partial` files—or no valid audio—is retried automatically instead of being mistaken for a complete album. Rclone restarts an old `.partial` file from byte zero rather than resuming its bytes, so keep the watcher and network running on slow links.
 
 ## RYM metadata
 

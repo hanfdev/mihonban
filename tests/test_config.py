@@ -12,6 +12,15 @@ from mihonban import cli, config as config_mod
 from mihonban.config import ConfigError
 
 
+def test_suite_imports_pipeline_from_current_worktree():
+    expected = (Path(__file__).parents[1] / "pipeline").resolve()
+    actual = Path(config_mod.__file__).resolve()
+
+    assert actual.is_relative_to(expected), (
+        f"tests imported mihonban from {actual}, expected it under {expected}"
+    )
+
+
 @pytest.mark.parametrize("folder", [
     "OneDrive",
     "OneDrive - Personal",

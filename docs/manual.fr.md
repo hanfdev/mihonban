@@ -21,7 +21,7 @@ Le compagnon Python et tout lecteur de bureau ne sont pas nécessaires pour la l
 - Mode invité sans mot de passe : accès optionnel en lecture seule sans saisie de mot de passe.
 - Clé compagnon : identifiant machine pour le pipeline local optionnel.
 
-`mihonban-guest` et `mihonban-admin` sont des paramètres par défaut générés uniquement par `tools\cloud-dev.cmd`. Les déploiements Node et manuels Cloudflare n’ont pas de mots de passe par défaut. Changez les paramètres par défaut des assistants locaux avant de partager l’accès.
+Tous les scripts d’assistance génèrent des mots de passe aléatoires lorsqu’aucun n’est fourni ; rien n’est livré avec un mot de passe par défaut fixe. Les mots de passe de développement local se trouvent dans le fichier `.dev.vars` du répertoire de préparation.
 
 Les mots de passe enregistrés dans Admin dépassent les valeurs de démarrage de l’environnement Admin. Changer l’un ou l’autre mot de passe révoque les sessions existantes.
 
@@ -30,6 +30,7 @@ Les mots de passe enregistrés dans Admin dépassent les valeurs de démarrage d
 - Le volume, la langue et le tri sont enregistrés par origin du navigateur. Un nouveau nom d’hôte ou domaine personnalisé repart avec de nouvelles préférences ; sans valeur enregistrée, le volume commence à 100 %.
 - La lecture démarre dans l’événement de toucher/clic d’origine afin qu’Android Chrome puisse établir une lecture audible et une session multimédia système. Sur les navigateurs compatibles, l’écran verrouillé/la notification permet lecture, pause, piste précédente/suivante et recherche.
 - Sur mobile, touchez la pochette ou la zone vide du mini-lecteur, ou faites glisser le mini-lecteur vers le haut, pour ouvrir l’écran de lecture. Les liens d’album et d’artiste restent indépendants.
+- Le mini-lecteur mobile affiche toujours, dans cet ordre, piste précédente, lecture/pause et piste suivante. La lecture aléatoire et la répétition restent disponibles dans l’écran de lecture complet.
 - Un état de chargement apparaît pendant le changement d’image du livret ; balayez horizontalement pour passer à l’image précédente ou suivante.
 
 ## Dossiers et archives de la boîte de réception
@@ -58,6 +59,8 @@ Le module source Admin lit les titres et liens RSS/Atom/Blogger pris en charge. 
 5. Ouvrez l’album terminé, jouez une piste et cherchez vers la fin.
 
 Utilisez `mihonban cloud pull` lorsque la copie web doit retourner dans la bibliothèque locale. Ajoutez `--retag` uniquement lorsque les métadonnées cloud doivent mettre à jour les balises locales existantes.
+
+Avant de télécharger chaque album absent, le compagnon écrit un marqueur persistant dans `data_dir/state/cloud_pull_incomplete/`. Il ne l’efface qu’après la réussite du téléchargement, de la lecture des détails cloud, de la réparation des tags et, si nécessaire, du renvoi et du réenregistrement. Un dossier interrompu contenant des fichiers `.partial`, ou dépourvu de fichier audio valide, est automatiquement retenté au lieu d’être pris pour un album complet. Rclone recommence un ancien `.partial` à l’octet zéro au lieu de reprendre ses octets existants ; sur une liaison lente, laissez le watcher et le réseau fonctionner sans interruption.
 
 ## RYM Métadonnées
 

@@ -42,16 +42,16 @@ Cuando el repositorio esté bajo OneDrive, utiliza:
 tools\cloud-dev.cmd
 ```
 
-El ayudante copia `cloud/` a `%TEMP%\mihonban-cloud-build` por defecto, instala las dependencias allí, compila React, aplica el esquema local y comienza Wrangler en `0.0.0.0:8787`. Establece `MIHONBAN_STAGE` a otro directorio no sincronizado para conservar su D1 local durante la limpieza temporal de directorios.
+El ayudante copia `cloud/` a `%TEMP%\mihonban-cloud-build` por defecto, instala las dependencias allí, compila React, aplica el esquema local y comienza Wrangler en `127.0.0.1:8787` (loopback) por defecto. Establece `MIHONBAN_DEV_LAN=1` antes de ejecutarlo para exponerlo en `0.0.0.0:8787` y probar desde un teléfono en la red local. Establece `MIHONBAN_STAGE` a otro directorio no sincronizado para conservar su D1 local durante la limpieza temporal de directorios.
 
-En la primera ejecución genera `.dev.vars` con:
+En la primera ejecución genera `.dev.vars` donde todos los valores, incluidas ambas contraseñas, son aleatorios:
 
 ```text
-APP_PASSWORD=mihonban-guest
-ADMIN_PASSWORD=mihonban-admin
+APP_PASSWORD=<aleatoria>
+ADMIN_PASSWORD=<aleatoria>
 ```
 
-Los secretos restantes son aleatorios. Estas dos contraseñas son solo por defecto para desarrollo local. Cámbialas en Admin antes de permitir que otra persona se conecte.
+Las contraseñas de oyente y de administrador pueden leerse en `%TEMP%\mihonban-cloud-build\worker\.dev.vars` (o `%MIHONBAN_STAGE%\worker\.dev.vars`). Cámbialas en Admin antes de permitir que otra persona se conecte.
 
 ### Configuración manual Wrangler
 

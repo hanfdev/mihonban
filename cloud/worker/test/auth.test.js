@@ -48,3 +48,21 @@ test("session cookies use the current product namespace", async () => {
   const cookie = await sessionCookie(env, "admin");
   assert.match(cookie, /^mihonban_session=/);
 });
+
+test("only DEV_INSECURE_COOKIE=1 drops the Secure attribute", async () => {
+  const envWith = (value) => ({
+    SESSION_SECRET: "x".repeat(32),
+    ...(value === undefined ? {} : { DEV_INSECURE_COOKIE: value }),
+    DB: {
+      prepare() {
+        return { bind() { return { first: async () => null }; } };
+      },
+    },
+  });
+  // "0"/"false"/空串都不能算显式开启（环境变量恒为字符串，truthy 判断会误伤）
+  for (const value of [undefined, "", "0", "false", "no"]) {
+    const cookie = await sessionCookie(envWith(value), "admin");
+    assert.match(cookie, / Secure;/, `value=${JSON.stringify(value)}`);
+  }
+  assert.doesNotMatch(await sessionCookie(envWith("1"), "admin"), / Secure;/);
+});
