@@ -35,6 +35,45 @@ function companionEnv(db, extra = {}) {
   };
 }
 
+test("genre mirror triggers follow direct album updates and deletes", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, genres, sec_genres, storage_id, created_at, updated_at)
+    VALUES ('genre-direct', 'Artist', 'Title', 'Music/Library/Artist/Title',
+      '["Rock"]', '["Pop"]', 'main-store', 1, 1)`).run();
+  const env = companionEnv(db);
+
+  try {
+    // The first authenticated API request installs the runtime-only triggers and
+    // backfills rows that predate the migration.
+    const library = await companionRequest(env, "/api/library");
+    assert.equal(library.status, 200);
+    assert.deepEqual(
+      db.prepare("SELECT genre FROM album_genres WHERE album_id = ? ORDER BY genre")
+        .all("genre-direct").map((row) => row.genre),
+      ["pop", "rock"],
+    );
+
+    db.prepare(`UPDATE albums SET genres = '["Jazz", "JAZZ"]',
+      sec_genres = '["Ambient"]' WHERE id = ?`).run("genre-direct");
+    assert.deepEqual(
+      db.prepare("SELECT genre FROM album_genres WHERE album_id = ? ORDER BY genre")
+        .all("genre-direct").map((row) => row.genre),
+      ["ambient", "jazz"],
+    );
+
+    db.prepare("DELETE FROM albums WHERE id = ?").run("genre-direct");
+    assert.deepEqual(
+      db.prepare("SELECT genre FROM album_genres WHERE album_id = ?")
+        .all("genre-direct"),
+      [],
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("catalog writes preserve folder, image-order, search, and storage invariants", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
@@ -724,6 +763,52 @@ test("Discogs image import never records a cover that failed to upload", async (
   }
 });
 
+test("Discogs lookup accepts canonical release URLs with title slugs", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare("INSERT INTO settings (k, v) VALUES ('discogs_token', 'token')").run();
+  const env = companionEnv(db);
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    seen.push(url);
+    if (url.startsWith("https://api.discogs.com/releases/828326?")) {
+      return Response.json({
+        title: "StereoType A",
+        year: 1999,
+        artists: [{ name: "Cibo Matto" }],
+        genres: ["Electronic"],
+        styles: ["Leftfield"],
+        uri: "https://www.discogs.com/release/828326-Cibo-Matto-StereoType-A",
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  try {
+    const response = await companionRequest(env, "/api/discogs-lookup", {
+      method: "POST",
+      ...jsonBody({
+        url: "https://www.discogs.com/release/828326-Cibo-Matto-%E3%83%81%E3%83%9C%E3%83%9E%E3%83%83%E3%83%88-StereoType-A-%E3%82%B9%E3%83%86%E3%83%AC%E3%82%AA%E3%82%BF%E3%82%A4%E3%83%97%EF%BC%A1",
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, body.error);
+    assert.equal(body.title, "Cibo Matto – StereoType A");
+    assert.deepEqual(body.genres, ["Electronic"]);
+    assert.deepEqual(body.styles, ["Leftfield"]);
+    assert.equal(seen.length, 1);
+    const invalid = await companionRequest(env, "/api/discogs-lookup", {
+      method: "POST",
+      ...jsonBody({ url: "https://www.discogs.com/release/828326abc" }),
+    });
+    assert.equal(invalid.status, 400);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
 test("Discogs crop source proxies only images belonging to the selected release", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
@@ -811,6 +896,16 @@ test("API input validation rejects corrupt metadata and preserves prior state", 
     assert.deepEqual(db.prepare(
       "SELECT artist, artist_sort FROM albums WHERE id = 'album'").get(), {
       artist: "Renamed Artist", artist_sort: "Renamed Artist",
+    });
+    const romanized = await companionRequest(env, "/api/album/album", {
+      method: "PATCH", ...jsonBody({
+        artist: "石川秀美", artistSort: "Ishikawa, Hidemi",
+      }),
+    });
+    assert.equal(romanized.status, 200);
+    assert.deepEqual(db.prepare(
+      "SELECT artist, artist_sort FROM albums WHERE id = 'album'").get(), {
+      artist: "石川秀美", artist_sort: "Ishikawa, Hidemi",
     });
     db.prepare("UPDATE albums SET artist = 'Artist', artist_sort = 'Artist' WHERE id = 'album'")
       .run();

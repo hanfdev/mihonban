@@ -25,6 +25,7 @@ import requests
 
 from .config import Config
 from .extract import AUDIO_EXTS
+from .mb_artist import ArtistCache, resolve_sort_name
 
 log = logging.getLogger("mihonban.cloud")
 
@@ -288,7 +289,7 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         log.warning("refusing album with too many tracks: %s (%d > %d)",
                     album_dir, len(files), MAX_TRACKS)
         return None
-    tracks, artists, albums_t, years = [], [], [], []
+    tracks, artists, artist_sorts, albums_t, years = [], [], [], [], []
     rym: dict = {}
     genres: list[str] = []
     for f in files:
@@ -305,6 +306,8 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         dno = _first(t, "discnumber").split("/")[0]
         artists.append((_first(t, "albumartist")
                         or _first(t, "artist")).strip())
+        artist_sorts.append((_first(t, "albumartistsort")
+                             or _first(t, "artistsort")).strip())
         albums_t.append(_first(t, "album").strip())
         years.append(_tag_year(t))
         if not genres:
@@ -366,10 +369,18 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
             break
 
     year = common(years)
+    artist = common(artists) or album_dir.parent.name
+    artist_sort = common(artist_sorts)
+    if not artist_sort:
+        try:
+            artist_sort = resolve_sort_name(
+                artist, cache=ArtistCache(cfg.state_dir / "artist_map.json"))
+        except Exception as exc:
+            log.warning("artist sort lookup failed for %s: %s", artist, exc)
     payload = {
         "folder": folder,
-        "artist": common(artists) or album_dir.parent.name,
-        "artistSort": "",
+        "artist": artist,
+        "artistSort": artist_sort,
         "title": common(albums_t) or album_dir.name,
         "year": int(year) if year.isdigit() else None,
         "coverPath": cover,

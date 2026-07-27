@@ -60,6 +60,8 @@ export default {
     shownOk: 'ライブラリに再表示しました',
     hideFail: (m) => `操作失敗: ${m}`,
     artist: 'アーティスト',
+    artistSort: '英字 / ローマ字名',
+    artistSortPh: '例：Ishikawa, Hidemi',
     title: 'タイトル',
     year: '年',
     primaryGenres: 'メインジャンル',
@@ -131,6 +133,7 @@ export default {
   },
   gallery: {
     ...en.gallery,
+    noImage: '対応する画像が選択されていません（JPEG、PNG、WebP、GIF、AVIF）',
     uploaded: '画像をアップロードしました',
     uploadFail: (m) => `アップロード失敗: ${m}`,
     deleted: '画像を削除しました',
@@ -162,7 +165,7 @@ export default {
   },
   player: {
     ...en.player,
-    next: '次へ', prev: '前へ',
+    next: '次へ', prev: '前へ', seek: '再生位置', volume: '音量',
     repeatOff: 'リピートなし', repeatAll: 'リストをリピート', repeatOne: '1曲リピート',
     collapse: '閉じる (Esc)', viewAlbum: '音盤を見る', shuffle: 'シャッフル',
     noPlayable: 'この端末で再生できる形式がキューにありません',
@@ -227,6 +230,7 @@ export default {
   },
   common: {
     ...en.common,
+    loadFailed: '読み込みに失敗しました', zoom: 'ズーム',
     play: '再生', pause: '一時停止', playAll: 'すべて再生',
     shuffle: 'シャッフル', shuffleOn: 'シャッフル：オン（再生で反映）',
     shuffleOff: 'シャッフル：オフ', locate: '再生中の曲へ',

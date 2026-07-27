@@ -131,6 +131,7 @@ export default {
   },
   gallery: {
     ...en.gallery,
+    noImage: '지원되는 이미지를 선택하지 않았습니다(JPEG, PNG, WebP, GIF, AVIF)',
     uploaded: '이미지 업로드됨',
     uploadFail: (m) => `업로드 실패: ${m}`,
     deleted: '이미지 삭제됨',
@@ -162,7 +163,7 @@ export default {
   },
   player: {
     ...en.player,
-    next: '다음', prev: '이전',
+    next: '다음', prev: '이전', seek: '재생 위치', volume: '음량',
     repeatOff: '반복 안 함', repeatAll: '목록 반복', repeatOne: '한 곡 반복',
     collapse: '접기 (Esc)', viewAlbum: '앨범 보기', shuffle: '셔플',
     noPlayable: '이 기기에서 재생 가능한 형식이 큐에 없습니다',
@@ -227,6 +228,7 @@ export default {
   },
   common: {
     ...en.common,
+    loadFailed: '불러오지 못했습니다', zoom: '확대/축소',
     play: '재생', pause: '일시정지', playAll: '전체 재생',
     shuffle: '셔플', shuffleOn: '셔플: 켜짐 (재생 시 적용)',
     shuffleOff: '셔플: 꺼짐', locate: '지금 재생 중으로',

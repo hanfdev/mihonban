@@ -270,6 +270,8 @@ export const en = {
     shownOk: 'Album visible in library again',
     hideFail: (m) => `Hide failed: ${m}`,
     artist: 'Artist',
+    artistSort: 'Romanized / English name',
+    artistSortPh: 'e.g. Ishikawa, Hidemi',
     title: 'Title',
     year: 'Year',
     primaryGenres: 'Primary genres',

@@ -3,7 +3,7 @@ import shutil
 import pytest
 from mutagen.id3 import ID3
 
-from mihonban.mb_artist import canonicalize_artists
+from mihonban.mb_artist import canonicalize_artists, resolve_sort_name
 
 from conftest import tag_mp3
 
@@ -11,6 +11,23 @@ from conftest import tag_mp3
 def fake_resolver(name: str):
     assert name == "Tatsuro Yamashita"
     return {"name": "山下達郎", "sort": "Yamashita, Tatsuro"}
+
+
+def test_sort_name_uses_alias_without_network():
+    def exploding(name):
+        raise AssertionError(f"must not resolve known alias {name}")
+
+    assert resolve_sort_name("流線形", exploding) == "Ryusenkei"
+    assert resolve_sort_name("石川秀美", exploding) == "Ishikawa, Hidemi"
+
+
+def test_sort_name_accepts_only_exact_musicbrainz_name():
+    assert resolve_sort_name("架空藝人", lambda name: {
+        "name": name, "sort": "Kakuu, Geinin",
+    }) == "Kakuu, Geinin"
+    assert resolve_sort_name("架空藝人", lambda name: {
+        "name": "別人", "sort": "Other",
+    }) == ""
 
 
 @pytest.mark.needs_ffmpeg

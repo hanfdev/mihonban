@@ -92,7 +92,8 @@ function useMediaQuery(query) {
 function EditDialog({ album, onClose, onSaved }) {
   const { t } = useI18n()
   const [f, setF] = useState({
-    artist: album.artist, title: album.title, year: album.year || '',
+    artist: album.artist, artistSort: album.artistSort || '',
+    title: album.title, year: album.year || '',
     genres: (album.genres || []).join('; '),
     secGenres: (album.secondaryGenres || []).join('; '),
     descriptors: (album.rym?.descriptors || []).join('; '),
@@ -125,7 +126,9 @@ function EditDialog({ album, onClose, onSaved }) {
       toast(t('albumPage.saveFail', t('importPage.invalidYear')), 'err')
       return
     }
-    if (artist.length > 500 || title.length > 1000 || f.note.length > 200_000
+    const artistSort = f.artistSort.trim()
+    if (artist.length > 500 || artistSort.length > 500 || title.length > 1000
+        || f.note.length > 200_000
         || genres.length > 200 || secondaryGenres.length > 200
         || descriptors.length > 500
         || [...genres, ...secondaryGenres].some((value) => value.length > 200)
@@ -147,7 +150,7 @@ function EditDialog({ album, onClose, onSaved }) {
         await api.uploadCover(coverPath, cover)
       }
       await api.patchAlbum(album.id, {
-        artist, title,
+        artist, artistSort, title,
         year,
         genres,
         secondaryGenres,
@@ -178,6 +181,9 @@ function EditDialog({ album, onClose, onSaved }) {
         <div className="fields">
           <div className="frow"><label>{t('albumPage.artist')}</label>
             <input className="tin" value={f.artist} onChange={set('artist')} /></div>
+          <div className="frow"><label>{t('albumPage.artistSort')}</label>
+            <input className="tin" value={f.artistSort} onChange={set('artistSort')}
+                   placeholder={t('albumPage.artistSortPh')} /></div>
           <div className="frow"><label>{t('albumPage.title')}</label>
             <input className="tin" value={f.title} onChange={set('title')} /></div>
           <div className="frow"><label>{t('albumPage.year')}</label>

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import socket
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -33,6 +34,7 @@ log = logging.getLogger("mihonban.mb_artist")
 
 MIN_SCORE = 95
 MB_TIMEOUT_SECONDS = 30
+SORT_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 Resolver = Callable[[str], dict | None]
 
@@ -82,6 +84,41 @@ def _default_resolver(name: str) -> dict | None:
         log.info("MB artist %r: top hit %r does not list the query as "
                  "name/alias — rejected", name, top["name"])
     return None
+
+
+def resolve_sort_name(name: str, resolver: Resolver | None = None,
+                      cache: ArtistCache | None = None) -> str:
+    """Return a verified Latin sort name for an original-script artist.
+
+    Static aliases are preferred so common artists need no network. Unknown
+    names may fall back to MusicBrainz, but only its exact, high-confidence
+    match from ``_default_resolver`` is accepted.
+    """
+    if not name:
+        return ""
+    for entry in _alias_map().values():
+        if isinstance(entry, dict) and entry.get("name") == name:
+            sort = entry.get("sort", "")
+            if isinstance(sort, str) and sort.strip():
+                return sort.strip()
+    if not has_cjk(name):
+        return name
+    cache_key = f"sort:{name}"
+    if cache and cache_key in cache:
+        cached = cache.get(cache_key)
+        if isinstance(cached, dict):
+            checked_at = cached.get("checked_at", 0)
+            if (isinstance(checked_at, (int, float))
+                    and time.time() - checked_at < SORT_CACHE_TTL_SECONDS):
+                sort = cached.get("sort", "")
+                return sort.strip() if isinstance(sort, str) else ""
+    entry = (resolver or _default_resolver)(name)
+    sort = entry.get("sort", "") if (isinstance(entry, dict)
+                                      and entry.get("name") == name) else ""
+    sort = sort.strip() if isinstance(sort, str) else ""
+    if cache:
+        cache.put(cache_key, {"sort": sort, "checked_at": time.time()})
+    return sort
 
 
 class ArtistCache:

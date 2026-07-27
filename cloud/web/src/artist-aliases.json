@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "艺人别名库：罗马字/英文名 → 原名（日文）。单一事实源，三处共用：",
+    "艺人别名库：罗马字/英文名 → 原名（日文/韩文）。单一事实源，三处共用：",
     "  1) pipeline/mihonban/mb_artist.resolve_original —— 入库时把罗马字标签折算成原名",
     "  2) config/beetsplug/mihonban_artist.py —— beets 匹配打分前折算候选艺名",
     "  3) cloud/web —— 搜索命中罗马字、导入页自动换原名显示",
@@ -10,6 +10,14 @@
     "sort 用 MB 风格 'Surname, Given'。宁缺毋滥：不确定的不要猜。"
   ],
   "aliases": {
+    "akane ikema": {
+      "name": "池間アカネ",
+      "sort": "Ikema, Akane"
+    },
+    "akane oda": {
+      "name": "小田茜",
+      "sort": "Oda, Akane"
+    },
     "akihiro miwa": {
       "name": "美輪明宏",
       "sort": "Miwa, Akihiro"
@@ -17,6 +25,18 @@
     "akiko hinagata": {
       "name": "雛形あきこ",
       "sort": "Hinagata, Akiko"
+    },
+    "akiko mizuhara": {
+      "name": "水原明子",
+      "sort": "Mizuhara, Akiko"
+    },
+    "akiko nakamura": {
+      "name": "中村晃子",
+      "sort": "Nakamura, Akiko"
+    },
+    "akiko nakazato": {
+      "name": "中里あき子",
+      "sort": "Nakazato, Akiko"
     },
     "akina nakamori": {
       "name": "中森明菜",
@@ -34,9 +54,17 @@
       "name": "吹田明日香",
       "sort": "Suita, Asuka"
     },
+    "aya sugimoto": {
+      "name": "杉本彩",
+      "sort": "Sugimoto, Aya"
+    },
     "ayumi nakamura": {
       "name": "中村あゆみ",
       "sort": "Nakamura, Ayumi"
+    },
+    "candy asada": {
+      "name": "キャンディー浅田",
+      "sort": "Asada, Candy"
     },
     "chakra": {
       "name": "チャクラ",
@@ -58,6 +86,10 @@
       "name": "森高千里",
       "sort": "Moritaka, Chisato"
     },
+    "chiyono yoshino": {
+      "name": "吉野千代乃",
+      "sort": "Yoshino, Chiyono"
+    },
     "da capo": {
       "name": "ダ・カーポ",
       "sort": "Da Capo"
@@ -66,21 +98,53 @@
       "name": "川島だりあ",
       "sort": "Kawashima, Daria"
     },
+    "eri nakatani": {
+      "name": "中谷衣里",
+      "sort": "Nakatani, Eri"
+    },
+    "eri sugai & itaru watanabe": {
+      "name": "菅井えり & 渡辺格",
+      "sort": "Sugai, Eri & Watanabe, Itaru"
+    },
     "erika haneda": {
       "name": "羽田恵理香",
       "sort": "Haneda, Erika"
+    },
+    "florence haga": {
+      "name": "フローレンス",
+      "sort": "Haga, Florence"
     },
     "fujii ichiko": {
       "name": "藤井一子",
       "sort": "Fujii, Ichiko"
     },
+    "genki rockets": {
+      "name": "元気ロケッツ",
+      "sort": "Genki Rockets"
+    },
+    "goro noguchi": {
+      "name": "野口五郎",
+      "sort": "Noguchi, Goro"
+    },
     "goto kumiko": {
       "name": "後藤久美子",
       "sort": "Goto, Kumiko"
     },
+    "hideki saijo": {
+      "name": "西城秀樹",
+      "sort": "Saijo, Hideki"
+    },
+    "hidemi ishikawa": {
+      "name": "石川秀美",
+      "sort": "Ishikawa, Hidemi"
+    },
     "hikaru midorikawa": {
       "name": "緑川光",
       "sort": "Midorikawa, Hikaru"
+    },
+    "hinano yoshikawa": {
+      "name": "吉川ひなの",
+      "sort": "Yoshikawa, Hinano"
     },
     "hiroaki igarashi": {
       "name": "五十嵐浩晃",
@@ -110,6 +174,10 @@
       "name": "金子裕則",
       "sort": "Kaneko, Hironori"
     },
+    "hitomi ozaki": {
+      "name": "尾崎仁美",
+      "sort": "Ozaki, Hitomi"
+    },
     "hitomi takahashi": {
       "name": "高橋瞳",
       "sort": "Takahashi, Hitomi"
@@ -122,9 +190,17 @@
       "name": "ホキ徳田",
       "sort": "Tokuda, Hoki"
     },
+    "hyodo miki": {
+      "name": "兵藤未来",
+      "sort": "Hyodo, Miki"
+    },
     "ikue sakakibara": {
       "name": "榊原郁恵",
       "sort": "Sakakibara, Ikue"
+    },
+    "ishikawa hidemi": {
+      "name": "石川秀美",
+      "sort": "Ishikawa, Hidemi"
     },
     "itsutsu no akai fusen": {
       "name": "五つの赤い風船",
@@ -154,9 +230,33 @@
       "name": "志村香",
       "sort": "Shimura, Kaori"
     },
+    "kaori tsuchiya": {
+      "name": "つちやかおり",
+      "sort": "Tsuchiya, Kaori"
+    },
+    "kaoru aizawa": {
+      "name": "相沢薫",
+      "sort": "Aizawa, Kaoru"
+    },
+    "kazumi kaai": {
+      "name": "可愛和美",
+      "sort": "Kaai, Kazumi"
+    },
+    "keiko goto": {
+      "name": "後藤啓子",
+      "sort": "Goto, Keiko"
+    },
+    "keiko takeshita": {
+      "name": "竹下景子",
+      "sort": "Takeshita, Keiko"
+    },
     "ken muramatsu": {
       "name": "村松健",
       "sort": "Muramatsu, Ken"
+    },
+    "kengo kurozumi": {
+      "name": "黒住憲五",
+      "sort": "Kurozumi, Kengo"
     },
     "kiyotaka sugiyama & omea tribe": {
       "name": "杉山清貴&オメガトライブ",
@@ -174,6 +274,10 @@
       "name": "清水宏次朗",
       "sort": "Shimizu, Kojiro"
     },
+    "luu huynh chau": {
+      "name": "ルー・フィン・チャウ",
+      "sort": "Luu Huynh Chau"
+    },
     "maki asakawa": {
       "name": "浅川マキ",
       "sort": "Asakawa, Maki"
@@ -182,9 +286,21 @@
       "name": "持田真樹",
       "sort": "Mochida, Maki"
     },
+    "makiko takada": {
+      "name": "高田真樹子",
+      "sort": "Takada, Makiko"
+    },
+    "mami horie": {
+      "name": "堀江マミ",
+      "sort": "Horie, Mami"
+    },
     "mami takahashi": {
       "name": "高橋真美",
       "sort": "Takahashi, Mami"
+    },
+    "mamko takada": {
+      "name": "高田真樹子",
+      "sort": "Takada, Makiko"
     },
     "marcia": {
       "name": "マルシア",
@@ -202,6 +318,10 @@
       "name": "飯島真理",
       "sort": "Iijima, Mari"
     },
+    "mari izumi": {
+      "name": "泉まり",
+      "sort": "Izumi, Mari"
+    },
     "mariko takahashi": {
       "name": "高橋真梨子",
       "sort": "Takahashi, Mariko"
@@ -213,6 +333,10 @@
     "mariya takeuchi": {
       "name": "竹内まりや",
       "sort": "Takeuchi, Mariya"
+    },
+    "marlene": {
+      "name": "マリーン",
+      "sort": "Marlene"
     },
     "masa takagi": {
       "name": "高木麻早",
@@ -226,17 +350,33 @@
       "name": "桑名正博",
       "sort": "Kuwana, Masahiro"
     },
+    "masako mori": {
+      "name": "森昌子",
+      "sort": "Mori, Masako"
+    },
     "masato minami": {
       "name": "南正人",
       "sort": "Minami, Masato"
+    },
+    "mayuko sakai": {
+      "name": "酒井麻友子",
+      "sort": "Sakai, Mayuko"
     },
     "megumi okina": {
       "name": "奥菜恵",
       "sort": "Okina, Megumi"
     },
+    "michiko tanaka": {
+      "name": "田中美智子",
+      "sort": "Tanaka, Michiko"
+    },
     "michiyo nakajima": {
       "name": "中嶋美智代",
       "sort": "Nakajima, Michiyo"
+    },
+    "midori ebina": {
+      "name": "海老名美どり",
+      "sort": "Ebina, Midori"
     },
     "midori karashima": {
       "name": "辛島美登里",
@@ -246,6 +386,10 @@
       "name": "三原じゅん子",
       "sort": "Mihara, Junko"
     },
+    "miho gomi": {
+      "name": "五味美保",
+      "sort": "Gomi, Miho"
+    },
     "miho morikawa": {
       "name": "森川美穂",
       "sort": "Morikawa, Miho"
@@ -253,6 +397,10 @@
     "miho nakayama": {
       "name": "中山美穂",
       "sort": "Nakayama, Miho"
+    },
+    "miki imai": {
+      "name": "今井美樹",
+      "sort": "Imai, Miki"
     },
     "miki itou": {
       "name": "伊藤美紀",
@@ -298,9 +446,21 @@
       "name": "市川実和子",
       "sort": "Ichikawa, Miwako"
     },
+    "miyako chaki": {
+      "name": "茶木みやこ",
+      "sort": "Chaki, Miyako"
+    },
     "miyoko yoshimoto": {
       "name": "芳本美代子",
       "sort": "Yoshimoto, Miyoko"
+    },
+    "miyuki kajitani": {
+      "name": "梶谷美由紀",
+      "sort": "Kajitani, Miyuki"
+    },
+    "miyuki sugiura": {
+      "name": "杉浦幸",
+      "sort": "Sugiura, Miyuki"
     },
     "momoko kikuchi": {
       "name": "菊池桃子",
@@ -318,6 +478,10 @@
       "name": "岩崎元是&WINDY",
       "sort": "Iwasaki, Motoyoshi & Windy"
     },
+    "nagisa ni te": {
+      "name": "渚にて",
+      "sort": "Nagisa ni Te"
+    },
     "nami shimada": {
       "name": "島田奈美",
       "sort": "Shimada, Nami"
@@ -330,6 +494,22 @@
       "name": "近藤名奈",
       "sort": "Kondo, Nana"
     },
+    "nanako minami": {
+      "name": "南夏々子",
+      "sort": "Minami, Nanako"
+    },
+    "nao matsuzaki": {
+      "name": "松崎ナオ",
+      "sort": "Matsuzaki, Nao"
+    },
+    "narumi & the misters": {
+      "name": "ナルミ&ミスターズ",
+      "sort": "Narumi & The Misters"
+    },
+    "natsuko heki": {
+      "name": "碧夏子",
+      "sort": "Heki, Natsuko"
+    },
     "nito yuko": {
       "name": "仁藤優子",
       "sort": "Nito, Yuko"
@@ -341,6 +521,42 @@
     "noriko ogawa": {
       "name": "小川範子",
       "sort": "Ogawa, Noriko"
+    },
+    "norio sakai": {
+      "name": "坂井紀雄",
+      "sort": "Sakai, Norio"
+    },
+    "onyanko club": {
+      "name": "おニャン子クラブ",
+      "sort": "Onyanko Club"
+    },
+    "pair suzuran": {
+      "name": "ペア・スズラン",
+      "sort": "Pair Suzuran"
+    },
+    "pao": {
+      "name": "パオ",
+      "sort": "Pao"
+    },
+    "park young-mi": {
+      "name": "박영미",
+      "sort": "Park, Young-mi"
+    },
+    "pink pickles": {
+      "name": "ピンク・ピクルス",
+      "sort": "Pink Pickles"
+    },
+    "pink pincles": {
+      "name": "ピンク・ピクルス",
+      "sort": "Pink Pickles"
+    },
+    "poppies": {
+      "name": "ポピーズ",
+      "sort": "Poppies"
+    },
+    "reiko kashiwagi": {
+      "name": "柏木玲子",
+      "sort": "Kashiwagi, Reiko"
     },
     "reiko takahashi": {
       "name": "高橋玲子",
@@ -358,9 +574,33 @@
       "name": "三浦理恵子",
       "sort": "Miura, Rieko"
     },
+    "risa honda": {
+      "name": "本田理沙",
+      "sort": "Honda, Risa"
+    },
     "ritsuko tanaka": {
       "name": "田中律子",
       "sort": "Tanaka, Ritsuko"
+    },
+    "romi narita": {
+      "name": "成田路実",
+      "sort": "Narita, Romi"
+    },
+    "rumi nakashima": {
+      "name": "中嶋瑠美",
+      "sort": "Nakashima, Rumi"
+    },
+    "rumi takahara": {
+      "name": "高原ルミ",
+      "sort": "Takahara, Rumi"
+    },
+    "rumiko kawahara": {
+      "name": "川原るみこ",
+      "sort": "Kawahara, Rumiko"
+    },
+    "ruriko ohgami": {
+      "name": "大上留利子",
+      "sort": "Ohgami, Ruriko"
     },
     "ryohei yamanashi": {
       "name": "山梨鐐平",
@@ -374,9 +614,21 @@
       "name": "篠原涼子",
       "sort": "Shinohara, Ryoko"
     },
+    "ryuichi sakamoto": {
+      "name": "坂本龍一",
+      "sort": "Sakamoto, Ryuichi"
+    },
+    "ryusenkei": {
+      "name": "流線形",
+      "sort": "Ryusenkei"
+    },
     "sachiko kobayashi": {
       "name": "小林幸子",
       "sort": "Kobayashi, Sachiko"
+    },
+    "sanshiro": {
+      "name": "三四朗",
+      "sort": "Sanshiro"
     },
     "satsuki shibano": {
       "name": "柴野さつき",
@@ -398,13 +650,33 @@
       "name": "シブがき隊",
       "sort": "Shibugakitai"
     },
+    "shinko terada": {
+      "name": "寺田新子",
+      "sort": "Terada, Shinko"
+    },
+    "shinobu horie": {
+      "name": "堀江しのぶ",
+      "sort": "Horie, Shinobu"
+    },
     "shinobu nakayama": {
       "name": "中山忍",
       "sort": "Nakayama, Shinobu"
     },
+    "shoko arai": {
+      "name": "荒井尚子",
+      "sort": "Arai, Shoko"
+    },
     "shoko inoue": {
       "name": "井上昌己",
       "sort": "Inoue, Shoko"
+    },
+    "sonia rosa": {
+      "name": "ソニア・ローザ",
+      "sort": "Sonia Rosa"
+    },
+    "space a": {
+      "name": "스페이스에이",
+      "sort": "Space A"
     },
     "spitz": {
       "name": "スピッツ",
@@ -438,9 +710,25 @@
       "name": "山下達郎",
       "sort": "Yamashita, Tatsuro"
     },
+    "teruko fujii": {
+      "name": "藤井輝子",
+      "sort": "Fujii, Teruko"
+    },
     "the golden cups": {
       "name": "ザ・ゴールデン・カップス",
       "sort": "Golden Cups, The"
+    },
+    "the lilies": {
+      "name": "ザ・リリーズ",
+      "sort": "Lilies, The"
+    },
+    "the pantyhose": {
+      "name": "ザ・パンスト",
+      "sort": "Pantyhose, The"
+    },
+    "toko okabe": {
+      "name": "岡部東子",
+      "sort": "Okabe, Toko"
     },
     "tomoko fujita": {
       "name": "藤田朋子",
@@ -454,9 +742,21 @@
       "name": "原田知世",
       "sort": "Harada, Tomoyo"
     },
+    "tomoyo yoshida": {
+      "name": "吉田朋代",
+      "sort": "Yoshida, Tomoyo"
+    },
     "toru watanabe": {
       "name": "渡辺徹",
       "sort": "Watanabe, Toru"
+    },
+    "toshio kurosawa & kazuko kano": {
+      "name": "黒沢年男 & 叶和貴子",
+      "sort": "Kurosawa, Toshio & Kano, Kazuko"
+    },
+    "toshitaro": {
+      "name": "稗島寿太郎",
+      "sort": "Hiejima, Toshitaro"
     },
     "twist": {
       "name": "ツイスト",
@@ -478,9 +778,21 @@
       "name": "前野曜子",
       "sort": "Maeno, Yoko"
     },
+    "yoko mizusawa": {
+      "name": "水沢瑶子",
+      "sort": "Mizusawa, Yoko"
+    },
+    "yoko nakamura": {
+      "name": "中村容子",
+      "sort": "Nakamura, Yoko"
+    },
     "yoko nishi": {
       "name": "西陽子",
       "sort": "Nishi, Yoko"
+    },
+    "yoon bok-hee": {
+      "name": "윤복희",
+      "sort": "Yoon, Bok-hee"
     },
     "yoriyuki harada": {
       "name": "原田依幸",
@@ -493,6 +805,22 @@
     "yoshiko goshima": {
       "name": "五島良子",
       "sort": "Goshima, Yoshiko"
+    },
+    "yoshiko yamaguchi": {
+      "name": "山口淑子",
+      "sort": "Yamaguchi, Yoshiko"
+    },
+    "yoshimura hiroshi": {
+      "name": "吉村弘",
+      "sort": "Yoshimura, Hiroshi"
+    },
+    "yoshinori sunahara": {
+      "name": "砂原良徳",
+      "sort": "Sunahara, Yoshinori"
+    },
+    "yoshito fuchigami": {
+      "name": "渕上祥人",
+      "sort": "Fuchigami, Yoshito"
     },
     "yui asaka": {
       "name": "浅香唯",
@@ -510,6 +838,14 @@
       "name": "大西結花",
       "sort": "Ohnishi, Yuka"
     },
+    "yuki kuroda": {
+      "name": "黒田有紀",
+      "sort": "Kuroda, Yuki"
+    },
+    "yukiko haneda": {
+      "name": "羽根田征子",
+      "sort": "Haneda, Yukiko"
+    },
     "yukiko okada": {
       "name": "岡田有希子",
       "sort": "Okada, Yukiko"
@@ -522,27 +858,42 @@
       "name": "古手川祐子",
       "sort": "Kotegawa, Yuko"
     },
+    "yuko kumai": {
+      "name": "くま井ゆう子",
+      "sort": "Kumai, Yuko"
+    },
     "yuma nakamura": {
       "name": "中村由真",
       "sort": "Nakamura, Yuma"
+    },
+    "yumiko kosaka": {
+      "name": "小坂由美子",
+      "sort": "Kosaka, Yumiko"
     },
     "yuri nakae": {
       "name": "中江有里",
       "sort": "Nakae, Yuri"
     },
+    "adarapta": null,
     "amazons": null,
     "aphasia": null,
+    "bc lemmon": null,
+    "bc lemons": null,
     "buck-tick": null,
     "buddha brand": null,
     "chara": null,
     "cliff edge": null,
+    "coco": null,
     "cyber nation network": null,
     "double": null,
     "east end x yuri": null,
+    "eve": null,
     "folder 5": null,
     "heavy metal army": null,
     "hitoe": null,
     "issa x soulja": null,
+    "january christy": null,
+    "jenny01": null,
     "jungle smile": null,
     "key west club": null,
     "love": null,
@@ -555,7 +906,10 @@
     "original love": null,
     "picky picnic": null,
     "rose": null,
+    "rose roxy roller": null,
     "serani poji": null,
+    "spaed": null,
+    "spica": null,
     "the blue hearts": null,
     "the brilliant green": null,
     "tommy february6": null,
@@ -563,7 +917,9 @@
     "triangle": null,
     "v.a": null,
     "various artists": null,
+    "w-nao": null,
     "world standard": null,
-    "zard": null
+    "zard": null,
+    "zone time": null
   }
 }

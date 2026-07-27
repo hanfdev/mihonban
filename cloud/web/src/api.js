@@ -147,7 +147,13 @@ export const api = {
     req("POST", "/api/admin/storages/gdrive-exchange", payload),
   // 配置导出 / 导入（重新部署后还原 OneDrive / R2 / 存储后端）
   exportConfig: () => req("GET", "/api/admin/config/export"),
-  importConfig: (payload) => req("POST", "/api/admin/config/import", payload),
+  importConfig: (payload) => {
+    // 导入会覆盖后台设置。前后都清缓存，避免在途的旧 settings 请求在
+    // 导入完成后重新把旧快照放回共享缓存。
+    settingsShared = null;
+    return req("POST", "/api/admin/config/import", payload)
+      .finally(() => { settingsShared = null; });
+  },
 };
 
 export const artUrl = (albumId, s = 400, origin = false) =>

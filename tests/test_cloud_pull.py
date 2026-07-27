@@ -104,6 +104,48 @@ def test_payload_preserves_multidisc_relative_paths(cloud_cfg, monkeypatch):
     assert [track["disc"] for track in payload["tracks"]] == [1, 2]
 
 
+def test_payload_copies_artist_sort_tag(cloud_cfg, monkeypatch):
+    album_dir = cloud_cfg.music_root / "石川秀美" / "Summer Breeze"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01.mp3").write_bytes(b"audio")
+
+    def fake_mutagen(_path, easy=False):
+        return SimpleNamespace(
+            tags={
+                "title": ["Song"], "albumartist": ["石川秀美"],
+                "albumartistsort": ["Ishikawa, Hidemi"],
+                "album": ["Summer Breeze"], "tracknumber": ["1"],
+            },
+            info=SimpleNamespace(length=10.0, bitrate=320_000),
+        )
+
+    monkeypatch.setattr(cloud.mutagen, "File", fake_mutagen)
+    payload = cloud.payload_for_album(cloud_cfg, album_dir)
+
+    assert payload["artistSort"] == "Ishikawa, Hidemi"
+
+
+def test_payload_fills_known_artist_sort_when_tag_is_missing(
+        cloud_cfg, monkeypatch):
+    album_dir = cloud_cfg.music_root / "流線形" / "City Music"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01.mp3").write_bytes(b"audio")
+
+    def fake_mutagen(_path, easy=False):
+        return SimpleNamespace(
+            tags={
+                "title": ["Song"], "albumartist": ["流線形"],
+                "album": ["City Music"], "tracknumber": ["1"],
+            },
+            info=SimpleNamespace(length=10.0, bitrate=320_000),
+        )
+
+    monkeypatch.setattr(cloud.mutagen, "File", fake_mutagen)
+    payload = cloud.payload_for_album(cloud_cfg, album_dir)
+
+    assert payload["artistSort"] == "Ryusenkei"
+
+
 def test_payload_ignores_zero_originaldate_and_uses_release_date(
         cloud_cfg, monkeypatch):
     album_dir = cloud_cfg.music_root / "Artist" / "Album"

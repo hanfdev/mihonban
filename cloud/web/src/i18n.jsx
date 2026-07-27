@@ -79,6 +79,10 @@ const LOADERS = {
   es: () => import('./locales/es.js'),
 }
 
+// 首屏语言包通常数百毫秒内完成。若浏览器/代理让 chunk 请求永久 pending，
+// 8 秒后先用英文兜底开放界面；原请求随后成功时仍会切回目标语言。
+export const LOCALE_BOOT_TIMEOUT_MS = 8000
+
 /** 确保语言包就绪；en 或未知语言立即返回。返回是否加载成功（失败不抛出，回退英文）。 */
 export async function loadLocale(lang) {
   if (DICTS[lang] || !LOADERS[lang]) return true
@@ -121,18 +125,34 @@ export function I18nProvider({ children }) {
   // booted 之后切换语言绝不卸载子树（播放器状态必须存活）。
   const [booted, setBooted] = useState(ready)
 
+  // 静态 HTML 以英文作为脚本启动前的安全默认值；检测或用户切换语言后，
+  // 同步真实 BCP-47 标签，让读屏、断字和浏览器翻译使用正确语言。
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
+
   useEffect(() => {
     if (ready) { if (!booted) setBooted(true); return }
     let active = true
+    const deadline = !booted
+      ? setTimeout(() => { if (active) setBooted(true) }, LOCALE_BOOT_TIMEOUT_MS)
+      : null
     // 加载尝试完成后无论成败都放开启动闸门：成功用目标语言，失败用英文兜底
-    // （translate() 内置回退）。绝不因为一个陈旧/被墙的 chunk 就永久白屏。
+    // （translate() 内置回退）。请求若永久 pending，上方 deadline 也会放开闸门。
     loadLocale(lang).then(() => {
       if (!active) return
+      if (deadline !== null) clearTimeout(deadline)
       setDictVersion((n) => n + 1)
       setBooted(true)
     })
-    return () => { active = false }
-  }, [lang, ready, booted])
+    return () => {
+      active = false
+      if (deadline !== null) clearTimeout(deadline)
+    }
+    // booted 只决定本次是否需要首屏 deadline；把它加入依赖会在超时后
+    // 立即重复发起同一个 chunk 请求。切换语言由 lang 驱动，加载完成由 ready 驱动。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, ready])
 
   const setLang = useCallback((id) => {
     if (!LANGS.some((l) => l.id === id)) return

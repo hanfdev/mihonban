@@ -107,15 +107,24 @@ if (hours > 0) {
 // 注：Windows 无法投递 SIGTERM，taskkill /F 硬杀仍会报非零退出码——那是
 // 平台限制，不代表应用出错。
 let closing = false;
+let shutdownTimer = null;
+function closeDatabase() {
+  try { db.close(); } catch { /* 已关闭 */ }
+}
+function finishShutdown() {
+  if (shutdownTimer) clearTimeout(shutdownTimer);
+  closeDatabase();
+  process.exit(0);
+}
 function shutdown(signal) {
   if (closing) return;
   closing = true;
   console.log(`${signal} received — shutting down`);
-  setTimeout(() => process.exit(0), 5000).unref();
-  server.close(() => {
-    try { db.close(); } catch { /* 已关闭 */ }
-    process.exit(0);
-  });
+  // 即使长连接让 server.close() 五秒内没有回调，也先关闭 SQLite、清算 WAL
+  // 再退出；否则“兜底”路径恰好绕过了优雅停机最重要的数据清理。
+  shutdownTimer = setTimeout(finishShutdown, 5000);
+  shutdownTimer.unref();
+  server.close(finishShutdown);
 }
 for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"]) {
   process.on(signal, () => shutdown(signal));

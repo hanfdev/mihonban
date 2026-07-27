@@ -27,6 +27,7 @@ export default {
   },
   common: {
     ...en.common,
+    loadFailed: '加载失败', zoom: '缩放',
     play: '播放', pause: '暂停', playAll: '播放全部',
     shuffle: '随机', shuffleOn: '随机：开（点播放键生效）',
     shuffleOff: '随机：关', locate: '定位正在播放',
@@ -63,7 +64,7 @@ export default {
     emptyHintUser: '管理员精选的内容会出现在这里。',
   },
   player: {
-    next: '下一首', prev: '上一首',
+    next: '下一首', prev: '上一首', seek: '播放进度', volume: '音量',
     repeatOff: '不循环', repeatAll: '列表循环', repeatOne: '单曲循环',
     collapse: '收起 (Esc)', viewAlbum: '查看音盤', shuffle: '随机播放',
     noPlayable: '队列里没有此设备能播放的格式',
@@ -133,7 +134,7 @@ export default {
     hiddenOk: '音盤已从曲库隐藏',
     shownOk: '音盤已重新显示在曲库',
     hideFail: (m) => `操作失败：${m}`,
-    artist: '艺人',
+    artist: '艺人', artistSort: '英文 / 罗马音名称', artistSortPh: '例：Ishikawa, Hidemi',
     title: '盤名',
     year: '年份',
     primaryGenres: '主风格',
@@ -206,6 +207,7 @@ export default {
     back: '返回',
   },
   gallery: {
+    noImage: '未选择支持的图片（JPEG、PNG、WebP、GIF、AVIF）',
     uploaded: '图片已上传',
     uploadFail: (m) => `上传失败：${m}`,
     deleted: '图片已删除',

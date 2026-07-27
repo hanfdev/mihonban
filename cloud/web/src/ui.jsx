@@ -377,12 +377,15 @@ export function Rating({ value, na, unratedLabel }) {
 
 /** 收藏心形：管理员可点，普通用户只在已收藏时显示为标记。 */
 export function Heart({ on, canEdit, onToggle, size = 16, labels }) {
+  const { t } = useI18n()
   if (!on && !canEdit) return null
   const L = labels || {}
+  const label = canEdit
+    ? (on ? (L.unfav || t('common.unfav')) : (L.fav || t('common.fav')))
+    : (L.faved || t('common.faved'))
   return (
     <button className={`heart-btn ${on ? 'on' : ''} ${canEdit ? '' : 'ro'}`}
-            title={canEdit ? (on ? (L.unfav || 'Unfavorite') : (L.fav || 'Favorite'))
-              : (L.faved || 'Favorited')}
+            title={label} aria-label={label}
             onClick={(e) => { e.stopPropagation(); if (canEdit) onToggle() }}>
       {on ? <I.heartFill size={size} /> : <I.heart size={size} />}
     </button>

@@ -1,5 +1,5 @@
 // 艺人别名库（romaji ↔ 原名）。数据源 artist-aliases.json —— 与管线/beets 共用同一份。
-import DATA from './artist-aliases.json'
+import DATA from './artist-aliases.json' with { type: 'json' }
 
 const strip = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '')
 
@@ -35,4 +35,15 @@ export function toJa(name) {
 export function romajiOf(jaName) {
   build()
   return (R.get(jaName) || []).join(' ')
+}
+
+/** 原名 → 首选罗马字排序名；网页上传/编辑时一并持久化给后续搜索。 */
+export function sortOf(jaName) {
+  build()
+  const keys = R.get(jaName) || []
+  for (const key of keys) {
+    const sort = M.get(normKey(key))?.sort
+    if (typeof sort === 'string' && sort.trim()) return sort.trim()
+  }
+  return ''
 }

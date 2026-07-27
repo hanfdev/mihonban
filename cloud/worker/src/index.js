@@ -1068,7 +1068,10 @@ function discogsIdFrom(value) {
   }
   const host = url.hostname.toLowerCase();
   if (host !== "discogs.com" && host !== "www.discogs.com") return null;
-  const m = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(release|master)s?\/(\d+)(?:\/|$)/i
+  // Discogs canonical URLs commonly append a title slug directly after the
+  // numeric id: /release/12345-Artist-Title. Keep the separator strict so
+  // paths such as /release/12345abc are not accepted as valid ids.
+  const m = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(release|master)s?\/(\d+)(?:[-\/]|$)/i
     .exec(url.pathname);
   if (!m || !DISCOGS_ID_RE.test(m[2])) return null;
   return { kind: m[1].toLowerCase() === "master" ? "masters" : "releases", id: m[2] };

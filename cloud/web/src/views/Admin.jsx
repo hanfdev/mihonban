@@ -38,18 +38,18 @@ function PasswordCard() {
         {t('admin.passwordsHint')}
       </div>
       <form onSubmit={submit} className="fields" style={{ maxWidth: 420 }}>
-        <div className="frow"><label>{t('admin.whichPassword')}</label>
-          <select className="tin" value={target}
+        <div className="frow"><label htmlFor="admin-password-target">{t('admin.whichPassword')}</label>
+          <select id="admin-password-target" className="tin" value={target}
                   onChange={(e) => setTarget(e.target.value)}>
             <option value="user">{t('admin.userPassword')}</option>
             <option value="admin">{t('admin.adminPassword')}</option>
           </select></div>
-        <div className="frow"><label>{t('admin.adminPassword')}</label>
-          <input className="tin" type="password" value={current} required
+        <div className="frow"><label htmlFor="admin-password-current">{t('admin.adminPassword')}</label>
+          <input id="admin-password-current" className="tin" type="password" value={current} required
                  placeholder={t('admin.currentAdmin')}
                  onChange={(e) => setCurrent(e.target.value)} /></div>
-        <div className="frow"><label>{t('admin.newPassword')}</label>
-          <input className="tin" type="password" value={next} required
+        <div className="frow"><label htmlFor="admin-password-next">{t('admin.newPassword')}</label>
+          <input id="admin-password-next" className="tin" type="password" value={next} required
                  minLength={4} placeholder={t('admin.minChars')}
                  onChange={(e) => setNext(e.target.value)} /></div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -92,16 +92,17 @@ function AccessCard() {
       <div className="hint">
         {t('admin.guestHint')}
       </div>
-      <label className="switch-row">
+      <div className="switch-row">
         <span>
           <b>{open ? t('admin.guestOpen') : t('admin.guestClosed')}</b>
           <em>{open ? t('admin.guestOpenDesc') : t('admin.guestClosedDesc')}</em>
         </span>
         <button className={`toggle ${open ? 'on' : ''}`} disabled={open === null || busy}
-                onClick={toggle} role="switch" aria-checked={!!open}>
+                onClick={toggle} role="switch" aria-checked={!!open}
+                aria-label={open ? t('admin.guestOpen') : t('admin.guestClosed')}>
           <i />
         </button>
-      </label>
+      </div>
     </div>
   )
 }
@@ -145,6 +146,7 @@ function DiscogsCard() {
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
         <input className="tin" style={{ flex: 1 }} value={tok}
+               aria-label={t('admin.discogs')}
                placeholder={current ? t('admin.discogsPhNew') : t('admin.discogsPh')}
                onChange={(e) => setTok(e.target.value)} />
         <button className="btn primary" disabled={saving || !tok.trim()} onClick={save}>
@@ -259,13 +261,13 @@ function SourceCard() {
         {t('admin.sourceHint')}
       </div>
       <div className="fields" style={{ maxWidth: 640 }}>
-        <div className="frow"><label>{t('admin.sourceUrl')}</label>
-          <input className="tin" value={s.sourceUrl}
+        <div className="frow"><label htmlFor="admin-source-url">{t('admin.sourceUrl')}</label>
+          <input id="admin-source-url" className="tin" value={s.sourceUrl}
                  placeholder={t('admin.sourceUrlPh')}
                  onChange={(e) => setS({ ...s, sourceUrl: e.target.value })} /></div>
         <div className="frow" style={{ alignItems: 'start' }}>
-          <label style={{ paddingTop: 9 }}>{t('admin.archivePasswords')}</label>
-          <textarea className="tin" rows={3} value={s.passwords}
+          <label htmlFor="admin-source-passwords" style={{ paddingTop: 9 }}>{t('admin.archivePasswords')}</label>
+          <textarea id="admin-source-passwords" className="tin" rows={3} value={s.passwords}
                     placeholder={t('admin.archivePasswordsPh')}
                     onChange={(e) => setS({ ...s, passwords: e.target.value })} /></div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -288,7 +290,7 @@ function SourceCard() {
         </div>
         <div className="search sm">
           <I.search size={13} />
-          <input placeholder={t('admin.searchPosts')} value={pq}
+          <input placeholder={t('admin.searchPosts')} aria-label={t('admin.searchPosts')} value={pq}
                  onChange={(e) => setPq(e.target.value)} />
           {pq && <I.x size={12} style={{ cursor: 'pointer' }} onClick={() => setPq('')} />}
         </div>
@@ -362,34 +364,36 @@ function ModulesCard({ modSource, streamProxy, streamProxyUrl, onChange }) {
       <div className="hint">
         {t('admin.modulesHint')}
       </div>
-      <label className="switch-row">
+      <div className="switch-row">
         <span>
           <b>{t('admin.moduleSource')}</b>
           <em>{t('admin.moduleSourceDesc')}</em>
         </span>
         <button className={`toggle ${modSource ? 'on' : ''}`} disabled={busy}
                 onClick={() => toggle('moduleSource', !modSource)}
-                role="switch" aria-checked={modSource}>
+                role="switch" aria-checked={modSource}
+                aria-label={t('admin.moduleSource')}>
           <i />
         </button>
-      </label>
-      <label className="switch-row">
+      </div>
+      <div className="switch-row">
         <span>
           <b>{t('admin.streamProxy')}</b>
           <em>{t('admin.streamProxyDesc')}</em>
         </span>
         <button className={`toggle ${streamProxy ? 'on' : ''}`} disabled={busy}
                 onClick={() => toggle('streamProxy', !streamProxy)}
-                role="switch" aria-checked={streamProxy}>
+                role="switch" aria-checked={streamProxy}
+                aria-label={t('admin.streamProxy')}>
           <i />
         </button>
-      </label>
+      </div>
       {streamProxy && (
         <div className="fields" style={{ maxWidth: 640, marginTop: 10 }}>
           <div className="hint" style={{ marginBottom: 8 }}>{t('admin.streamProxyUrlHint')}</div>
           <div className="frow">
-            <label>{t('admin.streamProxyUrl')}</label>
-            <input className="tin mono" value={proxyUrl}
+            <label htmlFor="admin-stream-proxy-url">{t('admin.streamProxyUrl')}</label>
+            <input id="admin-stream-proxy-url" className="tin mono" value={proxyUrl}
                    placeholder={t('admin.streamProxyUrlPh')}
                    onChange={(e) => setProxyUrl(e.target.value)} />
           </div>
@@ -480,23 +484,24 @@ function R2Card() {
       </div>
 
       {cur && (
-        <label className="switch-row" style={{ marginBottom: 8 }}>
+        <div className="switch-row" style={{ marginBottom: 8 }}>
           <span>
             <b>{cur.enabled ? (cur.ready ? t('admin.r2On') : t('admin.r2OnPartial')) : t('admin.r2Off')}</b>
             <em>{cur.ready ? t('admin.r2Mirrored', cur.mirrored) : t('admin.r2NeedConfig')}</em>
           </span>
           <button className={`toggle ${cur.enabled ? 'on' : ''}`} disabled={!!busy}
-                  onClick={toggleEnabled} role="switch" aria-checked={cur.enabled}>
+                  onClick={toggleEnabled} role="switch" aria-checked={cur.enabled}
+                  aria-label={cur.enabled ? t('admin.r2On') : t('admin.r2Off')}>
             <i />
           </button>
-        </label>
+        </div>
       )}
 
       <div className="fields" style={{ maxWidth: 640 }}>
         {F.map(([k, label, secret]) => (
           <div className="frow" key={k}>
-            <label>{label}</label>
-            <input className="tin mono" value={f[k]}
+            <label htmlFor={`admin-r2-${k}`}>{label}</label>
+            <input id={`admin-r2-${k}`} className="tin mono" value={f[k]}
                    placeholder={cur ? (secret ? (cur[k] || t('admin.emptyKeep'))
                      : (cur[k] || t('admin.emptyKeep'))) : ''}
                    onChange={(e) => setF({ ...f, [k]: e.target.value })} />
@@ -769,8 +774,8 @@ function StorageBackendsCard() {
       <div className="hint" style={{ marginBottom: 8 }}>{t('admin.editHint')}</div>
       {fieldsFor(kind).map(([k, label, ph]) => (
         <div className="frow" key={k}>
-          <label>{label}</label>
-          <input className="tin mono" value={editCfg[k] || ''}
+          <label htmlFor={`admin-storage-edit-${k}`}>{label}</label>
+          <input id={`admin-storage-edit-${k}`} className="tin mono" value={editCfg[k] || ''}
                  placeholder={ph || t('admin.emptyKeep')}
                  onChange={(e) => setEditCfg({ ...editCfg, [k]: e.target.value })} />
         </div>
@@ -858,13 +863,13 @@ function StorageBackendsCard() {
               <div style={{ marginTop: 6, color: 'var(--gold)' }}>{t('admin.firstBackendHint')}</div>
             )}
           </div>
-          <div className="frow"><label>{t('admin.displayName')}</label>
-            <input className="tin" value={name} placeholder={t('admin.displayNamePh')}
+          <div className="frow"><label htmlFor="admin-storage-name">{t('admin.displayName')}</label>
+            <input id="admin-storage-name" className="tin" value={name} placeholder={t('admin.displayNamePh')}
                    onChange={(e) => setName(e.target.value)} /></div>
           {fieldsFor(addKind).map(([k, label, ph]) => (
             <div className="frow" key={k}>
-              <label>{label}</label>
-              <input className="tin mono" value={cfg[k] || ''}
+              <label htmlFor={`admin-storage-new-${k}`}>{label}</label>
+              <input id={`admin-storage-new-${k}`} className="tin mono" value={cfg[k] || ''}
                      placeholder={ph}
                      onChange={(e) => setCfg({ ...cfg, [k]: e.target.value })} />
             </div>
@@ -880,8 +885,8 @@ function StorageBackendsCard() {
                     {t('admin.openAuth')} <I.ext size={11} /></a>
                 )}
               </div>
-              <div className="frow"><label>{t('admin.authCode')}</label>
-                <input className="tin mono" value={gdCode}
+              <div className="frow"><label htmlFor="admin-gdrive-auth-code">{t('admin.authCode')}</label>
+                <input id="admin-gdrive-auth-code" className="tin mono" value={gdCode}
                        placeholder={t('admin.authCodePh')}
                        onChange={(e) => setGdCode(e.target.value)} /></div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -919,6 +924,7 @@ function StorageBackendsCard() {
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <select className="tin" style={{ width: 200 }} value={bulkTarget}
+                    aria-label={t('admin.pickTarget')}
                     onChange={(e) => setBulkTarget(e.target.value)}
                     disabled={!!busy}>
               <option value="">{t('admin.pickTarget')}</option>
@@ -955,6 +961,7 @@ function StorageBackendsCard() {
                   <span className="stor-mig-title">{a.artist} — {a.title}</span>
                   <span className="stor-mig-cur">{label}</span>
                   <select className="tin" style={{ width: 160 }}
+                          aria-label={`${t('admin.migrateTo')}: ${a.artist} — ${a.title}`}
                           defaultValue=""
                           disabled={!!busy}
                           onChange={(e) => {

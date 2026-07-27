@@ -27,6 +27,7 @@ export default {
   },
   common: {
     ...zhHans.common,
+    loadFailed: '載入失敗', zoom: '縮放',
     play: '播放', pause: '暫停', playAll: '播放全部',
     shuffle: '隨機', shuffleOn: '隨機：開（按播放鍵生效）',
     shuffleOff: '隨機：關', locate: '定位正在播放',
@@ -62,7 +63,8 @@ export default {
     deleteKeep: '從曲庫移除（保留檔案）', deleteFiles: '刪除音盤與檔案', deleted: '已從曲庫移除（檔案保留）',
     deletedFiles: '音盤與檔案已刪除（可從回收筒復原）', deleteFail: (m) => `刪除失敗：${m}`,
     hide: '隱藏', unhide: '取消隱藏', hiddenBadge: '已隱藏', hiddenOk: '音盤已從曲庫隱藏', shownOk: '音盤已重新顯示於曲庫',
-    hideFail: (m) => `操作失敗：${m}`, artist: '藝人', title: '盤名', year: '年份', primaryGenres: '主風格',
+    hideFail: (m) => `操作失敗：${m}`, artist: '藝人', artistSort: '英文 / 羅馬音名稱',
+    artistSortPh: '例：Ishikawa, Hidemi', title: '盤名', year: '年份', primaryGenres: '主風格',
     secondaryGenres: '次風格', descriptors: '描述詞', note: '簡介',
     notePh: '這張音盤的故事、版本說明… 支援 Markdown，長文會折疊為「閱讀更多」。留空即不顯示。',
     genresPh: 'City Pop; Funk（金色標籤）', secGenresPh: 'Boogie; Disco（淡色標籤）', descPh: '夏日；溫暖；律動',
@@ -88,7 +90,7 @@ export default {
     emptyHintUser: '管理員精選的內容會出現在這裡。',
   },
   player: {
-    next: '下一首', prev: '上一首',
+    next: '下一首', prev: '上一首', seek: '播放進度', volume: '音量',
     repeatOff: '不循環', repeatAll: '清單循環', repeatOne: '單曲循環',
     collapse: '收起 (Esc)', viewAlbum: '查看音盤', shuffle: '隨機播放',
     noPlayable: '佇列中沒有此裝置可播放的格式',
@@ -116,6 +118,7 @@ export default {
     coverTag: '封面', back: '背面',
   },
   gallery: {
+    noImage: '未選擇支援的圖片（JPEG、PNG、WebP、GIF、AVIF）',
     uploaded: '圖片已上傳', uploadFail: (m) => `上傳失敗：${m}`, deleted: '圖片已刪除', deleteFail: (m) => `刪除失敗：${m}`,
     orderFail: (m) => `排序儲存失敗：${m}`, remaining: (n) => `還剩 ${n} 張`, add: '新增',
     uploadFirst: '上傳內頁 / 寫真', original: '原圖', loadFail: '圖片載入失敗',

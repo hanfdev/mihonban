@@ -131,6 +131,7 @@ export default {
   },
   gallery: {
     ...en.gallery,
+    noImage: 'Aucune image compatible sélectionnée (JPEG, PNG, WebP, GIF, AVIF)',
     uploaded: 'Images téléversées',
     uploadFail: (m) => `Échec du téléversement : ${m}`,
     deleted: 'Image supprimée',
@@ -162,7 +163,7 @@ export default {
   },
   player: {
     ...en.player,
-    next: 'Suivant', prev: 'Précédent',
+    next: 'Suivant', prev: 'Précédent', seek: 'Position de lecture', volume: 'Volume',
     repeatOff: 'Pas de répétition', repeatAll: 'Répéter la liste', repeatOne: 'Répéter le titre',
     collapse: 'Réduire (Esc)', viewAlbum: 'Voir l’album', shuffle: 'Aléatoire',
     noPlayable: 'Aucun format lisible sur cet appareil dans la file',
@@ -227,6 +228,7 @@ export default {
   },
   common: {
     ...en.common,
+    loadFailed: 'Échec du chargement', zoom: 'Zoom',
     play: 'Lecture', pause: 'Pause', playAll: 'Tout lire',
     shuffle: 'Aléatoire', shuffleOn: 'Aléatoire : activé (au prochain Play)',
     shuffleOff: 'Aléatoire : désactivé', locate: 'Aller au titre en cours',

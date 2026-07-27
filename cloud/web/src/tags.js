@@ -38,7 +38,8 @@ export async function readTags(file) {
     track: fallback.track,
     disc: 1,
     duration: null,
-    artist: "", albumArtist: "", album: "", year: null,
+    artist: "", albumArtist: "", artistSort: "", albumArtistSort: "",
+    album: "", year: null,
     picture: null, // {blob, type}
   };
   try {
@@ -50,6 +51,8 @@ export async function readTags(file) {
     base.disc = c.disk?.no ?? 1;
     base.artist = c.artist || "";
     base.albumArtist = c.albumartist || c.artist || "";
+    base.artistSort = c.artistsort || "";
+    base.albumArtistSort = c.albumartistsort || c.artistsort || "";
     base.album = c.album || "";
     base.year = c.year || null;
     base.duration = meta.format.duration || null;
