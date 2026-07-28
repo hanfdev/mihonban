@@ -65,6 +65,42 @@ function BioDialog({ name, initialNote, onClose, onSaved }) {
   )
 }
 
+function ArtistSortDialog({ name, initialSort, onClose, onSaved }) {
+  const { t } = useI18n()
+  const [value, setValue] = useState(initialSort === name ? '' : initialSort || '')
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await api.putArtist(name, { artistSort: value })
+      toast(t('artistPage.sortSaved'), 'ok')
+      onSaved()
+    } catch (e) { toast(e.message, 'err') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog title={t('artistPage.sortDialog', name)} onClose={onClose}>
+      <div className="bio-form artist-sort-form">
+        <label>{t('artistPage.sortLabel')}</label>
+        <input className="tin" value={value} autoFocus
+               placeholder={t('artistPage.sortPh')}
+               onChange={(e) => setValue(e.target.value)}
+               onKeyDown={(e) => { if (e.key === 'Enter' && !busy) save() }} />
+        <div className="field-hint">{t('artistPage.sortHint')}</div>
+      </div>
+      <div className="actions">
+        <button className="btn" onClick={onClose}>{t('common.cancel')}</button>
+        <button className="btn primary" disabled={busy} onClick={save}>
+          {busy ? <I.spin /> : t('common.save')}
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
 function ArtistDiscogsDialog({ name, onClose, onImported }) {
   const { t } = useI18n()
   const [cands, setCands] = useState(null)
@@ -203,13 +239,14 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
 }
 
 export default function ArtistPage({ name, albums, artists, avatarVer,
-                                     onAvatarChanged, isAdmin,
+                                     onAvatarChanged, onArtistChanged, isAdmin,
                                      onOpen, onOpenArtist, onOpenGenre, onPlay,
                                      showHidden, setShowHidden,
                                      currentAlbumId, playingId, onTogglePlayback }) {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
   const [bioDlg, setBioDlg] = useState(false)
+  const [sortDlg, setSortDlg] = useState(false)
   const [reader, setReader] = useState(false)
   const [bio, setBio] = useState(null)
   const [cropFile, setCropFile] = useState(null)
@@ -250,6 +287,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
     (artists || []).find((a) => a.name === name) || {}, [artists, name])
   const note = meta.note || ''
   const hasBio = !!meta.hasBio
+  const artistSort = meta.sort && meta.sort !== name ? meta.sort : ''
 
   const openReader = async () => {
     if (bio === null) {
@@ -330,6 +368,19 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
         <div className="artist-info">
           <div className="hero-artist">{t('artistPage.kicker')}</div>
           <h1 className="hero-title">{name}</h1>
+          {(artistSort || isAdmin) && (
+            <div className="artist-sort-row">
+              {artistSort && <span className="artist-sort-name">{artistSort}</span>}
+              {isAdmin && (
+                <button className={`artist-sort-edit${artistSort ? '' : ' ghost'}`}
+                        title={t('artistPage.editSort')}
+                        onClick={() => setSortDlg(true)}>
+                  {artistSort ? <I.edit size={11} /> : <I.plus size={11} />}
+                  {artistSort ? t('common.edit') : t('artistPage.addSort')}
+                </button>
+              )}
+            </div>
+          )}
           <div className="hero-meta">
             <span>{t('count.albums', mine.length)}</span>
             {totalDur ? <><span>·</span><span>{fmtTotal(totalDur, t)}</span></> : null}
@@ -415,6 +466,14 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
                      setBio(null)
                      onAvatarChanged()
                    }} />
+      )}
+      {sortDlg && (
+        <ArtistSortDialog name={name} initialSort={artistSort}
+                          onClose={() => setSortDlg(false)}
+                          onSaved={() => {
+                            setSortDlg(false)
+                            onArtistChanged?.()
+                          }} />
       )}
       {reader && (
         <Reader kicker={t('artistPage.kicker')} title={name}

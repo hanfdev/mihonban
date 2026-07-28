@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -23,6 +24,12 @@ from .config import Config, repo_root
 from .extract import AUDIO_EXTS
 
 log = logging.getLogger("mihonban.beets")
+
+_DISC_FOLDER_RE = re.compile(
+    r"^(?:disc|cd|disk|vol(?:ume)?|side)[ _.-]*"
+    r"(?:[0-9]+|[ivxlcdm]+)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -82,10 +89,26 @@ def _has_audio(d: Path) -> bool:
     )
 
 
+def _is_multidisc_tree(album_dir: Path) -> bool:
+    """Return true when audio is split across conventional disc folders."""
+    children = [
+        child for child in album_dir.iterdir()
+        if child.is_dir() and _has_audio(child)
+    ]
+    return (len(children) >= 2
+            and all(_DISC_FOLDER_RE.match(child.name.strip())
+                    for child in children))
+
+
 def quiet_import(cfg: Config, album_dir: Path,
                  autotag: bool = True) -> ImportOutcome:
     """Non-interactive import of one album directory."""
     args = ["import", "-q"]
+    # Without --flat, beets treats Disc I and Disc II as two albums. The
+    # second disc then trips duplicate handling and leaves a half-imported
+    # release behind.
+    if _is_multidisc_tree(album_dir):
+        args.append("--flat")
     if not autotag:
         args.append("-A")
     args.append(str(album_dir))

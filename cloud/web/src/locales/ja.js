@@ -32,6 +32,13 @@ export default {
     fromDiscogs: 'Discogs から写真 / 紹介を取り込む',
     pickFromAlbums: 'または音盤ジャケットから切り抜き：',
     cropTitle: '写真を調整',
+    editSort: '英字 / ローマ字名を編集',
+    addSort: '英字 / ローマ字名を追加',
+    sortDialog: (name) => `${name} の英字 / ローマ字名`,
+    sortLabel: '英字 / ローマ字名',
+    sortPh: '例：Ishikawa, Hidemi',
+    sortHint: '並べ替えと検索に使用します。空欄の場合は元の名前を使用します。',
+    sortSaved: 'アーティスト名を保存しました',
   },
   albumPage: {
     ...en.albumPage,

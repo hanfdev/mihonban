@@ -391,7 +391,12 @@ def _list_7z(archive: Path, cfg: Config,
              passwords: list[str]) -> list[_ArchiveEntry]:
     last_err = ""
     for attempt, pw in enumerate(passwords, start=1):
-        cmd = [str(cfg.sevenzip), "l", "-slt", "-ba", "-bd",
+        # Old RAR archives can carry OEM/legacy-encoded Japanese names. 7-Zip
+        # resolves those names correctly, but without an explicit console
+        # charset its redirected technical listing may use the Windows code
+        # page. Keep the manifest byte-for-byte comparable with the UTF-8
+        # filenames created by extraction.
+        cmd = [str(cfg.sevenzip), "l", "-slt", "-ba", "-bd", "-sccUTF-8",
                f"-p{pw}", "--", str(archive)]
         try:
             # 7z -slt output is controlled by the archive manifest. Redirect it
@@ -626,12 +631,14 @@ def find_album_dirs(root: Path) -> list[Path]:
 
     def disc_label(name: str) -> bool:
         return bool(re.match(
-            r"^(?:disc|cd|disk|vol(?:ume)?|side)[ _.-]*[0-9]+$|^[0-9]+$",
+            r"^(?:disc|cd|disk|vol(?:ume)?|side)[ _.-]*"
+            r"(?:[0-9]+|[ivxlcdm]+)$|^[0-9]+$",
             name.strip(), re.IGNORECASE))
 
     def explicit_disc_label(name: str) -> bool:
         return bool(re.match(
-            r"^(?:disc|cd|disk|vol(?:ume)?|side)[ _.-]*[0-9]+$",
+            r"^(?:disc|cd|disk|vol(?:ume)?|side)[ _.-]*"
+            r"(?:[0-9]+|[ivxlcdm]+)$",
             name.strip(), re.IGNORECASE))
 
     def has_shared_album_context(parent: Path) -> bool:

@@ -87,7 +87,7 @@ export const admin = {
     saveCreds: '保存凭据',
     usedOf: (u, tot) => `已用 ${u}G / ${tot}G`,
     discogs: 'Discogs',
-    discogsHint: '个人 token（discogs.com → Settings → Developers 生成）。配置后音盤页的「Discogs」按钮可以自动匹配并导入风格。',
+    discogsHint: '可选个人 token（discogs.com → Settings → Developers 生成），仅供服务端备用请求使用。Cloudflare 部署会由管理员浏览器直连官方公开 API，token 不会发送到浏览器。',
     discogsCurrent: (v) => ` 当前：${v}`,
     discogsNone: ' 尚未配置。',
     discogsPhNew: '输入新 token 以更换',

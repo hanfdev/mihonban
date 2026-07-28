@@ -32,6 +32,13 @@ export default {
     fromDiscogs: 'Discogs에서 사진 / 소개 가져오기',
     pickFromAlbums: '또는 앨범 커버에서 잘라내기:',
     cropTitle: '사진 조정',
+    editSort: '영문 / 로마자 이름 편집',
+    addSort: '영문 / 로마자 이름 추가',
+    sortDialog: (name) => `${name} 영문 / 로마자 이름`,
+    sortLabel: '영문 / 로마자 이름',
+    sortPh: '예: Ishikawa, Hidemi',
+    sortHint: '정렬과 검색에 사용됩니다. 비워 두면 원래 이름을 사용합니다.',
+    sortSaved: '아티스트 이름을 저장했습니다',
   },
   albumPage: {
     ...en.albumPage,

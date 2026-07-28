@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS storages (
   created_at INTEGER NOT NULL
 );
 
--- 简介（管理员编辑；kind='artist' 时 id 为艺术家名，'album' 时为专辑 id）
+-- 简介与艺人排序名（artistsort 的 id 为艺人名；其他 kind 见 API）
 CREATE TABLE IF NOT EXISTS notes (
   kind       TEXT NOT NULL,
   id         TEXT NOT NULL,

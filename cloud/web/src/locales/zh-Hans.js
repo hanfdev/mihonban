@@ -95,6 +95,13 @@ export default {
     fromDiscogs: '从 Discogs 导入头像 / 简介',
     pickFromAlbums: '或从这位艺人的音盤封面里选一张来裁剪：',
     cropTitle: '调整头像',
+    editSort: '编辑英文 / 罗马音名称',
+    addSort: '添加英文 / 罗马音名称',
+    sortDialog: (name) => `${name} 的英文 / 罗马音名称`,
+    sortLabel: '英文 / 罗马音名称',
+    sortPh: '例：Ishikawa, Hidemi',
+    sortHint: '用于排序和搜索；留空则使用艺人原名。',
+    sortSaved: '艺人名称已保存',
   },
   discogsArtist: {
     title: '从 Discogs 导入歌手资料',

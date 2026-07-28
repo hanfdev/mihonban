@@ -32,6 +32,13 @@ export default {
     fromDiscogs: 'Importar foto / bio de Discogs',
     pickFromAlbums: 'O recorta una de sus portadas:',
     cropTitle: 'Ajustar foto',
+    editSort: 'Editar nombre romanizado / inglés',
+    addSort: 'Añadir nombre romanizado / inglés',
+    sortDialog: (name) => `Nombre romanizado / inglés · ${name}`,
+    sortLabel: 'Nombre romanizado / inglés',
+    sortPh: 'p. ej., Ishikawa, Hidemi',
+    sortHint: 'Se usa para ordenar y buscar. Déjalo vacío para usar el nombre original.',
+    sortSaved: 'Nombre del artista guardado',
   },
   albumPage: {
     ...en.albumPage,

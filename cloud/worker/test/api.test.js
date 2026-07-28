@@ -728,9 +728,12 @@ test("Discogs image import never records a cover that failed to upload", async (
   });
   const realFetch = globalThis.fetch;
   const imageUrl = "https://img.discogs.com/example.jpg";
-  globalThis.fetch = async (input) => {
+  let detailFetches = 0;
+  globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
-    if (url.startsWith("https://api.discogs.com/releases/1?")) {
+    if (url === "https://api.discogs.com/releases/1") {
+      detailFetches += 1;
+      assert.equal(init.headers.Authorization, "Discogs token=token");
       return Response.json({ images: [{ type: "primary", uri: imageUrl }] });
     }
     if (url === imageUrl) {
@@ -739,6 +742,11 @@ test("Discogs image import never records a cover that failed to upload", async (
     throw new Error(`unexpected fetch ${url}`);
   };
   try {
+    const listed = await companionRequest(
+      env, "/api/album/discogs-album/discogs-image-list", {
+        method: "POST", ...jsonBody({ ref: "1" }),
+      });
+    assert.equal(listed.status, 200, await listed.clone().text());
     const response = await companionRequest(
       env, "/api/album/discogs-album/discogs-import-images", {
         method: "POST",
@@ -757,6 +765,7 @@ test("Discogs image import never records a cover that failed to upload", async (
       "SELECT updated_at FROM albums WHERE id = 'discogs-album'").get().updated_at > 1);
     assert.equal(writes.filter((path) => path.includes("/artwork/")).length, 1);
     assert.equal(writes.filter((path) => /\/cover\.[^.]+$/i.test(path)).length, 1);
+    assert.equal(detailFetches, 1);
   } finally {
     globalThis.fetch = realFetch;
     db.close();
@@ -770,10 +779,15 @@ test("Discogs lookup accepts canonical release URLs with title slugs", async () 
   const env = companionEnv(db);
   const realFetch = globalThis.fetch;
   const seen = [];
-  globalThis.fetch = async (input) => {
+  let upstreamCalls = 0;
+  globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
     seen.push(url);
-    if (url.startsWith("https://api.discogs.com/releases/828326?")) {
+    upstreamCalls += 1;
+    assert.equal(url, "https://api.discogs.com/releases/828326");
+    assert.equal(init.headers.Authorization, "Discogs token=token");
+    assert.equal(url.includes("token="), false);
+    if (upstreamCalls === 1) {
       return Response.json({
         title: "StereoType A",
         year: 1999,
@@ -783,7 +797,7 @@ test("Discogs lookup accepts canonical release URLs with title slugs", async () 
         uri: "https://www.discogs.com/release/828326-Cibo-Matto-StereoType-A",
       });
     }
-    throw new Error(`unexpected fetch ${url}`);
+    return new Response("rate limited", { status: 429 });
   };
   try {
     const response = await companionRequest(env, "/api/discogs-lookup", {
@@ -798,6 +812,28 @@ test("Discogs lookup accepts canonical release URLs with title slugs", async () 
     assert.deepEqual(body.genres, ["Electronic"]);
     assert.deepEqual(body.styles, ["Leftfield"]);
     assert.equal(seen.length, 1);
+
+    const cachedResponse = await companionRequest(env, "/api/discogs-lookup", {
+      method: "POST",
+      ...jsonBody({ url: "https://www.discogs.com/release/828326" }),
+    });
+    assert.equal(cachedResponse.status, 200, await cachedResponse.clone().text());
+    assert.equal(upstreamCalls, 1);
+
+    const cacheRow = db.prepare(
+      "SELECT k, v FROM _kv WHERE k LIKE 'discogs:v1:%'").get();
+    const stale = JSON.parse(cacheRow.v);
+    stale.fetchedAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    db.prepare("UPDATE _kv SET v = ? WHERE k = ?")
+      .run(JSON.stringify(stale), cacheRow.k);
+    const staleResponse = await companionRequest(env, "/api/discogs-lookup", {
+      method: "POST",
+      ...jsonBody({ url: "https://www.discogs.com/release/828326" }),
+    });
+    assert.equal(staleResponse.status, 200, await staleResponse.clone().text());
+    assert.equal((await staleResponse.json()).title, "Cibo Matto – StereoType A");
+    assert.equal(upstreamCalls, 2);
+
     const invalid = await companionRequest(env, "/api/discogs-lookup", {
       method: "POST",
       ...jsonBody({ url: "https://www.discogs.com/release/828326abc" }),
@@ -809,7 +845,7 @@ test("Discogs lookup accepts canonical release URLs with title slugs", async () 
   }
 });
 
-test("Discogs crop source proxies only images belonging to the selected release", async () => {
+test("Discogs crop source proxies only allowlisted image hosts", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
   db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
@@ -818,16 +854,12 @@ test("Discogs crop source proxies only images belonging to the selected release"
     (id, artist, title, folder, storage_id, created_at, updated_at)
     VALUES ('discogs-crop', 'Artist', 'Album',
       'Music/Library/Artist/Album', 'discogs-store', 1, 1)`).run();
-  db.prepare("INSERT INTO settings (k, v) VALUES ('discogs_token', 'token')").run();
   const env = companionEnv(db);
   const imageUrl = "https://img.discogs.com/allowed.jpg";
   const realFetch = globalThis.fetch;
   let imageFetches = 0;
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
-    if (url.startsWith("https://api.discogs.com/releases/1?")) {
-      return Response.json({ images: [{ type: "primary", uri: imageUrl }] });
-    }
     if (url === imageUrl) {
       imageFetches += 1;
       assert.equal(init.headers.Referer, "https://www.discogs.com/");
@@ -850,12 +882,67 @@ test("Discogs crop source proxies only images belonging to the selected release"
     const rejected = await companionRequest(
       env, "/api/album/discogs-crop/discogs-image-source", {
         method: "POST",
-        ...jsonBody({ ref: "1", uri: "https://img.discogs.com/not-listed.jpg" }),
+        ...jsonBody({ ref: "1", uri: "https://evil.example/not-listed.jpg" }),
       });
     assert.equal(rejected.status, 400);
     assert.equal(imageFetches, 1);
   } finally {
     globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
+test("artist sort overrides update every album and survive companion sync", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main', 'Main', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  const folder = "Music/Library/Artist/Album";
+  const payload = {
+    artist: "Artist", artistSort: "Imported, Artist", title: "Album", year: 2001,
+    folder, tracks: [{
+      path: `${folder}/01.mp3`, disc: 1, track: 1, title: "Track",
+      duration: 60, format: "mp3", bitrate: 320000, size: 1000,
+    }],
+  };
+  try {
+    const created = await companionRequest(env, "/api/albums", {
+      method: "POST", ...jsonBody(payload),
+    });
+    assert.equal(created.status, 200, await created.clone().text());
+
+    const edited = await companionRequest(env, "/api/artists", {
+      method: "PUT", ...jsonBody({
+        name: "Artist", artistSort: "Artist, Romanized",
+      }),
+    });
+    assert.equal(edited.status, 200, await edited.clone().text());
+    assert.deepEqual(db.prepare(
+      "SELECT DISTINCT artist_sort FROM albums WHERE artist = 'Artist'").all(),
+    [{ artist_sort: "Artist, Romanized" }]);
+    const artists = await companionRequest(env, "/api/artists");
+    assert.equal((await artists.json())[0].sort, "Artist, Romanized");
+
+    const synced = await companionRequest(env, "/api/albums", {
+      method: "POST", ...jsonBody({ ...payload, artistSort: "Wrong, Imported" }),
+    });
+    assert.equal(synced.status, 200, await synced.clone().text());
+    assert.equal(db.prepare(
+      "SELECT artist_sort FROM albums WHERE artist = 'Artist'").get().artist_sort,
+    "Artist, Romanized");
+
+    const cleared = await companionRequest(env, "/api/artists", {
+      method: "PUT", ...jsonBody({ name: "Artist", artistSort: "" }),
+    });
+    assert.equal(cleared.status, 200, await cleared.clone().text());
+    assert.equal(db.prepare(
+      "SELECT artist_sort FROM albums WHERE artist = 'Artist'").get().artist_sort,
+    "Artist");
+    assert.equal(db.prepare(
+      "SELECT 1 FROM notes WHERE kind = 'artistsort' AND id = 'Artist'").get(),
+    undefined);
+  } finally {
     db.close();
   }
 });

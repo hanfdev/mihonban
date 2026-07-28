@@ -340,7 +340,7 @@ function DiscogsDialog({ album, onClose, onSaved }) {
 
   useEffect(() => {
     const seq = ++searchSeq.current
-    api.discogsSearch(album.id)
+    api.discogsSearch(album.id, album)
       .then((r) => {
         if (seq !== searchSeq.current) return
         setCands(r.candidates)

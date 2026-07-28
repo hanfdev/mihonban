@@ -160,6 +160,13 @@ export const en = {
     fromDiscogs: 'Import photo / bio from Discogs',
     pickFromAlbums: 'Or crop from one of their album covers:',
     cropTitle: 'Adjust photo',
+    editSort: 'Edit Romanized / English name',
+    addSort: 'Add Romanized / English name',
+    sortDialog: (name) => `Romanized / English name · ${name}`,
+    sortLabel: 'Romanized / English name',
+    sortPh: 'e.g. Ishikawa, Hidemi',
+    sortHint: 'Used for sorting and search. Leave empty to use the original name.',
+    sortSaved: 'Artist name saved',
   },
   discogsArtist: {
     title: 'Import artist from Discogs',

@@ -780,7 +780,11 @@ export default function App() {
                       onAvatarChanged={() => {
                         setAvatarVer((v) => v + 1)
                         refreshArtists()
-                      }} />
+                      }}
+                      onArtistChanged={() => Promise.all([
+                        refreshArtists(),
+                        refreshLibrary({ invalidateTracks: false }),
+                      ])} />
         )}
         {route.view === 'album' && (
           <AlbumPage key={route.arg} id={route.arg} onPlay={playFrom}

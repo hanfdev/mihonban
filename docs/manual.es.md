@@ -58,6 +58,8 @@ El módulo fuente de Administrador lee los títulos y enlaces compatibles con RS
 4. Comienza la subida y espera a que terminen todas las pistas antes de salir de la página.
 5. Abre el álbum terminado, pon una pista y busca cerca del final.
 
+En la página de un artista, los administradores pueden editar el nombre romanizado / inglés. Este valor a nivel de artista actualiza todos sus álbumes y se conserva en sincronizaciones posteriores del complemento.
+
 Usa `mihonban cloud pull` cuando la copia web deba regresar a la biblioteca local. Añade `--retag` solo cuando los metadatos en la nube deban actualizar las etiquetas locales existentes.
 
 Antes de descargar cada álbum ausente, el compañero escribe un marcador persistente en `data_dir/state/cloud_pull_incomplete/`. Solo lo elimina después de que terminen correctamente la descarga, la consulta de detalles en la nube, la reparación de etiquetas y cualquier subida y registro necesarios. Un directorio interrumpido con archivos `.partial`, o sin audio válido, se reintenta automáticamente en vez de confundirse con un álbum completo. Rclone reinicia un `.partial` antiguo desde el byte cero en lugar de continuar sus bytes existentes; en conexiones lentas, mantén el watcher y la red funcionando sin interrupciones.
@@ -68,7 +70,7 @@ Mihonban no automatiza las solicitudes a Rate Your Music. Guarda manualmente una
 
 ## Discogs
 
-Los administradores pueden buscar lanzamientos o artistas y previsualizar la importación de imágenes, géneros/estilos y texto biográfico. Configura un token de Discogs personal en Admin. La integración utiliza la API oficial.
+Los administradores pueden buscar lanzamientos o artistas y previsualizar la importación de imágenes, géneros/estilos y biografías. En Cloudflare, el navegador administrador llama directamente a la API pública oficial de Discogs y guarda en caché local los metadatos públicos para evitar los límites de salida compartida del Worker. El token personal de Admin es opcional y solo se usa como respaldo del servidor; nunca se envía al navegador. Las imágenes siguen pasando por el Worker autenticado y sus comprobaciones de host Discogs, tamaño y firma de archivo.
 
 ## Favoritos y contenido oculto
 

@@ -49,6 +49,10 @@ export default {
     avatarUpdated: '頭像已更新', avatarFail: (m) => `頭像上傳失敗：${m}`, coverFail: (m) => `封面載入失敗：${m}`,
     changeAvatarTitle: '更換頭像', uploadImage: '上傳圖片', fromDiscogs: '從 Discogs 匯入頭像 / 簡介',
     pickFromAlbums: '或從這位藝人的音盤封面中裁剪：', cropTitle: '調整頭像',
+    editSort: '編輯英文 / 羅馬字名稱', addSort: '新增英文 / 羅馬字名稱',
+    sortDialog: (name) => `${name} 的英文 / 羅馬字名稱`, sortLabel: '英文 / 羅馬字名稱',
+    sortPh: '例：Ishikawa, Hidemi', sortHint: '用於排序與搜尋；留空則使用藝人原名。',
+    sortSaved: '藝人名稱已儲存',
   },
   discogsArtist: {
     title: '從 Discogs 匯入藝人資料', searching: '正在搜尋…', none: 'Discogs 上找不到同名藝人',

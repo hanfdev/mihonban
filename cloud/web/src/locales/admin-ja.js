@@ -69,7 +69,7 @@ export const admin = {
     saveCreds: '認証情報を保存',
     usedOf: (u, tot) => `${u}G 使用 / ${tot}G`,
     discogs: 'Discogs',
-    discogsHint: '個人トークン（discogs.com → Settings → Developers で生成）。アルバムページの「Discogs」ボタンでスタイルをインポートできます。',
+    discogsHint: 'サーバー側フォールバック用の任意の個人トークン（discogs.com → Settings → Developers）。Cloudflare では管理者ブラウザーから公式公開 API に直接接続し、トークンをブラウザーへ送信しません。',
     discogsCurrent: (v) => ` 現在: ${v}`,
     discogsNone: ' 未設定',
     discogsPhNew: '新しいトークンを入力して置き換え',

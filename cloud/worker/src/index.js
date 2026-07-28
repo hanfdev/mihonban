@@ -747,17 +747,22 @@ app.get("/api/artists", async (c) => {
   const vis = showHidden ? "1=1" : "COALESCE(hidden,0)=0";
   const { results } = await c.env.DB.prepare(`
     SELECT names.name AS name, ar.avatar_path AS avatar_path, n.text AS note,
+           COALESCE(s.text, names.album_sort, names.name) AS sort_name,
            (b.id IS NOT NULL) AS has_bio
     FROM (
-      SELECT DISTINCT artist AS name FROM albums WHERE ${vis}
+      SELECT artist AS name,
+             MIN(NULLIF(TRIM(artist_sort), '')) AS album_sort
+      FROM albums WHERE ${vis}
+      GROUP BY artist
     ) names
     LEFT JOIN artists ar ON ar.name = names.name
     LEFT JOIN notes n ON n.kind = 'artist' AND n.id = names.name
     LEFT JOIN notes b ON b.kind = 'artistbio' AND b.id = names.name
+    LEFT JOIN notes s ON s.kind = 'artistsort' AND s.id = names.name
     ORDER BY names.name COLLATE NOCASE`).all();
   return c.json(results.map((r) => ({
     name: r.name, hasAvatar: !!r.avatar_path, note: r.note || "",
-    hasBio: !!r.has_bio,
+    hasBio: !!r.has_bio, sort: r.sort_name || r.name,
   })));
 });
 
@@ -785,8 +790,10 @@ app.put("/api/artists", async (c) => {
   if ((b.note !== undefined &&
        (typeof b.note !== "string" || b.note.length > 20_000))
       || (b.bio !== undefined &&
-        (typeof b.bio !== "string" || b.bio.length > 200_000))) {
-    return c.json({ error: "艺人简介格式无效" }, 400);
+        (typeof b.bio !== "string" || b.bio.length > 200_000))
+      || (b.artistSort !== undefined &&
+        (typeof b.artistSort !== "string" || b.artistSort.length > 500))) {
+    return c.json({ error: "艺人信息格式无效" }, 400);
   }
   let avatarChange = null;
   if (b.avatarPath !== undefined) {   // 只在明确传入时更新，避免改简介误清头像
@@ -866,6 +873,25 @@ app.put("/api/artists", async (c) => {
         .bind(name).run();
     }
   }
+  if (b.artistSort !== undefined) {
+    const sort = b.artistSort.trim().normalize("NFC");
+    const now = Date.now();
+    const statements = [];
+    if (sort && sort !== name) {
+      statements.push(c.env.DB.prepare(`
+        INSERT INTO notes (kind, id, text, updated_at)
+        VALUES ('artistsort', ?, ?, ?)
+        ON CONFLICT(kind, id) DO UPDATE SET text = excluded.text,
+          updated_at = excluded.updated_at`).bind(name, sort, now));
+    } else {
+      statements.push(c.env.DB.prepare(
+        "DELETE FROM notes WHERE kind = 'artistsort' AND id = ?").bind(name));
+    }
+    statements.push(c.env.DB.prepare(`
+      UPDATE albums SET artist_sort = ?, updated_at = ? WHERE artist = ?`)
+      .bind(sort || name, now, name));
+    await c.env.DB.batch(statements);
+  }
   return c.json({ ok: true });
 });
 
@@ -927,6 +953,72 @@ app.get("/api/artist-art/:name", async (c) => {
 
 /* ---------- Discogs 自动匹配（服务器端调官方 API，浏览器侧无 CORS 问题） ---------- */
 
+const DISCOGS_USER_AGENT = "mihonban/1.0 (+https://github.com/hanfdev/mihonban)";
+const DISCOGS_DAY = 24 * 60 * 60;
+const discogsInflight = new Map();
+
+async function discogsApiJson(env, token, path, query = {}, {
+  freshSeconds = 7 * DISCOGS_DAY,
+  staleSeconds = 30 * DISCOGS_DAY,
+} = {}) {
+  const url = new URL(path, "https://api.discogs.com/");
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  const cacheId = await sha16(`${url.pathname}?${url.searchParams.toString()}`);
+  const cacheKey = `discogs:v1:${cacheId}`;
+  const now = Date.now();
+  let cached = null;
+  if (env.KV) {
+    try { cached = await env.KV.get(cacheKey, "json"); } catch { /* cache miss */ }
+  }
+  const cacheAge = cached && Number.isFinite(cached.fetchedAt)
+    ? now - cached.fetchedAt : Infinity;
+  if (cached?.data && cacheAge <= freshSeconds * 1000) return cached.data;
+
+  if (discogsInflight.has(cacheKey)) return discogsInflight.get(cacheKey);
+  const request = (async () => {
+    let response;
+    try {
+      response = await fetchWithTimeout(url, {
+        headers: {
+          "Authorization": `Discogs token=${token}`,
+          "User-Agent": DISCOGS_USER_AGENT,
+        },
+      });
+    } catch (error) {
+      if (cached?.data && cacheAge <= staleSeconds * 1000) return cached.data;
+      throw error;
+    }
+    if (response.status === 401) throw new Error("Discogs token 无效");
+    if (response.status === 404) throw new Error("Discogs 上没有这个编号");
+    if (!response.ok) {
+      if ((response.status === 429 || response.status >= 500)
+          && cached?.data && cacheAge <= staleSeconds * 1000) {
+        return cached.data;
+      }
+      if (response.status === 429) {
+        throw new Error("Discogs 429：上游正在限流，请稍后重试");
+      }
+      throw new Error(`Discogs ${response.status}`);
+    }
+    const data = await response.json();
+    if (env.KV) {
+      try {
+        await env.KV.put(cacheKey, JSON.stringify({ fetchedAt: now, data }), {
+          expirationTtl: staleSeconds,
+        });
+      } catch { /* a cache write must not fail the request */ }
+    }
+    return data;
+  })();
+  discogsInflight.set(cacheKey, request);
+  try { return await request; }
+  finally { discogsInflight.delete(cacheKey); }
+}
+
 app.post("/api/album/:id/discogs-search", async (c) => {
   const token = await getSetting(c.env, "discogs_token");
   if (!token) {
@@ -938,17 +1030,10 @@ app.post("/api/album/:id/discogs-search", async (c) => {
   if (!al) return c.json({ error: "not found" }, 404);
 
   const search = async (artist) => {
-    const u = new URL("https://api.discogs.com/database/search");
-    u.searchParams.set("release_title", al.title);
-    if (artist) u.searchParams.set("artist", artist);
-    u.searchParams.set("type", "release");
-    u.searchParams.set("per_page", "8");
-    u.searchParams.set("token", token);
-    const r = await fetchWithTimeout(u,
-      { headers: { "User-Agent": "mihonban/1.0 +private-library" } });
-    if (r.status === 401) throw new Error("Discogs token 无效");
-    if (!r.ok) throw new Error(`Discogs ${r.status}`);
-    return (await r.json()).results || [];
+    const data = await discogsApiJson(c.env, token, "database/search", {
+      release_title: al.title, artist, type: "release", per_page: 8,
+    }, { freshSeconds: 60 * 60, staleSeconds: 7 * DISCOGS_DAY });
+    return data.results || [];
   };
 
   try {
@@ -990,13 +1075,7 @@ app.post("/api/discogs-lookup", async (c) => {
     return c.json({ error: "认不出这个链接——要 discogs.com 的 release 或 master 页地址" }, 400);
   }
   try {
-    const r = await fetchWithTimeout(
-      `https://api.discogs.com/${ref.kind}/${ref.id}?token=${token}`,
-      { headers: { "User-Agent": "mihonban/1.0 +private-library" } });
-    if (r.status === 401) throw new Error("Discogs token 无效");
-    if (r.status === 404) throw new Error("Discogs 上没有这个编号");
-    if (!r.ok) throw new Error(`Discogs ${r.status}`);
-    const d = await r.json();
+    const d = await discogsApiJson(c.env, token, `${ref.kind}/${ref.id}`);
     // "Artist (2)" 的消歧编号去掉
     const artist = (d.artists || [])
       .map((a) => (a.name || "").replace(/ \(\d+\)$/, "")).join(", ");
@@ -1015,14 +1094,8 @@ app.post("/api/discogs-lookup", async (c) => {
    服务器直接从 Discogs 拉图上传到云盘，浏览器不经手。只走官方 API。 */
 
 // 拉一个 Discogs release/master 的图片清单（primary 在前）
-async function discogsImages(token, kind, id) {
-  const r = await fetchWithTimeout(
-    `https://api.discogs.com/${kind}/${id}?token=${token}`,
-    { headers: { "User-Agent": "mihonban/1.0 +private-library" } });
-  if (r.status === 401) throw new Error("Discogs token 无效");
-  if (r.status === 404) throw new Error("Discogs 上没有这个编号");
-  if (!r.ok) throw new Error(`Discogs ${r.status}`);
-  const d = await r.json();
+async function discogsImages(env, token, kind, id) {
+  const d = await discogsApiJson(env, token, `${kind}/${id}`);
   const imgs = (d.images || []).map((im, i) => ({
     idx: i,
     type: im.type || "secondary",
@@ -1097,7 +1170,7 @@ app.post("/api/album/:id/discogs-image-list", async (c) => {
   const d = discogsIdFrom(body?.ref);
   if (!d) return c.json({ error: "认不出 Discogs 编号/链接" }, 400);
   try {
-    const { images } = await discogsImages(token, d.kind, d.id);
+    const { images } = await discogsImages(c.env, token, d.kind, d.id);
     return c.json({ images });
   } catch (e) {
     return c.json({ error: String(e.message || e) }, 502);
@@ -1107,8 +1180,6 @@ app.post("/api/album/:id/discogs-image-list", async (c) => {
 // Return a verified Discogs image through the authenticated same-origin API so
 // the browser can load it into canvas without depending on Discogs CORS rules.
 app.post("/api/album/:id/discogs-image-source", async (c) => {
-  const token = await getSetting(c.env, "discogs_token");
-  if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
   const album = await c.env.DB.prepare(
     "SELECT 1 FROM albums WHERE id = ?").bind(c.req.param("id")).first();
   if (!album) return c.json({ error: "not found" }, 404);
@@ -1118,10 +1189,6 @@ app.post("/api/album/:id/discogs-image-source", async (c) => {
     return c.json({ error: "Discogs 图片参数无效" }, 400);
   }
   try {
-    const { images } = await discogsImages(token, d.kind, d.id);
-    if (!images.some((image) => image.uri === body.uri)) {
-      return c.json({ error: "选择的图片不属于该发行" }, 400);
-    }
     const { bytes, ct } = await fetchDiscogsBytes(body.uri);
     return new Response(bytes, {
       headers: {
@@ -1138,8 +1205,6 @@ app.post("/api/album/:id/discogs-image-source", async (c) => {
 // 导入选中的专辑图片：下载 → 传到 <folder>/artwork/ → 登记 album_images；
 // asCover=true 时把第一张设为封面
 app.post("/api/album/:id/discogs-import-images", async (c) => {
-  const token = await getSetting(c.env, "discogs_token");
-  if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
   const id = c.req.param("id");
   const album = await c.env.DB.prepare(
     "SELECT folder, cover_path, storage_id FROM albums WHERE id = ?").bind(id).first();
@@ -1156,11 +1221,10 @@ app.post("/api/album/:id/discogs-import-images", async (c) => {
     return c.json({ error: "asCover 必须是布尔值" }, 400);
   }
   try {
-    // 校验 uris 确实属于该 release（不接受任意外链）
-    const { images } = await discogsImages(token, d.kind, d.id);
-    const allowed = new Set(images.map((im) => im.uri));
-    const picked = [...new Set(uris)].filter((u) => allowed.has(u));
-    if (!picked.length) return c.json({ error: "选择的图片不属于该发行" }, 400);
+    // Only authenticated admins reach this endpoint. URLs remain restricted to
+    // Discogs-owned HTTPS hosts and downloaded bytes still pass size/signature
+    // checks, so image import does not depend on a rate-limited API re-check.
+    const picked = [...new Set(uris)];
 
     const imported = [];
     let failed = 0;
@@ -1217,15 +1281,10 @@ app.post("/api/artist-discogs-search", async (c) => {
   const name = boundedText(body?.name, 300, { allowEmpty: false });
   if (name === INVALID_INPUT) return c.json({ error: "name 格式无效" }, 400);
   try {
-    const u = new URL("https://api.discogs.com/database/search");
-    u.searchParams.set("q", name);
-    u.searchParams.set("type", "artist");
-    u.searchParams.set("per_page", "6");
-    u.searchParams.set("token", token);
-    const r = await fetchWithTimeout(u,
-      { headers: { "User-Agent": "mihonban/1.0 +private-library" } });
-    if (!r.ok) throw new Error(`Discogs ${r.status}`);
-    const results = (await r.json()).results || [];
+    const data = await discogsApiJson(c.env, token, "database/search", {
+      q: name, type: "artist", per_page: 6,
+    }, { freshSeconds: 60 * 60, staleSeconds: 7 * DISCOGS_DAY });
+    const results = data.results || [];
     return c.json({
       candidates: results.slice(0, 6).map((x) => ({
         id: x.id, title: x.title || "", thumb: x.thumb || "",
@@ -1249,11 +1308,7 @@ app.post("/api/artist-discogs-detail", async (c) => {
     return c.json({ error: "artistId 格式无效" }, 400);
   }
   try {
-    const r = await fetchWithTimeout(
-      `https://api.discogs.com/artists/${artistId}?token=${token}`,
-      { headers: { "User-Agent": "mihonban/1.0 +private-library" } });
-    if (!r.ok) throw new Error(`Discogs ${r.status}`);
-    const d = await r.json();
+    const d = await discogsApiJson(c.env, token, `artists/${artistId}`);
     const imgs = (d.images || []).map((im) => ({
       uri: im.uri || "", thumb: im.uri150 || im.uri || "",
       type: im.type || "secondary",
@@ -1272,8 +1327,6 @@ app.post("/api/artist-discogs-detail", async (c) => {
 
 // 导入歌手头像/简介：下载头像传到艺人目录（唯一文件名）+ 写简介
 app.post("/api/artists/:name/discogs-import", async (c) => {
-  const token = await getSetting(c.env, "discogs_token");
-  if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
   const name = artistNameParam(c);
   const body = await requestObject(c);
   const { avatarUri, profile, setAvatar, setBio } = body || {};
@@ -1856,7 +1909,7 @@ app.post("/api/albums", async (c) => {
   }
   const artistSortInput = body.artistSort === undefined
     ? artist : boundedText(body.artistSort, 500);
-  const artistSort = artistSortInput === "" ? artist : artistSortInput;
+  let artistSort = artistSortInput === "" ? artist : artistSortInput;
   const year = finiteInput(body.year, { integer: true, min: 1, max: 9999 });
   const rymRating = finiteInput(body.rymRating, { min: 0, max: 5 });
   const rymVotes = finiteInput(body.rymVotes, {
@@ -1884,6 +1937,10 @@ app.post("/api/albums", async (c) => {
   const genres = genreLists(primaryGenres, secondaryGenres);
   const id = await sha16(folder);
   const now = Date.now();
+  const artistSortOverride = await c.env.DB.prepare(
+    "SELECT text FROM notes WHERE kind = 'artistsort' AND id = ?")
+    .bind(artist).first();
+  if (artistSortOverride?.text?.trim()) artistSort = artistSortOverride.text.trim();
   // 新专辑落到当前写入目标；已存在的专辑保持原 storage_id（ON CONFLICT 不覆盖）
   const wt = await writeTarget(c.env);
   if (!wt) return c.json({ error: "请先设置一个命名存储写入目标" }, 400);

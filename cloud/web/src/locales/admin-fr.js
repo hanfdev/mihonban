@@ -69,7 +69,7 @@ export const admin = {
     saveCreds: 'Enregistrer',
     usedOf: (u, tot) => `${u}Go utilisés / ${tot}Go`,
     discogs: 'Discogs',
-    discogsHint: 'Token personnel (discogs.com → Paramètres → Développeurs). Permet le bouton Discogs sur les pages d’album pour importer les styles.',
+    discogsHint: 'Token personnel facultatif (discogs.com → Paramètres → Développeurs), réservé au repli côté serveur. Sur Cloudflare, le navigateur administrateur utilise directement l’API publique officielle ; le token n’est jamais envoyé au navigateur.',
     discogsCurrent: (v) => ` Actuel : ${v}`,
     discogsNone: ' Pas encore configuré.',
     discogsPhNew: 'Saisissez un nouveau token pour remplacer',

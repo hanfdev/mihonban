@@ -58,6 +58,8 @@ The Admin source module reads supported RSS/Atom/Blogger titles and links. Cloud
 4. Start upload and wait for every track to finish before leaving the page.
 5. Open the completed album, play a track, and seek near the end.
 
+On an artist page, administrators can edit the Romanized / English name. This artist-level value updates every album by that artist and survives later companion synchronization.
+
 Use `mihonban cloud pull` when the web copy must return to the local library. Add `--retag` only when cloud metadata should update existing local tags.
 
 Before downloading each missing album, the companion writes a persistent marker under `data_dir/state/cloud_pull_incomplete/`. It clears the marker only after download, cloud-detail lookup, tag repair, and any required upload and registration all succeed. An interrupted directory containing `.partial` files—or no valid audio—is retried automatically instead of being mistaken for a complete album. Rclone restarts an old `.partial` file from byte zero rather than resuming its bytes, so keep the watcher and network running on slow links.
@@ -68,7 +70,7 @@ Mihonban does not automate requests to Rate Your Music. Save a release page manu
 
 ## Discogs
 
-Administrators can search releases or artists and preview an import of images, genres/styles, and biography text. Configure a personal Discogs token in Admin. The integration uses the official API.
+Administrators can search releases or artists and preview an import of images, genres/styles, and biography text. On Cloudflare, the administrator browser calls the official public API directly and caches public metadata locally, avoiding shared Worker egress limits. The personal token in Admin is optional and is used only by the server-side fallback; it is never sent to the browser. Image downloads still pass through the authenticated Worker and its Discogs-host, size, and file-signature checks.
 
 ## Favorites and hidden content
 

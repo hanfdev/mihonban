@@ -58,6 +58,8 @@ Le module source Admin lit les titres et liens RSS/Atom/Blogger pris en charge. 
 4. Commencez le téléchargement et attendez que chaque morceau se termine avant de quitter la page.
 5. Ouvrez l’album terminé, jouez une piste et cherchez vers la fin.
 
+Sur une page artiste, les administrateurs peuvent modifier le nom romanisé / anglais. Cette valeur au niveau de l’artiste met à jour tous ses albums et reste conservée lors des synchronisations ultérieures du compagnon.
+
 Utilisez `mihonban cloud pull` lorsque la copie web doit retourner dans la bibliothèque locale. Ajoutez `--retag` uniquement lorsque les métadonnées cloud doivent mettre à jour les balises locales existantes.
 
 Avant de télécharger chaque album absent, le compagnon écrit un marqueur persistant dans `data_dir/state/cloud_pull_incomplete/`. Il ne l’efface qu’après la réussite du téléchargement, de la lecture des détails cloud, de la réparation des tags et, si nécessaire, du renvoi et du réenregistrement. Un dossier interrompu contenant des fichiers `.partial`, ou dépourvu de fichier audio valide, est automatiquement retenté au lieu d’être pris pour un album complet. Rclone recommence un ancien `.partial` à l’octet zéro au lieu de reprendre ses octets existants ; sur une liaison lente, laissez le watcher et le réseau fonctionner sans interruption.
@@ -68,7 +70,7 @@ Mihonban n’automatise pas les requêtes à Rate Your Music. Sauvegardez manuel
 
 ## Discogs
 
-Les administrateurs peuvent rechercher les versions ou les artistes et prévisualiser une importation d’images, genres/styles et texte biographique. Configurez un jeton Discogs personnel dans Admin. L’intégration utilise l’API officielle.
+Les administrateurs peuvent rechercher les sorties ou artistes et prévisualiser l’importation d’images, genres/styles et biographies. Sur Cloudflare, le navigateur administrateur appelle directement l’API publique officielle de Discogs et met les métadonnées publiques en cache local afin d’éviter les limites de sortie partagée du Worker. Le token personnel dans Admin est facultatif et réservé au repli côté serveur ; il n’est jamais envoyé au navigateur. Les images passent toujours par le Worker authentifié et ses contrôles d’hôte Discogs, de taille et de signature de fichier.
 
 ## Favoris et contenus masqués
 

@@ -83,7 +83,7 @@ export const adminEn = {
   saveCreds: 'Save credentials',
   usedOf: (u, tot) => `${u}G used / ${tot}G`,
   discogs: 'Discogs',
-  discogsHint: 'Personal token (discogs.com → Settings → Developers). Enables the Discogs button on album pages for style import.',
+  discogsHint: 'Optional personal token (discogs.com → Settings → Developers) for the server-side fallback. Cloudflare deployments use the official public API directly from the administrator browser; the token is never sent to the browser.',
   discogsCurrent: (v) => ` Current: ${v}`,
   discogsNone: ' Not configured yet.',
   discogsPhNew: 'Enter a new token to replace',

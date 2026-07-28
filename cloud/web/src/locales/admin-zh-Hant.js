@@ -69,7 +69,7 @@ export const admin = {
     saveCreds: '儲存憑證',
     usedOf: (u, tot) => `已用 ${u}G / ${tot}G`,
     discogs: 'Discogs',
-    discogsHint: '個人 token（discogs.com → Settings → Developers）。設定後音盤頁可自動匯入風格。',
+    discogsHint: '可選個人 token（discogs.com → Settings → Developers），僅供伺服器端備用請求。Cloudflare 部署由管理員瀏覽器直連官方公開 API，token 不會傳送到瀏覽器。',
     discogsCurrent: (v) => ` 目前：${v}`,
     discogsNone: ' 尚未設定。',
     discogsPhNew: '輸入新 token 以更換',

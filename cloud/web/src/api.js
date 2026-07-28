@@ -1,5 +1,7 @@
 // API 客户端：同源 fetch + cookie 会话；401 统一抛出触发登录界面。
 
+import * as discogsDirect from './discogs-api.js'
+
 class AuthError extends Error {}
 
 async function req(method, url, body, raw = false) {
@@ -17,13 +19,30 @@ async function req(method, url, body, raw = false) {
   if (raw) {
     if (!r.ok) {
       const problem = await r.clone().json().catch(() => ({}));
-      throw new Error(problem.error || `${r.status}`);
+      const error = new Error(problem.error || `${r.status}`);
+      error.status = r.status;
+      throw error;
     }
     return r;
   }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `${r.status}`);
+  if (!r.ok) {
+    const error = new Error(data.error || `${r.status}`);
+    error.status = r.status;
+    throw error;
+  }
   return data;
+}
+
+const discogsFirst = async (direct, server) => {
+  try { return await direct() }
+  catch (directError) {
+    try { return await server() }
+    catch (serverError) {
+      if (/Discogs (?:429|5\d\d)/.test(serverError.message)) throw directError
+      throw serverError
+    }
+  }
 }
 
 // getSettingsShared 的 in-flight/结果缓存（写入或失败即失效）
@@ -45,10 +64,15 @@ export const api = {
   hideAlbum: (id, hidden) =>
     req("POST", `/api/album/${id}/hide`, { hidden: !!hidden }),
   postRym: (id, data) => req("POST", `/api/album/${id}/rym`, data),
-  discogsSearch: (id) => req("POST", `/api/album/${id}/discogs-search`),
-  discogsLookup: (url) => req("POST", "/api/discogs-lookup", { url }),
+  discogsSearch: (id, album) => discogsFirst(
+    () => discogsDirect.releaseSearch(album),
+    () => req("POST", `/api/album/${id}/discogs-search`)),
+  discogsLookup: (url) => discogsFirst(
+    () => discogsDirect.releaseLookup(url),
+    () => req("POST", "/api/discogs-lookup", { url })),
   discogsImageList: (id, ref) =>
-    req("POST", `/api/album/${id}/discogs-image-list`, { ref }),
+    discogsFirst(() => discogsDirect.releaseImages(ref),
+      () => req("POST", `/api/album/${id}/discogs-image-list`, { ref })),
   discogsImageSource: async (id, ref, uri) => {
     const response = await req(
       "POST", `/api/album/${id}/discogs-image-source`, { ref, uri }, true);
@@ -56,10 +80,12 @@ export const api = {
   },
   discogsImportImages: (id, ref, uris, asCover) =>
     req("POST", `/api/album/${id}/discogs-import-images`, { ref, uris, asCover }),
-  artistDiscogsSearch: (name) =>
-    req("POST", "/api/artist-discogs-search", { name }),
-  artistDiscogsDetail: (artistId) =>
-    req("POST", "/api/artist-discogs-detail", { artistId }),
+  artistDiscogsSearch: (name) => discogsFirst(
+    () => discogsDirect.artistSearch(name),
+    () => req("POST", "/api/artist-discogs-search", { name })),
+  artistDiscogsDetail: (artistId) => discogsFirst(
+    () => discogsDirect.artistDetail(artistId),
+    () => req("POST", "/api/artist-discogs-detail", { artistId })),
   artistDiscogsImport: (name, payload) =>
     req("POST", `/api/artists/${encodeURIComponent(name)}/discogs-import`, payload),
   registerAlbum: (payload) => req("POST", "/api/albums", payload),

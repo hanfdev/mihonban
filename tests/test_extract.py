@@ -203,6 +203,27 @@ def test_7z_listing_output_is_bounded(cfg, tmp_path, monkeypatch):
         extract_archive(archive, tmp_path / "out", cfg)
 
 
+def test_7z_listing_forces_utf8_for_legacy_japanese_names(
+        cfg, tmp_path, monkeypatch):
+    archive = tmp_path / "old-japanese.rar"
+    archive.write_bytes(b"placeholder")
+    listing = (
+        "Path = 10. 素敵な午後は.mp3\n"
+        "Size = 3\nPacked Size = 3\nAttributes = A\n\n"
+    ).encode("utf-8")
+    commands = []
+
+    def fake_run(cmd, **_kwargs):
+        commands.append(cmd)
+        return SimpleNamespace(returncode=0, stdout=listing, stderr=b"")
+
+    monkeypatch.setattr(extract.subprocess, "run", fake_run)
+    entries = extract._list_7z(archive, cfg, [""])
+
+    assert "-sccUTF-8" in commands[0]
+    assert entries[0].path == Path("10. 素敵な午後は.mp3")
+
+
 def test_7z_listing_rejects_excessive_entry_count(
         cfg, tmp_path, monkeypatch):
     archive = tmp_path / "many-entries.7z"
@@ -289,6 +310,17 @@ def test_find_album_dirs_coalesces_conventional_multidisc_folders(tmp_path):
     (separate / "01.flac").write_bytes(b"audio")
 
     assert find_album_dirs(root) == [album, separate]
+
+
+def test_find_album_dirs_coalesces_roman_numeral_disc_folders(tmp_path):
+    root = tmp_path / "workspace"
+    album = root / "[1978] IT'S A POPPIN' TIME"
+    for disc in ("Disc I", "Disc II"):
+        folder = album / disc
+        folder.mkdir(parents=True)
+        (folder / "01.mp3").write_bytes(b"audio")
+
+    assert find_album_dirs(root) == [album]
 
 
 def test_find_album_dirs_does_not_merge_bare_numbered_albums(tmp_path):

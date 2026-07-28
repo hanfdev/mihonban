@@ -69,7 +69,7 @@ export const admin = {
     saveCreds: '인증 정보 저장',
     usedOf: (u, tot) => `${u}G 사용 / ${tot}G`,
     discogs: 'Discogs',
-    discogsHint: '개인 토큰 (discogs.com → Settings → Developers). 앨범 페이지의 「Discogs」 버튼으로 스타일을 가져올 수 있습니다.',
+    discogsHint: '서버 측 대체 요청에만 쓰는 선택적 개인 토큰 (discogs.com → Settings → Developers). Cloudflare에서는 관리자 브라우저가 공식 공개 API에 직접 연결하며 토큰은 브라우저로 전송되지 않습니다.',
     discogsCurrent: (v) => ` 현재: ${v}`,
     discogsNone: ' 미설정',
     discogsPhNew: '새 토큰을 입력하여 교체',
