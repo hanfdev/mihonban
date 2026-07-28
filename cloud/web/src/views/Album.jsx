@@ -444,11 +444,11 @@ function DiscogsDialog({ album, onClose, onSaved }) {
     setter(n)
   }
 
-  const selectedImageUris = () => (imgs || [])
+  const selectedImages = () => (imgs || [])
     .filter((image) => imgSel.has(image.uri))
-    .map((image) => image.uri)
+    .map((image) => ({ uri: image.uri, idx: image.idx }))
 
-  const finishApply = async (croppedCover = null, selectedUris = selectedImageUris()) => {
+  const finishApply = async (croppedCover = null, selected = selectedImages()) => {
     if (applyInFlight.current || !picked) return
     applyInFlight.current = true
     setBusy(true)
@@ -469,10 +469,11 @@ function DiscogsDialog({ album, onClose, onSaved }) {
       if (hasGenres) await api.patchAlbum(album.id, { genres, secondaryGenres: sec })
       // 顺带导入勾选的图片
       let imgMsg = ''
-      if (selectedUris.length) {
+      if (selected.length) {
         const r = await api.discogsImportImages(
-          album.id, pickedRef(), selectedUris, false)
-        imgMsg = t('discogsAlbum.images', r.imported, !!croppedCover)
+          album.id, pickedRef(), selected, false)
+        imgMsg = t('discogsAlbum.images',
+          r.imported, !!croppedCover, r.skipped || 0)
       }
       if (croppedCover) {
         const coverPath = `${album.folder}/cover-${Date.now().toString(36)}.jpg`
@@ -487,16 +488,16 @@ function DiscogsDialog({ album, onClose, onSaved }) {
 
   const apply = async () => {
     if (applyInFlight.current || !picked || busy) return
-    const selectedUris = selectedImageUris()
-    if (!imgAsCover || !selectedUris.length) {
-      await finishApply(null, selectedUris)
+    const selected = selectedImages()
+    if (!imgAsCover || !selected.length) {
+      await finishApply(null, selected)
       return
     }
     setBusy(true)
     try {
       const blob = await api.discogsImageSource(
-        album.id, pickedRef(), selectedUris[0])
-      setCropSource({ blob, selectedUris })
+        album.id, pickedRef(), selected[0].uri)
+      setCropSource({ blob, selected })
     } catch (e) {
       toast(t('discogsAlbum.imgFail', e.message), 'err')
     } finally {
@@ -658,9 +659,9 @@ function DiscogsDialog({ album, onClose, onSaved }) {
             <CropDialog file={cropSource.blob} out={1200} title={t('crop.coverTitle')}
                         onClose={() => setCropSource(null)}
                         onDone={(blob) => {
-                          const selectedUris = cropSource.selectedUris
+                          const selected = cropSource.selected
                           setCropSource(null)
-                          finishApply(blob, selectedUris)
+                          finishApply(blob, selected)
                         }} />
           )}
         </>

@@ -772,6 +772,67 @@ test("Discogs image import never records a cover that failed to upload", async (
   }
 });
 
+test("Discogs image imports are idempotent for a release image index", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  const folder = "Music/Library/Artist/Album";
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('discogs-store', 'Discogs', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES ('discogs-album', 'Artist', 'Album', ?, 'discogs-store', 1, 1)`)
+    .run(folder);
+  const writes = [];
+  const env = companionEnv(db, {
+    LOCAL_FS: {
+      async putSmallFile(_config, path) {
+        writes.push(path);
+        return true;
+      },
+    },
+  });
+  const realFetch = globalThis.fetch;
+  const sources = [
+    { idx: 0, uri: "https://i.discogs.com/front.jpg" },
+    { idx: 4, uri: "https://i.discogs.com/booklet.jpg" },
+  ];
+  let downloads = 0;
+  globalThis.fetch = async (input) => {
+    if (sources.some((source) => source.uri === String(input))) {
+      downloads += 1;
+      return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00]));
+    }
+    throw new Error(`unexpected fetch ${input}`);
+  };
+
+  const importImages = () => companionRequest(
+    env, "/api/album/discogs-album/discogs-import-images", {
+      method: "POST", ...jsonBody({ ref: "42", images: sources }),
+    });
+  try {
+    const first = await importImages();
+    assert.deepEqual(await first.json(), {
+      ok: true, imported: 2, skipped: 0, failed: 0,
+      coverSet: false, coverFailed: false,
+    });
+    const second = await importImages();
+    assert.deepEqual(await second.json(), {
+      ok: true, imported: 0, skipped: 2, failed: 0,
+      coverSet: false, coverFailed: false,
+    });
+    assert.equal(downloads, 2);
+    assert.equal(writes.length, 2);
+    assert.deepEqual(db.prepare(`SELECT source_key, sort FROM album_images
+      WHERE album_id = 'discogs-album' ORDER BY sort`).all(), [
+      { source_key: "discogs:releases:42:0", sort: 0 },
+      { source_key: "discogs:releases:42:4", sort: 1 },
+    ]);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
 test("Discogs lookup accepts canonical release URLs with title slugs", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
@@ -1080,6 +1141,97 @@ test("API input validation rejects corrupt metadata and preserves prior state", 
     assert.equal(badAvatarSource.status, 400);
   } finally {
     db.close();
+  }
+});
+
+test("Discogs avatar import defers R2 cleanup and mirror maintenance", async (t) => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  const root = mkdtempSync(join(tmpdir(), "mihonban-avatar-import-"));
+  t.after(() => {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main', 'Main', 'local', ?, 1, 1)`)
+    .run(JSON.stringify({ root, odRoot: "Music/Library" }));
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES ('album', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      'main', 1, 1)`).run();
+  const oldPath = "Music/Library/Artist/avatar-old.jpg";
+  db.prepare(`INSERT INTO artists (name, avatar_path, storage_id)
+    VALUES ('Artist', ?, 'main')`).run(oldPath);
+  const digest = await crypto.subtle.digest(
+    "SHA-1", new TextEncoder().encode(oldPath));
+  const oldHash = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  db.prepare(`INSERT INTO r2_cache
+    (cache_key, r2_key, created_at, cache_policy)
+    VALUES (?, 'img/old-avatar.jpg', 1, 1)`)
+    .run(`artist:${oldHash}:480`);
+  db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
+
+  const env = companionEnv(db, {
+    LOCAL_FS: localFs,
+    R2_ACCESS_KEY: "access",
+    R2_SECRET_KEY: "secret",
+    R2_ENDPOINT: "https://r2.example",
+    R2_BUCKET: "bucket",
+    R2_PUBLIC_URL: "https://cdn.example",
+  });
+  const pending = [];
+  const executionCtx = { waitUntil(task) { pending.push(task); } };
+  const realFetch = globalThis.fetch;
+  let releaseDelete;
+  const deleteResponse = new Promise((resolve) => { releaseDelete = resolve; });
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url === "https://i.discogs.com/avatar.jpg") {
+      return new Response(jpeg, {
+        status: 200, headers: { "Content-Type": "image/jpeg" },
+      });
+    }
+    if (url.startsWith("https://r2.example/") && init.method === "DELETE") {
+      return deleteResponse;
+    }
+    if (url.startsWith("https://r2.example/") && init.method === "PUT") {
+      return new Response(null, { status: 200 });
+    }
+    throw new Error(`unexpected request ${init.method || "GET"} ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(new Request(
+      "http://mihonban.test/api/artists/Artist/discogs-import", {
+        method: "POST",
+        ...jsonBody({
+          avatarUri: "https://i.discogs.com/avatar.jpg",
+          profile: "", setAvatar: true, setBio: false,
+        }),
+      }), env, executionCtx);
+    const body = await response.json();
+    assert.equal(response.status, 200, body.error);
+    assert.equal(body.avatarSet, true);
+    assert.ok(pending.length >= 1);
+    assert.ok(db.prepare("SELECT avatar_path FROM artists WHERE name = 'Artist'")
+      .get().avatar_path.includes("avatar-"));
+    assert.ok(db.prepare("SELECT 1 FROM r2_cache WHERE cache_key = ?")
+      .get(`artist:${oldHash}:480`));
+
+    releaseDelete(new Response(null, { status: 204 }));
+    await Promise.all(pending);
+    assert.equal(db.prepare("SELECT 1 FROM r2_cache WHERE cache_key = ?")
+      .get(`artist:${oldHash}:480`), undefined);
+    assert.equal(db.prepare(
+      "SELECT COUNT(*) AS n FROM r2_cache WHERE cache_key LIKE 'artist:%:480'")
+      .get().n, 1);
+  } finally {
+    releaseDelete(new Response(null, { status: 204 }));
+    await Promise.allSettled(pending);
+    globalThis.fetch = realFetch;
   }
 });
 

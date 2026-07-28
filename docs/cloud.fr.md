@@ -52,7 +52,7 @@ Les cookies de production nécessitent HTTPS. `DEV_INSECURE_COOKIE=1` n’existe
 - `albums` : métadonnées d’album, `storage_id` nommées, états cachés et champs d’ordre.
 - `tracks` : métadonnées des pistes et chemin relatif au stockage ; les pistes héritent du backend de l’album.
 - `artists` : métadonnées de l’artiste, état caché, chemin d’avatar et `storage_id` avatar indépendant.
-- `album_images` : Galeries de chemin sur le backend de l’album.
+- `album_images` : chemins de galerie sur le backend de l’album et identité de source stable facultative pour rendre les imports externes idempotents.
 - `favorites` : favoris de l’album/morceau et l’ordre.
 - `notes` : notes d’album, notes d’artistes et biographies.
 - `storages` : configurations nommées OneDrive, WebDAV, Google Drive ou Node-locales.

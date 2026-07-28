@@ -52,7 +52,7 @@ Optional external proxy --------> signed five-minute relay for temporary URLs
 - `albums`: 앨범 메타데이터, 명명된 `storage_id`, 숨겨진 상태, 정렬 필드.
 - `tracks`: 트랙 메타데이터와 저장 상대 경로; 트랙은 앨범 백엔드를 계승합니다.
 - `artists`: 아티스트 메타데이터, 숨겨진 상태, 아바타 경로, 독립 아바타 `storage_id`.
-- `album_images`: 앨범 백엔드의 갤러리 경로.
+- `album_images`: 앨범 백엔드의 갤러리 경로와 외부 이미지 가져오기의 멱등성을 보장하는 선택적 안정 소스 식별자.
 - `favorites`: 앨범/트랙 인기 곡 및 순서.
 - `notes`: 앨범 노트, 아티스트 노트, 약력.
 - `storages`: 명명된 OneDrive, WebDAV, Google Drive 또는 Node 로컬 구성.

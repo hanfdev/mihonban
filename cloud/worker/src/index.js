@@ -335,6 +335,7 @@ async function ensureMigrations(env) {
       "ALTER TABLE albums ADD COLUMN storage_id TEXT",
       "ALTER TABLE albums ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE artists ADD COLUMN storage_id TEXT",
+      "ALTER TABLE album_images ADD COLUMN source_key TEXT",
     ];
     for (const sql of alters) {
       try {
@@ -345,6 +346,9 @@ async function ensureMigrations(env) {
         }
       }
     }
+    await env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_images_album_source
+      ON album_images(album_id, source_key)
+      WHERE source_key IS NOT NULL AND source_key != ''`).run();
     // Older multi-storage builds inferred avatar storage from the first album
     // of the artist. Persist that same association once so future reads and
     // migrations are deterministic even when the artist spans several disks.
@@ -1210,11 +1214,18 @@ app.post("/api/album/:id/discogs-import-images", async (c) => {
     "SELECT folder, cover_path, storage_id FROM albums WHERE id = ?").bind(id).first();
   if (!album) return c.json({ error: "not found" }, 404);
   const body = await requestObject(c);
-  const { ref, uris, asCover } = body || {};
+  const { ref, uris, images, asCover } = body || {};
   const d = discogsIdFrom(ref);
   if (!d) return c.json({ error: "认不出 Discogs 编号/链接" }, 400);
-  if (!Array.isArray(uris) || !uris.length || uris.length > 50
-      || uris.some((uri) => !isDiscogsImageUrl(uri))) {
+  const structured = Array.isArray(images);
+  const requested = structured ? images : uris;
+  if (!Array.isArray(requested) || !requested.length || requested.length > 50
+      || (structured
+        ? requested.some((image) => !image || typeof image !== "object"
+          || Array.isArray(image) || !Number.isSafeInteger(image.idx)
+          || image.idx < 0 || image.idx > 10_000
+          || !isDiscogsImageUrl(image.uri))
+        : requested.some((uri) => !isDiscogsImageUrl(uri)))) {
     return c.json({ error: "没有选择图片" }, 400);
   }
   if (asCover !== undefined && typeof asCover !== "boolean") {
@@ -1224,22 +1235,42 @@ app.post("/api/album/:id/discogs-import-images", async (c) => {
     // Only authenticated admins reach this endpoint. URLs remain restricted to
     // Discogs-owned HTTPS hosts and downloaded bytes still pass size/signature
     // checks, so image import does not depend on a rate-limited API re-check.
-    const picked = [...new Set(uris)];
+    const pickedBySource = new Map();
+    for (const item of requested) {
+      const uri = structured ? item.uri : item;
+      const sourceKey = structured
+        ? `discogs:${d.kind}:${d.id}:${item.idx}`
+        : `discogs:${d.kind}:${d.id}:url:${await sha16(uri)}`;
+      const prior = pickedBySource.get(sourceKey);
+      if (prior && prior.uri !== uri) {
+        return c.json({ error: "Discogs 图片索引冲突" }, 400);
+      }
+      pickedBySource.set(sourceKey, { uri, sourceKey });
+    }
+    const picked = [...pickedBySource.values()];
 
     const imported = [];
-    let failed = 0;
+    let failed = 0, skipped = 0;
     let coverSet = false;
     const sid = album.storage_id || null;
+    const orderRow = await c.env.DB.prepare(
+      "SELECT COALESCE(MAX(sort), -1) AS n FROM album_images WHERE album_id = ?")
+      .bind(id).first();
+    const firstSort = Number(orderRow?.n ?? -1) + 1;
     for (let i = 0; i < picked.length; i++) {
+      const { uri, sourceKey } = picked[i];
+      const existing = await c.env.DB.prepare(
+        "SELECT id FROM album_images WHERE album_id = ? AND source_key = ?")
+        .bind(id, sourceKey).first();
+      if (existing) { skipped++; continue; }
       let bytes, ct;
       try {
-        const image = await fetchDiscogsBytes(picked[i]);
+        const image = await fetchDiscogsBytes(uri);
         bytes = image.bytes; ct = image.ct;
       } catch { failed++; continue; }
       if (bytes.byteLength > 12 * 1024 * 1024) { failed++; continue; }
       const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
-      const stamp = `${Date.now().toString(36)}${i}`;
-      const path = `${album.folder}/artwork/discogs-${stamp}.${ext}`;
+      const path = `${album.folder}/artwork/discogs-${await sha16(sourceKey)}.${ext}`;
       const ok = await storage.putSmallFile(c.env, path, bytes, ct, sid);
       if (!ok) { failed++; continue; }
       // asCover：第一张顶替封面
@@ -1254,18 +1285,21 @@ app.post("/api/album/:id/discogs-import-images", async (c) => {
         }
       }
       const imgId = await sha16(path);
-      await c.env.DB.prepare(`
-        INSERT INTO album_images (id, album_id, path, sort, created_at)
-        VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`)
-        .bind(imgId, id, path, i, Date.now()).run();
-      imported.push(imgId);
+      const inserted = await c.env.DB.prepare(`
+        INSERT INTO album_images
+          (id, album_id, path, source_key, sort, created_at)
+        VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+        .bind(imgId, id, path, sourceKey, firstSort + imported.length,
+          Date.now()).run();
+      if (inserted.meta?.changes) imported.push(imgId);
+      else skipped++;
     }
     if (imported.length || coverSet) {
       await c.env.DB.prepare("UPDATE albums SET updated_at = ? WHERE id = ?")
         .bind(Date.now(), id).run();
     }
     return c.json({
-      ok: true, imported: imported.length, failed, coverSet,
+      ok: true, imported: imported.length, skipped, failed, coverSet,
       coverFailed: !!asCover && imported.length > 0 && !coverSet,
     });
   } catch (e) {
@@ -1365,9 +1399,6 @@ app.post("/api/artists/:name/discogs-import", async (c) => {
             const path = `${artistDir}/avatar-${stamp}.${ext}`;
             const prev = await c.env.DB.prepare(
               "SELECT avatar_path FROM artists WHERE name = ?").bind(name).first();
-            if (prev?.avatar_path) {
-              await invalidateR2(c.env, `artist:${await sha16(prev.avatar_path)}:`);
-            }
             const ok = await storage.putSmallFile(
               c.env, path, bytes, ct, alb.storage_id || null);
             if (ok) {
@@ -1377,19 +1408,23 @@ app.post("/api/artists/:name/discogs-import", async (c) => {
                   avatar_path = excluded.avatar_path,
                   storage_id = excluded.storage_id`)
                 .bind(name, path, alb.storage_id || null).run();
-              // 清「无头像时的 fallback 缓存键」
-              await invalidateR2(c.env, `artist-fallback:${await sha16(name)}:`);
-              // R2 优先：导入后立刻镜像头像
+              // The source write is durable. Old-object cleanup and the new
+              // public mirror can finish after the response under waitUntil.
+              const maintenance = [];
+              if (prev?.avatar_path) {
+                maintenance.push(invalidateR2(
+                  c.env, `artist:${await sha16(prev.avatar_path)}:`));
+              }
+              maintenance.push(invalidateR2(
+                c.env, `artist-fallback:${await sha16(name)}:`));
               const conf = await r2.r2Conf(c.env);
               if (conf.ready) {
                 const cacheKey = `artist:${await sha16(path)}:480`;
-                const ctx = await ctxOf(c);
-                const job = mirrorImageToR2(
-                  c.env, conf, cacheKey, path, "c480x480", alb.storage_id || null);
-                const safeJob = job.catch(() => "fail");
-                if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(safeJob);
-                else await safeJob;
+                maintenance.push(mirrorImageBytes(
+                  c, conf, cacheKey, bytes, ct));
               }
+              await runBestEffortInBackground(
+                c, Promise.allSettled(maintenance));
               avatarSet = true;
               avatarPath = path;
             } else {
@@ -1603,6 +1638,16 @@ async function ctxOf(c) {
   try { return c.executionCtx; } catch { return null; }
 }
 
+async function runBestEffortInBackground(c, task) {
+  const safeTask = Promise.resolve(task).catch(() => null);
+  const ctx = await ctxOf(c);
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(safeTask);
+    return;
+  }
+  await safeTask;
+}
+
 const R2_IMAGE_EXT_BY_MIME = {
   "image/png": "png", "image/webp": "webp", "image/gif": "gif",
   "image/avif": "avif", "image/jpeg": "jpg",
@@ -1744,8 +1789,10 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   const { bytes, contentType: ct } = source;
   // 4) 懒同步到 R2（后台，不阻塞响应）
   if (conf.ready && allowPublicMirror) {
-    await mirrorImageBytes(c, conf, cacheKey, bytes, ct)
-      .catch(() => null); // optional mirror failure must not fail the image
+    // Return source bytes immediately. The next request will use the R2
+    // redirect after this best-effort mirror finishes.
+    await runBestEffortInBackground(
+      c, mirrorImageBytes(c, conf, cacheKey, bytes, ct));
   }
   const res = new Response(bytes, {
     headers: {
@@ -1867,8 +1914,8 @@ app.get("/api/art/:albumId", async (c) => {
     if (c.req.query("fallback") === "1" && !album.hidden) {
       const conf = await r2.r2Conf(c.env);
       if (conf.ready) {
-        await mirrorImageBytes(c, conf, logicalKey, bytes, ct)
-          .catch(() => null);
+        await runBestEffortInBackground(
+          c, mirrorImageBytes(c, conf, logicalKey, bytes, ct));
       }
     }
     return new Response(bytes, {

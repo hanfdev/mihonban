@@ -200,7 +200,8 @@ export default {
     done: 'Discogs 导入完成',
     stylesDone: 'Discogs 风格已并入',
     fail: (m) => `导入失败：${m}`,
-    images: (n, cover) => `，图片 ${n} 张${cover ? '（含封面）' : ''}`,
+    images: (n, cover, skipped = 0) => `，新增图片 ${n} 张${
+      cover ? '（含封面）' : ''}${skipped ? `，跳过已导入 ${skipped} 张` : ''}`,
     matching: '正在 Discogs 匹配…',
     noCandidates: 'Discogs 没搜到候选——可以手动拖入保存的页面',
     read: '读取',

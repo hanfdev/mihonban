@@ -47,3 +47,10 @@ export function sortOf(jaName) {
   }
   return ''
 }
+
+/** Prefer catalog metadata, then fall back to the bundled verified alias. */
+export function preferredArtistSort(name, stored = '') {
+  const value = typeof stored === 'string' ? stored.trim() : ''
+  if (value && value !== name) return value
+  return sortOf(name)
+}

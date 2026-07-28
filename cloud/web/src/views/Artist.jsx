@@ -4,6 +4,7 @@ import { CropDialog, Dialog, I, Md, Reader, VisibilityToggle,
          fmtTotal, goBack, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { AlbumCard } from './Library.jsx'
+import { preferredArtistSort } from '../aliases.js'
 
 function BioDialog({ name, initialNote, onClose, onSaved }) {
   const { t } = useI18n()
@@ -287,7 +288,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
     (artists || []).find((a) => a.name === name) || {}, [artists, name])
   const note = meta.note || ''
   const hasBio = !!meta.hasBio
-  const artistSort = meta.sort && meta.sort !== name ? meta.sort : ''
+  const artistSort = preferredArtistSort(name, meta.sort)
 
   const openReader = async () => {
     if (bio === null) {

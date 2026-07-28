@@ -52,7 +52,7 @@ Node 本地文件夹 --------------> Node Range 流
 - `albums`：专辑元数据、命名 `storage_id`、隐藏状态和排序字段。
 - `tracks`：曲目元数据与存储相对路径；继承专辑后端。
 - `artists`：艺人元数据、隐藏状态、头像路径和独立头像 `storage_id`。
-- `album_images`：位于专辑后端的内页路径。
+- `album_images`：位于专辑后端的内页路径，以及用于保证外部图片导入幂等性的可选稳定来源标识。
 - `favorites`：专辑/曲目精选及顺序。
 - `notes`：专辑备注、艺人备注和简介。
 - `storages`：命名 OneDrive、WebDAV、Google Drive 或 Node 本地后端配置。

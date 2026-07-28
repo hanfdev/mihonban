@@ -78,8 +78,8 @@ export const api = {
       "POST", `/api/album/${id}/discogs-image-source`, { ref, uri }, true);
     return response.blob();
   },
-  discogsImportImages: (id, ref, uris, asCover) =>
-    req("POST", `/api/album/${id}/discogs-import-images`, { ref, uris, asCover }),
+  discogsImportImages: (id, ref, images, asCover) =>
+    req("POST", `/api/album/${id}/discogs-import-images`, { ref, images, asCover }),
   artistDiscogsSearch: (name) => discogsFirst(
     () => discogsDirect.artistSearch(name),
     () => req("POST", "/api/artist-discogs-search", { name })),

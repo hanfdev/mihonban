@@ -123,7 +123,8 @@ export default {
     done: 'Importación de Discogs completada',
     stylesDone: 'Estilos de Discogs fusionados',
     fail: (m) => `Error al importar: ${m}`,
-    images: (n, cover) => `, ${n} imágenes${cover ? ' (incl. portada)' : ''}`,
+    images: (n, cover, skipped = 0) => `, ${n} imágenes nuevas${
+      cover ? ' (incl. portada)' : ''}${skipped ? `, ${skipped} ya importadas` : ''}`,
     matching: 'Buscando en Discogs…',
     noCandidates: 'Sin candidatos en Discogs — pega una URL o suelta una página guardada',
     read: 'Cargar',

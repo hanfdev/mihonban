@@ -56,3 +56,11 @@ test('new accessibility and error strings are explicitly localized', () => {
     }
   }
 })
+
+test('Discogs image results report imported and skipped counts in every locale', () => {
+  for (const [id, locale] of Object.entries({ en, ...locales })) {
+    const message = locale.discogsAlbum.images(2, false, 3)
+    assert.match(message, /2/, `${id} omits the imported count`)
+    assert.match(message, /3/, `${id} omits the skipped count`)
+  }
+})

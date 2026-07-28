@@ -208,7 +208,8 @@ export const en = {
     done: 'Discogs import complete',
     stylesDone: 'Discogs styles merged',
     fail: (m) => `Import failed: ${m}`,
-    images: (n, cover) => `, ${n} images${cover ? ' (incl. cover)' : ''}`,
+    images: (n, cover, skipped = 0) => `, ${n} new images${
+      cover ? ' (incl. cover)' : ''}${skipped ? `, ${skipped} already imported` : ''}`,
     matching: 'Matching on Discogs…',
     noCandidates: 'No Discogs candidates — paste a saved page or URL',
     read: 'Fetch',

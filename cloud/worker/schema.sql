@@ -107,11 +107,15 @@ CREATE TABLE IF NOT EXISTS album_images (
   id         TEXT PRIMARY KEY,          -- sha1(path)[:16]
   album_id   TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
   path       TEXT NOT NULL UNIQUE,      -- 存储相对路径
+  source_key TEXT,                      -- stable provider identity for idempotent imports
   sort       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_images_album ON album_images(album_id, sort, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_images_album_source
+  ON album_images(album_id, source_key)
+  WHERE source_key IS NOT NULL AND source_key != '';
 
 -- R2 图床镜像索引：cache_key（如 art:<albumId>:480）→ 已上传的 R2 对象 key。
 -- 命中即 302 到公开 CDN，图片字节不过 Worker、不打 OneDrive Graph API。

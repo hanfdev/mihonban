@@ -52,7 +52,7 @@ Production cookies require HTTPS. `DEV_INSECURE_COOKIE=1` exists only for truste
 - `albums`: album metadata, named `storage_id`, hidden state, and ordering fields.
 - `tracks`: track metadata and storage-relative path; tracks inherit the album backend.
 - `artists`: artist metadata, hidden state, avatar path, and independent avatar `storage_id`.
-- `album_images`: gallery paths on the album backend.
+- `album_images`: gallery paths on the album backend, plus an optional stable source identity used to make provider imports idempotent.
 - `favorites`: album/track favorites and order.
 - `notes`: album notes, artist notes, and biographies.
 - `storages`: named OneDrive, WebDAV, Google Drive, or Node-local configurations.

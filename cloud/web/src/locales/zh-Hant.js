@@ -114,7 +114,8 @@ export default {
     loadImages: '載入 Discogs 圖片', noImages: '這個發行在 Discogs 上沒有圖片', imgFail: (m) => `圖片載入失敗：${m}`,
     asCover: '裁剪第一張選中的圖片並設為專輯封面', apply: '合併風格', applyWithImg: (n) => `匯入（風格 + ${n} 張圖片）`,
     done: 'Discogs 匯入完成', stylesDone: 'Discogs 風格已合併', fail: (m) => `匯入失敗：${m}`,
-    images: (n, cover) => `，圖片 ${n} 張${cover ? '（含封面）' : ''}`, matching: '正在 Discogs 比對…',
+    images: (n, cover, skipped = 0) => `，新增圖片 ${n} 張${cover ? '（含封面）' : ''}${
+      skipped ? `，略過已匯入 ${skipped} 張` : ''}`, matching: '正在 Discogs 比對…',
     noCandidates: 'Discogs 找不到候選項目 — 可貼上連結或拖入已儲存頁面', read: '讀取',
     dropHtml: '或拖入已儲存的 Discogs 發行頁 .html（本機解析，不連網）', pageLink: 'Discogs 頁面',
     styleToPrimary: '風格 → 合併至主風格', genreToSecondary: '類型 → 合併至次風格',

@@ -10,7 +10,7 @@ import { kvFromSqlite } from "../src/compat.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-test("fresh schema includes current album and artist storage columns", () => {
+test("fresh schema includes current storage and image identity columns", () => {
   const db = new Database(":memory:");
   try {
     db.exec(readFileSync(join(here, "..", "schema.sql"), "utf8"));
@@ -18,9 +18,14 @@ test("fresh schema includes current album and artist storage columns", () => {
       .map((c) => c.name);
     const artistColumns = db.prepare("PRAGMA table_info(artists)").all()
       .map((c) => c.name);
+    const imageColumns = db.prepare("PRAGMA table_info(album_images)").all()
+      .map((c) => c.name);
     assert.ok(albumColumns.includes("storage_id"));
     assert.ok(albumColumns.includes("hidden"));
     assert.ok(artistColumns.includes("storage_id"));
+    assert.ok(imageColumns.includes("source_key"));
+    assert.ok(db.prepare(`SELECT 1 FROM sqlite_master
+      WHERE type = 'index' AND name = 'idx_images_album_source'`).get());
   } finally {
     db.close();
   }

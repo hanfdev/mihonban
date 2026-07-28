@@ -125,7 +125,8 @@ export default {
     done: 'Discogs インポート完了',
     stylesDone: 'Discogs スタイルを統合しました',
     fail: (m) => `インポート失敗: ${m}`,
-    images: (n, cover) => `、画像 ${n} 枚${cover ? '（カバー含む）' : ''}`,
+    images: (n, cover, skipped = 0) => `、新規画像 ${n} 枚${
+      cover ? '（カバー含む）' : ''}${skipped ? `、インポート済み ${skipped} 枚をスキップ` : ''}`,
     matching: 'Discogs で照合中…',
     noCandidates: 'Discogs に候補なし — 保存したページまたは URL を貼り付け',
     read: '取得',

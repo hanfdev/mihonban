@@ -52,7 +52,7 @@ Node 本地資料夾 --------------> Node Range 流
 - `albums`：專輯後設資料、命名 `storage_id`、隱藏狀態和排序欄位。
 - `tracks`：曲目後設資料與儲存相對路徑；繼承專輯後端。
 - `artists`：藝人後設資料、隱藏狀態、頭像路徑和獨立頭像 `storage_id`。
-- `album_images`：位於專輯後端的內頁路徑。
+- `album_images`：位於專輯後端的內頁路徑，以及用於保證外部圖片匯入冪等性的可選穩定來源識別。
 - `favorites`：專輯/曲目精選及順序。
 - `notes`：專輯備註、藝人備註和簡介。
 - `storages`：命名 OneDrive、WebDAV、Google Drive 或 Node 本地後端配置。

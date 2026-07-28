@@ -123,7 +123,8 @@ export default {
     done: 'Discogs 가져오기 완료',
     stylesDone: 'Discogs 스타일 병합됨',
     fail: (m) => `가져오기 실패: ${m}`,
-    images: (n, cover) => `, 이미지 ${n}장${cover ? ' (커버 포함)' : ''}`,
+    images: (n, cover, skipped = 0) => `, 새 이미지 ${n}장${
+      cover ? ' (커버 포함)' : ''}${skipped ? `, 이미 가져온 ${skipped}장 건너뜀` : ''}`,
     matching: 'Discogs 매칭 중…',
     noCandidates: 'Discogs 후보 없음 — 저장된 페이지나 URL을 붙여넣으세요',
     read: '가져오기',

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { romajiOf, sortOf, toJa } from '../src/aliases.js'
+import { preferredArtistSort, romajiOf, sortOf, toJa } from '../src/aliases.js'
 import { zhNorm } from '../src/zh.js'
 
 const searchable = (artist, sort = '') =>
@@ -34,4 +34,11 @@ test('Japanese traditional and simplified forms share the search key', () => {
 
 test('artist sort remains searchable without a static alias', () => {
   assert.ok(searchable('未知藝人', 'Michi Geinin').includes('michi geinin'))
+})
+
+test('artist pages prefer saved metadata and fall back to verified aliases', () => {
+  assert.equal(preferredArtistSort('流線形', '流線形'), 'Ryusenkei')
+  assert.equal(preferredArtistSort('石川秀美'), 'Ishikawa, Hidemi')
+  assert.equal(preferredArtistSort('流線形', 'RYUSENKEI'), 'RYUSENKEI')
+  assert.equal(preferredArtistSort('未知藝人'), '')
 })
