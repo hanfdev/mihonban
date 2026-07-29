@@ -7,6 +7,7 @@ Mihonban est une bibliothèque musicale privée et auto-hébergée dotée d’un
 ## Points forts
 
 - Interfaces adaptatives pour les albums, morceaux, artistes, favoris, importations et réglages d’administration
+- Crédits d’album multi-artistes ordonnés et collaborations définies par morceau, avec recherche, page et lien du lecteur pour chaque artiste
 - Mots de passe distincts pour les auditeurs et les administrateurs, avec un mode invité facultatif, sans mot de passe et en lecture seule
 - File d’attente persistante, commandes mobiles complètes piste précédente／lecture-pause／piste suivante, démarrage lié au geste utilisateur, lecture aléatoire/répétée, navigation Range et contrôles Media Session
 - Stockages nommés OneDrive, WebDAV, Google Drive et dossiers locaux réservés au runtime Node

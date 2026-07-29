@@ -4,6 +4,7 @@ import { I, Heart, Marquee, fmtDur } from './ui.jsx'
 import { useI18n } from './i18n.jsx'
 import { clampMediaTime, mediaDuration, seekAudio, storedVolume } from './media.js'
 import { playbackControlState } from './player-control.js'
+import { ArtistCredit } from './artist-credit.jsx'
 
 /* 进度条：支持点按 + 拖动洗擦（scrub）。拖动中只更新预览，
  * 松手 onSeek 立刻跳到目标位置（UI 同步更新，不等缓冲）。
@@ -312,7 +313,6 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     action()
   }
   const goAlbum = () => leaveSheetFor(onOpenAlbum)
-  const goArtist = () => leaveSheetFor(() => onOpenArtist(current.artist))
 
   /* 迷你条上滑 = 展开播放页（与播放页下滑收回互为镜像）。
    * pointer + touch 双通道：iOS Safari 上 pointer 有时被 pan 手势吞掉，
@@ -416,12 +416,9 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
           {/* 副行只显示歌手：专辑名会把长歌手名挤没，且封面/歌名都已能进
               专辑页，这里再放专辑名信息冗余。 */}
           <div className="p-sub">
-            <button type="button" className="p-sub-link p-artist-link"
-                    title={current.artist}
-                    disabled={!current.artist}
-                    onClick={() => onOpenArtist(current.artist)}>
-              {current.artist}
-            </button>
+            <ArtistCredit value={current} onOpen={onOpenArtist}
+                          className="p-artist-credit"
+                          linkClassName="p-sub-link p-artist-link" />
           </div>
         </div>
         {isAdmin && <span className="p-heart">
@@ -479,9 +476,10 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
                   <button type="button" className="np-title link"
                           title={__('player.viewAlbum')}
                           onClick={goAlbum}><Marquee text={current.title} /></button>
-                  <button type="button" className="np-artist"
-                          disabled={!current.artist}
-                          onClick={goArtist}>{current.artist}</button>
+                  <ArtistCredit value={current}
+                                onOpen={(name) => leaveSheetFor(() => onOpenArtist(name))}
+                                className="np-artist-credit"
+                                linkClassName="np-artist" />
                 </div>
                 <Heart on={fav} canEdit={isAdmin} onToggle={onFav} size={20} />
               </div>

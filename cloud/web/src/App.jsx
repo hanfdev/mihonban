@@ -343,6 +343,7 @@ export default function App() {
     playTracks(tracks.map((t) => ({
       id: t.id, title: t.title, duration: t.duration, format: t.format,
       artist: t.artist || album.artist,
+      artists: t.artists || album.artists,
       albumId: t.albumId || album.id, albumTitle: t.albumTitle || album.title,
     })), index)
   }, [playTracks])
@@ -797,11 +798,13 @@ export default function App() {
                      favAlbums={favAlbums} favTracks={favTracks}
                      toggleFav={toggleFav}
                      onChanged={refreshLibrary}
+                     artistOptions={artists}
                      onOpen={openAlbum} onOpenArtist={openArtist}
                      onOpenGenre={openGenre} />
         )}
         {route.view === 'import' && isAdmin && (
-          <ImportPage albums={albums} onDone={refreshLibrary} onOpen={openAlbum} />
+          <ImportPage albums={albums} artistOptions={artists}
+                      onDone={refreshLibrary} onOpen={openAlbum} />
         )}
         {route.view === 'admin' && isAdmin && (
           <AdminPage onOpen={openAlbum} />

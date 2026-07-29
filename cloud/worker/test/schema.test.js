@@ -20,12 +20,37 @@ test("fresh schema includes current storage and image identity columns", () => {
       .map((c) => c.name);
     const imageColumns = db.prepare("PRAGMA table_info(album_images)").all()
       .map((c) => c.name);
+    const albumArtistColumns = db.prepare("PRAGMA table_info(album_artists)").all()
+      .map((c) => c.name);
+    const trackArtistColumns = db.prepare("PRAGMA table_info(track_artists)").all()
+      .map((c) => c.name);
     assert.ok(albumColumns.includes("storage_id"));
     assert.ok(albumColumns.includes("hidden"));
     assert.ok(artistColumns.includes("storage_id"));
     assert.ok(imageColumns.includes("source_key"));
+    assert.deepEqual(albumArtistColumns,
+      ["album_id", "artist", "artist_sort", "position"]);
+    assert.deepEqual(trackArtistColumns,
+      ["track_id", "artist", "artist_sort", "position"]);
     assert.ok(db.prepare(`SELECT 1 FROM sqlite_master
       WHERE type = 'index' AND name = 'idx_images_album_source'`).get());
+    assert.ok(db.prepare(`SELECT 1 FROM sqlite_master
+      WHERE type = 'index' AND name = 'idx_album_artists_artist'`).get());
+    assert.ok(db.prepare(`SELECT 1 FROM sqlite_master
+      WHERE type = 'index' AND name = 'idx_track_artists_artist'`).get());
+    assert.ok(db.prepare(`SELECT 1 FROM sqlite_master
+      WHERE type = 'view' AND name = 'artist_album_links'`).get());
+    db.prepare(`INSERT INTO albums
+      (id, artist, title, folder, storage_id, created_at, updated_at)
+      VALUES ('album', 'Main', 'Album', 'Music/Main/Album', 'store', 1, 1)`).run();
+    db.prepare(`INSERT INTO tracks (id, album_id, title, path) VALUES
+      ('one', 'album', 'One', 'Music/Main/Album/01.mp3'),
+      ('two', 'album', 'Two', 'Music/Main/Album/02.mp3')`).run();
+    db.prepare(`INSERT INTO track_artists
+      (track_id, artist, artist_sort, position) VALUES
+      ('one', 'Guest', 'Guest', 0), ('two', 'Guest', 'Guest', 0)`).run();
+    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM artist_album_links
+      WHERE album_id = 'album' AND artist = 'Guest'`).get().n, 1);
   } finally {
     db.close();
   }

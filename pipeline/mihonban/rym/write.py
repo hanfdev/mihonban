@@ -22,8 +22,8 @@ from . import db
 
 log = logging.getLogger("mihonban.rym.write")
 
-FIELDS = ("RYM_RATING", "RYM_VOTES", "RYM_GENRES", "RYM_DESCRIPTORS",
-          "RYM_URL", "RYM_RANK")
+FIELDS = ("RYM_RATING", "RYM_VOTES", "RYM_GENRES",
+          "RYM_SECONDARY_GENRES", "RYM_DESCRIPTORS", "RYM_URL", "RYM_RANK")
 
 
 def _values(row) -> dict[str, str]:
@@ -35,6 +35,7 @@ def _values(row) -> dict[str, str]:
         "RYM_RATING": "" if row["rating"] is None else f"{row['rating']:.2f}",
         "RYM_VOTES": "" if row["votes"] is None else str(row["votes"]),
         "RYM_GENRES": genres,
+        "RYM_SECONDARY_GENRES": sec,
         "RYM_DESCRIPTORS": row["descriptors"] or "",
         "RYM_URL": row["rym_url"] or "",
         "RYM_RANK": (row["rank"] or "").strip(),

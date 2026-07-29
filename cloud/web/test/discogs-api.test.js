@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { artistDetail, discogsRef, releaseImages, releaseSearch, releaseThumbnail,
+import { artistDetail, discogsArtistId, discogsRef, releaseImages, releaseSearch, releaseThumbnail,
          resetDiscogsCacheForTest } from '../src/discogs-api.js'
 
 test('browser Discogs search uses the public API and caches results', async () => {
@@ -31,6 +31,36 @@ test('browser Discogs search uses the public API and caches results', async () =
     assert.equal(seen[0].origin, 'https://api.discogs.com')
     assert.equal(seen[0].searchParams.get('release_title'), 'Album')
     assert.equal(seen[0].searchParams.has('token'), false)
+  } finally {
+    globalThis.fetch = realFetch
+    if (realCaches === undefined) delete globalThis.caches
+    else globalThis.caches = realCaches
+    resetDiscogsCacheForTest()
+  }
+})
+
+test('browser Discogs search uses structured collaborator credits', async () => {
+  const realFetch = globalThis.fetch
+  const realCaches = globalThis.caches
+  const seen = []
+  delete globalThis.caches
+  resetDiscogsCacheForTest()
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input))
+    seen.push(url.searchParams.get('artist'))
+    return Response.json({ results: seen.length === 2 ? [{ id: 7 }] : [] })
+  }
+  try {
+    const album = {
+      artist: '山下達郎 × 竹内まりや', title: 'Pacific',
+      artists: [
+        { name: '山下達郎', sort: 'Yamashita, Tatsuro' },
+        { name: '竹内まりや', sort: 'Takeuchi, Mariya' },
+      ],
+    }
+    const result = await releaseSearch(album)
+    assert.equal(result.candidates[0].id, 7)
+    assert.deepEqual(seen, ['山下達郎', 'Tatsuro Yamashita'])
   } finally {
     globalThis.fetch = realFetch
     if (realCaches === undefined) delete globalThis.caches
@@ -102,17 +132,29 @@ test('browser Discogs parsing rejects lookalike hosts and cleans artist profiles
   assert.deepEqual(discogsRef('https://www.discogs.com/master/123-Title'), {
     kind: 'masters', id: '123',
   })
+  assert.equal(discogsArtistId('42'), '42')
+  assert.equal(discogsArtistId('https://www.discogs.com/artist/12-Artist-Name'), '12')
+  assert.equal(discogsArtistId('discogs.com/ja/artist/34/Artist-Name'), '34')
+  assert.equal(discogsArtistId('https://discogs.com.evil.example/artist/12'), null)
+  assert.equal(discogsArtistId('https://www.discogs.com/release/12-Title'), null)
   const realFetch = globalThis.fetch
   const realCaches = globalThis.caches
   delete globalThis.caches
   resetDiscogsCacheForTest()
-  globalThis.fetch = async () => Response.json({
-    name: 'Artist', profile: '[b]Bold[/b] [url=https://example.test]Link[/url]',
-    images: [],
-  })
+  globalThis.fetch = async (input) => {
+    assert.equal(String(input), 'https://api.discogs.com/artists/12')
+    return Response.json({
+      name: 'Artist', profile: '[b]Bold[/b] [url=https://example.test]Link[/url]',
+      images: [],
+    })
+  }
   try {
-    const detail = await artistDetail('12')
+    const detail = await artistDetail('https://www.discogs.com/artist/12-Artist')
     assert.equal(detail.profile, 'Bold Link')
+    await assert.rejects(
+      artistDetail('https://www.discogs.com.evil.example/artist/12'),
+      /Invalid Discogs artist URL or id/,
+    )
   } finally {
     globalThis.fetch = realFetch
     if (realCaches === undefined) delete globalThis.caches

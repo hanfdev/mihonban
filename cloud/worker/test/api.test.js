@@ -49,6 +49,9 @@ test("genre mirror triggers follow direct album updates and deletes", async () =
     // backfills rows that predate the migration.
     const library = await companionRequest(env, "/api/library");
     assert.equal(library.status, 200);
+    const libraryBody = await library.json();
+    assert.deepEqual(libraryBody[0].artists,
+      [{ name: "Artist", sort: "Artist" }]);
     assert.deepEqual(
       db.prepare("SELECT genre FROM album_genres WHERE album_id = ? ORDER BY genre")
         .all("genre-direct").map((row) => row.genre),
@@ -69,6 +72,210 @@ test("genre mirror triggers follow direct album updates and deletes", async () =
         .all("genre-direct"),
       [],
     );
+  } finally {
+    db.close();
+  }
+});
+
+test("multi-artist credits are ordered, searchable, and survive legacy rescans", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main-store', 'Main', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  const folder = "Music/Library/Collaboration/[1999] Winter";
+  const tracks = [{ path: `${folder}/01.mp3`, title: "Winter Song" }];
+
+  try {
+    const created = await companionRequest(env, "/api/albums", {
+      method: "POST",
+      ...jsonBody({
+        folder, title: "Winter", tracks,
+        artists: [
+          { name: "山下達郎", sort: "Yamashita, Tatsuro" },
+          { name: "竹内まりや", sort: "Takeuchi, Mariya" },
+        ],
+      }),
+    });
+    const createdBody = await created.json();
+    assert.equal(created.status, 200, createdBody.error);
+
+    const detail = await companionRequest(env, `/api/album/${createdBody.id}`);
+    const album = await detail.json();
+    assert.equal(album.artist, "山下達郎 × 竹内まりや");
+    assert.equal(album.artistSort, "Yamashita, Tatsuro");
+    assert.deepEqual(album.artists, [
+      { name: "山下達郎", sort: "Yamashita, Tatsuro" },
+      { name: "竹内まりや", sort: "Takeuchi, Mariya" },
+    ]);
+
+    const artistList = await (await companionRequest(env, "/api/artists")).json();
+    assert.deepEqual(artistList.map((artist) => artist.name).sort(),
+      ["山下達郎", "竹内まりや"].sort());
+    const trackList = await (await companionRequest(env, "/api/tracks")).json();
+    assert.deepEqual(trackList[0].artists, album.artists);
+
+    // Old companions still send only artist/artistSort. A rescan may update
+    // tracks, but must not collapse an explicit collaboration.
+    const rescanned = await companionRequest(env, "/api/albums", {
+      method: "POST",
+      ...jsonBody({
+        folder, artist: "Combined legacy value", artistSort: "Combined",
+        title: "Winter", tracks,
+      }),
+    });
+    assert.equal(rescanned.status, 200, (await rescanned.json()).error);
+    const after = await (await companionRequest(
+      env, `/api/album/${createdBody.id}`)).json();
+    assert.deepEqual(after.artists, album.artists);
+
+    const reordered = await companionRequest(env, `/api/album/${createdBody.id}`, {
+      method: "PATCH",
+      ...jsonBody({ artists: [album.artists[1], album.artists[0]] }),
+    });
+    assert.equal(reordered.status, 200, (await reordered.json()).error);
+    const reorderedAlbum = await (await companionRequest(
+      env, `/api/album/${createdBody.id}`)).json();
+    assert.equal(reorderedAlbum.artist, "竹内まりや × 山下達郎");
+    assert.equal(reorderedAlbum.artistSort, "Takeuchi, Mariya");
+  } finally {
+    db.close();
+  }
+});
+
+test("track collaborations override album credits without claiming the whole album", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main-store', 'Main', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  const folder = "Music/Library/Main/[2001] Album";
+  const albumArtists = [{ name: "Main", sort: "Main" }];
+  const collaboration = [
+    { name: "Main", sort: "Main" },
+    { name: "Guest", sort: "Guest, The" },
+  ];
+  const tracks = [
+    { path: `${folder}/01.mp3`, title: "Solo", track: 1 },
+    { path: `${folder}/02.mp3`, title: "Duet", track: 2,
+      artists: collaboration },
+  ];
+
+  try {
+    const created = await companionRequest(env, "/api/albums", {
+      method: "POST",
+      ...jsonBody({ folder, title: "Album", artists: albumArtists, tracks }),
+    });
+    const createdBody = await created.json();
+    assert.equal(created.status, 200, createdBody.error);
+    const albumId = createdBody.id;
+
+    let detail = await (await companionRequest(env, `/api/album/${albumId}`)).json();
+    const solo = detail.tracks.find((track) => track.title === "Solo");
+    let duet = detail.tracks.find((track) => track.title === "Duet");
+    assert.deepEqual(solo.artists, albumArtists);
+    assert.equal(solo.hasCustomArtists, false);
+    assert.deepEqual(duet.artists, collaboration);
+    assert.equal(duet.hasCustomArtists, true);
+
+    const library = await (await companionRequest(env, "/api/library")).json();
+    assert.deepEqual(library[0].artists, albumArtists,
+      "a track guest must not become an album artist");
+    const allTracks = await (await companionRequest(env, "/api/tracks")).json();
+    assert.deepEqual(allTracks.find((track) => track.id === duet.id).artists,
+      collaboration);
+
+    let artistList = await (await companionRequest(env, "/api/artists")).json();
+    const guest = artistList.find((artist) => artist.name === "Guest");
+    assert.equal(guest.featuredTrackCount, 1);
+    assert.equal(guest.visibleFeaturedTrackCount, 1);
+    let guestTracks = await (await companionRequest(
+      env, "/api/artists/Guest/tracks")).json();
+    assert.deepEqual(guestTracks.map((track) => track.id), [duet.id]);
+    assert.deepEqual(guestTracks[0].artists, collaboration);
+
+    db.prepare("UPDATE albums SET hidden = 1 WHERE id = ?").run(albumId);
+    artistList = await (await companionRequest(env, "/api/artists")).json();
+    assert.equal(artistList.some((artist) => artist.name === "Guest"), false);
+    guestTracks = await (await companionRequest(env, "/api/artists/Guest/tracks")).json();
+    assert.deepEqual(guestTracks, []);
+    guestTracks = await (await companionRequest(
+      env, "/api/artists/Guest/tracks?hidden=1")).json();
+    assert.deepEqual(guestTracks.map((track) => track.id), [duet.id]);
+    db.prepare("UPDATE albums SET hidden = 0 WHERE id = ?").run(albumId);
+
+    const invalidCredit = await companionRequest(
+      env, `/api/album/${albumId}/tracks/${duet.id}`, {
+        method: "PATCH",
+        ...jsonBody({ artists: [{ name: "Guest" }, { name: "guest" }] }),
+      });
+    assert.equal(invalidCredit.status, 400);
+
+    // A legacy companion omits per-track credits. Its rescan must preserve a
+    // manually curated override for a surviving track ID.
+    const legacyRescan = await companionRequest(env, "/api/albums", {
+      method: "POST",
+      ...jsonBody({ folder, artist: "Legacy combined value", title: "Album",
+        tracks: tracks.map(({ artists, ...track }) => track) }),
+    });
+    assert.equal(legacyRescan.status, 200, (await legacyRescan.json()).error);
+    detail = await (await companionRequest(env, `/api/album/${albumId}`)).json();
+    duet = detail.tracks.find((track) => track.title === "Duet");
+    assert.deepEqual(duet.artists, collaboration);
+    assert.deepEqual(detail.artists,
+      [{ name: "Legacy combined value", sort: "Legacy combined value" }]);
+
+    // An empty list explicitly restores inheritance. Sending the inherited
+    // credit itself is normalized to the same compact representation.
+    let reset = await companionRequest(env, `/api/album/${albumId}/tracks/${duet.id}`, {
+      method: "PATCH", ...jsonBody({ artists: [] }),
+    });
+    assert.equal(reset.status, 200, (await reset.json()).error);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM track_artists WHERE track_id = ?")
+      .get(duet.id).n, 0);
+    reset = await companionRequest(env, `/api/album/${albumId}/tracks/${duet.id}`, {
+      method: "PATCH", ...jsonBody({ artists: detail.artists }),
+    });
+    assert.equal(reset.status, 200, (await reset.json()).error);
+    detail = await (await companionRequest(env, `/api/album/${albumId}`)).json();
+    duet = detail.tracks.find((track) => track.title === "Duet");
+    assert.equal(duet.hasCustomArtists, false);
+    assert.deepEqual(duet.artists, detail.artists);
+    guestTracks = await (await companionRequest(env, "/api/artists/Guest/tracks")).json();
+    assert.deepEqual(guestTracks, []);
+    assert.equal(db.prepare("SELECT 1 FROM artists WHERE name = 'Guest'").get(),
+      undefined);
+
+    // Re-adding a collaboration and deleting the track must not leave an
+    // orphan relationship behind.
+    const restored = await companionRequest(
+      env, `/api/album/${albumId}/tracks/${duet.id}`, {
+        method: "PATCH", ...jsonBody({ artists: collaboration }),
+      });
+    assert.equal(restored.status, 200, (await restored.json()).error);
+
+    // If the album later adopts the same credit, the per-track rows become
+    // inheritance and must be compacted instead of remaining a false override.
+    const promoted = await companionRequest(env, `/api/album/${albumId}`, {
+      method: "PATCH", ...jsonBody({ artists: collaboration }),
+    });
+    assert.equal(promoted.status, 200, (await promoted.json()).error);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM track_artists WHERE track_id = ?")
+      .get(duet.id).n, 0);
+    const restoredAlbum = await companionRequest(env, `/api/album/${albumId}`, {
+      method: "PATCH", ...jsonBody({ artists: detail.artists }),
+    });
+    assert.equal(restoredAlbum.status, 200, (await restoredAlbum.json()).error);
+    const restoredTrack = await companionRequest(
+      env, `/api/album/${albumId}/tracks/${duet.id}`, {
+        method: "PATCH", ...jsonBody({ artists: collaboration }),
+      });
+    assert.equal(restoredTrack.status, 200, (await restoredTrack.json()).error);
+    const removed = await companionRequest(
+      env, `/api/album/${albumId}/tracks/${duet.id}`, { method: "DELETE" });
+    assert.equal(removed.status, 200, (await removed.json()).error);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM track_artists WHERE track_id = ?")
+      .get(duet.id).n, 0);
   } finally {
     db.close();
   }
@@ -906,6 +1113,54 @@ test("Discogs lookup accepts canonical release URLs with title slugs", async () 
   }
 });
 
+test("Discogs artist detail accepts canonical URLs and rejects lookalike hosts", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare("INSERT INTO settings (k, v) VALUES ('discogs_token', 'token')").run();
+  const env = companionEnv(db);
+  const realFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    upstreamCalls += 1;
+    assert.equal(String(input), "https://api.discogs.com/artists/987654");
+    assert.equal(init.headers.Authorization, "Discogs token=token");
+    return Response.json({
+      name: "Artist Name",
+      profile: "[b]Artist[/b] profile",
+      images: [{
+        type: "primary",
+        uri: "https://i.discogs.com/artist.jpg",
+        uri150: "https://i.discogs.com/artist-150.jpg",
+      }],
+    });
+  };
+  try {
+    const valid = await companionRequest(env, "/api/artist-discogs-detail", {
+      method: "POST",
+      ...jsonBody({
+        artistId: "https://www.discogs.com/artist/987654-Artist-Name",
+      }),
+    });
+    const validBody = await valid.json();
+    assert.equal(valid.status, 200, validBody.error);
+    assert.equal(validBody.name, "Artist Name");
+    assert.equal(validBody.profile, "Artist profile");
+    assert.equal(validBody.images[0].uri, "https://i.discogs.com/artist.jpg");
+
+    const lookalike = await companionRequest(env, "/api/artist-discogs-detail", {
+      method: "POST",
+      ...jsonBody({
+        artistId: "https://www.discogs.com.evil.example/artist/987654",
+      }),
+    });
+    assert.equal(lookalike.status, 400);
+    assert.equal(upstreamCalls, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
 test("Discogs crop source proxies only allowlisted image hosts", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
@@ -940,13 +1195,28 @@ test("Discogs crop source proxies only allowlisted image hosts", async () => {
       new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00]));
     assert.equal(imageFetches, 1);
 
+    const thumbnail = await companionRequest(
+      env, `/api/discogs-image-proxy?url=${encodeURIComponent(imageUrl)}`);
+    assert.equal(thumbnail.status, 200, await thumbnail.clone().text());
+    assert.equal(thumbnail.headers.get("content-type"), "image/jpeg");
+    assert.equal(thumbnail.headers.get("cache-control"), "private, max-age=86400");
+    assert.deepEqual(new Uint8Array(await thumbnail.arrayBuffer()),
+      new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00]));
+    assert.equal(imageFetches, 2);
+
     const rejected = await companionRequest(
       env, "/api/album/discogs-crop/discogs-image-source", {
         method: "POST",
         ...jsonBody({ ref: "1", uri: "https://evil.example/not-listed.jpg" }),
       });
     assert.equal(rejected.status, 400);
-    assert.equal(imageFetches, 1);
+    assert.equal(imageFetches, 2);
+
+    const rejectedThumbnail = await companionRequest(
+      env, `/api/discogs-image-proxy?url=${encodeURIComponent(
+        "https://evil.example/not-listed.jpg")}`);
+    assert.equal(rejectedThumbnail.status, 400);
+    assert.equal(imageFetches, 2);
   } finally {
     globalThis.fetch = realFetch;
     db.close();

@@ -45,6 +45,11 @@ const discogsFirst = async (direct, server) => {
   }
 }
 
+export const discogsImageProxyUrl = (url) =>
+  typeof url === 'string' && url
+    ? `/api/discogs-image-proxy?url=${encodeURIComponent(url)}`
+    : ''
+
 // getSettingsShared 的 in-flight/结果缓存（写入或失败即失效）
 let settingsShared = null;
 
@@ -111,6 +116,9 @@ export const api = {
     req("GET", `/api/artists${opts.hidden ? "?hidden=1" : ""}`),
   artistBio: (name) =>
     req("GET", `/api/artist-bio/${encodeURIComponent(name)}`),
+  artistTracks: (name, opts = {}) =>
+    req("GET", `/api/artists/${encodeURIComponent(name)}/tracks${
+      opts.hidden ? '?hidden=1' : ''}`),
   putArtist: (name, fields = {}) =>
     req("PUT", "/api/artists", { name, ...fields }),
   // 专辑内页图片

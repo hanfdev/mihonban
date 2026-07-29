@@ -255,7 +255,7 @@ let dialogTitleSeq = 0
 // 连带把父编辑表单里未保存的内容一并丢弃。改为共享一个栈，只有栈顶那层响应
 // Escape。onClose 用 ref 持有最新引用，监听只在挂载时注册一次。
 const dialogStack = []
-export function Dialog({ title, onClose, children }) {
+export function Dialog({ title, onClose, children, className = '' }) {
   const boxRef = useRef(null)
   const [titleId] = useState(() => `dlg-t-${++dialogTitleSeq}`)
   // 在 render 阶段捕获打开者：子元素的 autoFocus 在 commit 阶段才生效，
@@ -290,7 +290,7 @@ export function Dialog({ title, onClose, children }) {
 
   return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-modal="true"
+      <div className={`dialog ${className}`.trim()} role="dialog" aria-modal="true"
            aria-labelledby={titleId} tabIndex={-1} ref={boxRef}>
         <h3 id={titleId}>{title}</h3>
         {children}

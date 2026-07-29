@@ -46,6 +46,7 @@ def test_write_dry_run_and_apply(tmp_path, silent_mp3, match_row):
     assert str(tags.getall("TXXX:RYM_RATING")[0]) == "3.87"
     assert str(tags.getall("TXXX:RYM_VOTES")[0]) == "12345"
     assert str(tags.getall("TXXX:RYM_GENRES")[0]) == "City Pop; Funk; Boogie"
+    assert str(tags.getall("TXXX:RYM_SECONDARY_GENRES")[0]) == "Funk; Boogie"
     assert str(tags.getall("TXXX:RYM_RANK")[0]) == \
         "#25 for 1982 , #1,234 overall"
     assert "urban" in str(tags.getall("TXXX:RYM_DESCRIPTORS")[0])

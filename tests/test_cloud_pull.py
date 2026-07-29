@@ -125,6 +125,106 @@ def test_payload_copies_artist_sort_tag(cloud_cfg, monkeypatch):
     assert payload["artistSort"] == "Ishikawa, Hidemi"
 
 
+def test_payload_preserves_ordered_multi_artist_tags(cloud_cfg, monkeypatch):
+    album_dir = cloud_cfg.music_root / "山下達郎" / "Pacific"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01.mp3").write_bytes(b"audio")
+
+    def fake_mutagen(_path, easy=False):
+        return SimpleNamespace(
+            tags={
+                "title": ["Music Book"],
+                "albumartist": ["山下達郎", "竹内まりや"],
+                "albumartistsort": ["Yamashita, Tatsuro", "Takeuchi, Mariya"],
+                "album": ["Pacific"], "tracknumber": ["1"],
+            },
+            info=SimpleNamespace(length=10.0, bitrate=320_000),
+        )
+
+    monkeypatch.setattr(cloud.mutagen, "File", fake_mutagen)
+    payload = cloud.payload_for_album(cloud_cfg, album_dir)
+
+    assert payload["artist"] == "山下達郎 × 竹内まりや"
+    assert payload["artists"] == [
+        {"name": "山下達郎", "sort": "Yamashita, Tatsuro"},
+        {"name": "竹内まりや", "sort": "Takeuchi, Mariya"},
+    ]
+
+
+def test_payload_uses_track_artist_values_only_for_collaboration_overrides(
+        cloud_cfg, monkeypatch):
+    album_dir = cloud_cfg.music_root / "山下達郎" / "For You"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01.mp3").write_bytes(b"audio")
+    (album_dir / "02.mp3").write_bytes(b"audio")
+
+    def fake_mutagen(path, easy=False):
+        name = Path(path).name
+        artists = (["山下達郎", "竹内まりや"]
+                   if name == "02.mp3" else ["山下達郎"])
+        sorts = (["Yamashita, Tatsuro", "Takeuchi, Mariya"]
+                 if name == "02.mp3" else ["Yamashita, Tatsuro"])
+        return SimpleNamespace(
+            tags={
+                "title": ["Collaboration" if name == "02.mp3" else "Solo"],
+                "albumartist": ["山下達郎"],
+                "albumartistsort": ["Yamashita, Tatsuro"],
+                "artist": artists,
+                "artistsort": sorts,
+                "album": ["For You"],
+                "tracknumber": ["2" if name == "02.mp3" else "1"],
+            },
+            info=SimpleNamespace(length=10.0, bitrate=320_000),
+        )
+
+    monkeypatch.setattr(cloud.mutagen, "File", fake_mutagen)
+    payload = cloud.payload_for_album(cloud_cfg, album_dir)
+
+    assert payload["artists"] == [
+        {"name": "山下達郎", "sort": "Yamashita, Tatsuro"},
+    ]
+    assert "artists" not in payload["tracks"][0]
+    assert payload["tracks"][1]["artists"] == [
+        {"name": "山下達郎", "sort": "Yamashita, Tatsuro"},
+        {"name": "竹内まりや", "sort": "Takeuchi, Mariya"},
+    ]
+
+
+def test_desired_tags_keep_album_credit_and_write_track_credit_separately():
+    album = {
+        "artists": [{"name": "山下達郎", "sort": "Yamashita, Tatsuro"}],
+        "title": "For You",
+    }
+    track = {
+        "artists": [
+            {"name": "山下達郎", "sort": "Yamashita, Tatsuro"},
+            {"name": "竹内まりや", "sort": "Takeuchi, Mariya"},
+        ],
+        "title": "Collaboration",
+        "track": 2,
+    }
+
+    tags = cloud._desired_tags(album, track)
+
+    assert tags["albumartist"] == ["山下達郎"]
+    assert tags["albumartistsort"] == ["Yamashita, Tatsuro"]
+    assert tags["artist"] == ["山下達郎", "竹内まりや"]
+    assert tags["artistsort"] == ["Yamashita, Tatsuro", "Takeuchi, Mariya"]
+
+
+def test_desired_tags_falls_back_when_structured_album_credit_is_empty():
+    tags = cloud._desired_tags({
+        "artist": "山下達郎",
+        "artistSort": "Yamashita, Tatsuro",
+        "artists": [],
+        "title": "For You",
+    }, {"title": "Sparkle"})
+
+    assert tags["albumartist"] == ["山下達郎"]
+    assert tags["albumartistsort"] == ["Yamashita, Tatsuro"]
+    assert tags["artist"] == ["山下達郎"]
+
+
 def test_payload_fills_known_artist_sort_when_tag_is_missing(
         cloud_cfg, monkeypatch):
     album_dir = cloud_cfg.music_root / "流線形" / "City Music"
@@ -198,6 +298,18 @@ def test_rym_mp4_freeform_tags_are_read():
     assert rym["rating"] == 3.87
     assert rym["votes"] == 12345
     assert rym["genres"] == ["City Pop", "Funk"]
+
+
+def test_rym_secondary_genres_are_restored_from_portable_tags():
+    audio = SimpleNamespace(tags={
+        "RYM_GENRES": ["Shibuya-kei; Indietronica; Acid Jazz"],
+        "RYM_SECONDARY_GENRES": ["Acid Jazz"],
+    })
+
+    rym = cloud._rym_from_tags(audio)
+
+    assert rym["genres"] == ["Shibuya-kei", "Indietronica"]
+    assert rym["secondaryGenres"] == ["Acid Jazz"]
 
 
 def test_payload_checks_later_tracks_for_rym_and_preserves_cover_case(

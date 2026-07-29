@@ -60,6 +60,60 @@ def test_valid_album_payload_matches_worker_contract():
     assert cloud.validate_album_payload(_payload()) is None
 
 
+def test_valid_multi_artist_payload_matches_worker_contract():
+    payload = _payload()
+    payload["artists"] = [
+        {"name": "山下達郎", "sort": "Yamashita, Tatsuro"},
+        {"name": "竹内まりや", "sort": "Takeuchi, Mariya"},
+    ]
+    payload.pop("artist")
+    payload.pop("artistSort")
+    assert cloud.validate_album_payload(payload) is None
+
+
+@pytest.mark.parametrize("artists", [
+    [],
+    [{"name": "Artist", "sort": "Artist"}] * 25,
+    [{"name": "Artist"}, {"name": "artist"}],
+    [{"name": ""}],
+])
+def test_invalid_multi_artist_payload_is_rejected(artists):
+    payload = _payload()
+    payload["artists"] = artists
+    assert "artists" in cloud.validate_album_payload(payload)
+
+
+def test_track_artist_override_and_explicit_inheritance_match_worker_contract():
+    payload = _payload()
+    payload["artists"] = [{"name": "Main", "sort": "Main"}]
+    payload["tracks"][0]["artists"] = [
+        {"name": "Main", "sort": "Main"},
+        {"name": "Guest", "sort": "Guest"},
+    ]
+    payload["tracks"].append({
+        **payload["tracks"][0],
+        "path": f'{payload["folder"]}/02.flac',
+        "track": 2,
+        "artists": [],
+    })
+
+    assert cloud.validate_album_payload(payload) is None
+
+
+@pytest.mark.parametrize("artists", [
+    "Main feat. Guest",
+    [{"name": "Guest"}, {"name": "guest"}],
+    [{"name": ""}],
+    [{"name": "Guest"}] * 25,
+])
+def test_invalid_track_artist_override_is_rejected(artists):
+    payload = _payload()
+    payload["tracks"][0]["artists"] = artists
+
+    error = cloud.validate_album_payload(payload)
+    assert "曲目" in error and "artists" in error
+
+
 @pytest.mark.parametrize(("path", "value", "message"), [
     ("folder", f"Music/Library/{'A' * 256}/Album", "folder"),
     ("artist", "😀" * 251, "artist"),

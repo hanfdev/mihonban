@@ -4,6 +4,8 @@ import { readTags } from '../tags.js'
 import { sortOf, toJa } from '../aliases.js'
 import { CropDialog, I, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
+import { ArtistEditor, artistCreditText, creditsFromTags,
+         sameArtistNames } from '../artist-credit.jsx'
 
 const clean = (s) => (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
 
@@ -18,10 +20,12 @@ const coverExt = (blob) => ({
   'image/gif': 'gif', 'image/avif': 'avif',
 })[String(blob?.type || '').toLowerCase()] || (!blob?.type ? 'jpg' : '')
 
-export default function ImportPage({ albums, onDone, onOpen }) {
+export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
   const { t } = useI18n()
   const [items, setItems] = useState([])       // readTags 结果
-  const [form, setForm] = useState({ artist: '', artistSort: '', title: '', year: '' })
+  const [form, setForm] = useState({
+    artists: [{ name: '', sort: '' }], title: '', year: '',
+  })
   const [cover, setCover] = useState(null)     // {blob, url}
   const [cropFile, setCropFile] = useState(null)
   const [progress, setProgress] = useState({}) // filename -> {pct, status}
@@ -65,8 +69,9 @@ export default function ImportPage({ albums, onDone, onOpen }) {
     const taggedSort = mostCommon(merged.map((p) => p.albumArtistSort))
       || mostCommon(merged.map((p) => p.artistSort))
     setForm((f) => ({
-      artist: (appending && f.artist) || artist,
-      artistSort: (appending && f.artistSort) || taggedSort || sortOf(artist),
+      artists: (appending && f.artists?.some((entry) => entry.name))
+        ? f.artists
+        : [{ name: artist, sort: taggedSort || sortOf(artist) }],
       title: (appending && f.title) || mostCommon(merged.map((p) => p.album)),
       year: (appending && f.year) || mostCommon(merged.map((p) => p.year)) || '',
     }))
@@ -85,10 +90,16 @@ export default function ImportPage({ albums, onDone, onOpen }) {
 
   const start = async () => {
     if (uploadInFlight.current || phase !== 'edit') return
-    if (!form.artist.trim() || !form.title.trim()) {
+    const artists = (form.artists || []).map((artist) => ({
+      name: artist.name.trim(), sort: (artist.sort || artist.name).trim(),
+    }))
+    const artistKeys = new Set(artists.map((artist) => artist.name.toLocaleLowerCase()))
+    if (!artists.length || artists.some((artist) => !artist.name)
+        || artistKeys.size !== artists.length || artists.length > 24
+        || artistCreditText({ artists }).length > 500 || !form.title.trim()) {
       toast(t('importPage.needMeta'), 'err'); return
     }
-    const artistDir = clean(form.artist)
+    const artistDir = clean(artists[0].name)
     const albumDir = clean(form.title)
     const yearText = String(form.year || '').trim()
     if (!artistDir || !albumDir) {
@@ -133,10 +144,13 @@ export default function ImportPage({ albums, onDone, onOpen }) {
           setProgress((p) => ({ ...p,
             [it.filename]: { pct: Math.round(done / it.size * 100), status: t('importPage.uploading') } })))
         setProgress((p) => ({ ...p, [it.filename]: { pct: 100, status: t('importPage.done') } }))
+        const taggedArtists = creditsFromTags(it)
         tracks.push({
           path, title: it.title, track: it.track, disc: it.disc,
           duration: it.duration, format: it.format,
           bitrate: it.bitrate || null, size: it.size,
+          ...(taggedArtists.length && !sameArtistNames(taggedArtists, artists)
+            ? { artists: taggedArtists } : {}),
         })
       }
       let coverPath = ''
@@ -146,7 +160,7 @@ export default function ImportPage({ albums, onDone, onOpen }) {
       }
       const r = await api.registerAlbum({
         folder, coverPath,
-        artist: form.artist.trim(), artistSort: form.artistSort.trim(),
+        artists,
         title: form.title.trim(),
         year: yearText ? Number(yearText) : null,
         tracks,
@@ -165,7 +179,7 @@ export default function ImportPage({ albums, onDone, onOpen }) {
 
   const reset = () => {
     uploadInFlight.current = false
-    setItems([]); setForm({ artist: '', artistSort: '', title: '', year: '' })
+    setItems([]); setForm({ artists: [{ name: '', sort: '' }], title: '', year: '' })
     setCover(null); setPhase('pick'); setProgress({})
   }
 
@@ -205,13 +219,11 @@ export default function ImportPage({ albums, onDone, onOpen }) {
                        }} />
               </label>
               <div className="fields">
-                <div className="frow"><label>{t('common.artist')}</label>
-                  <input className="tin" value={form.artist} disabled={phase !== 'edit'}
-                         onChange={(e) => setForm({ ...form, artist: e.target.value })} /></div>
-                <div className="frow"><label>{t('albumPage.artistSort')}</label>
-                  <input className="tin" value={form.artistSort} disabled={phase !== 'edit'}
-                         placeholder={t('albumPage.artistSortPh')}
-                         onChange={(e) => setForm({ ...form, artistSort: e.target.value })} /></div>
+                <div className="frow artist-editor-field"><label>{t('albumPage.artists')}</label>
+                  <ArtistEditor value={form.artists}
+                                onChange={(artists) => setForm({ ...form, artists })}
+                                disabled={phase !== 'edit'} suggestions={artistOptions} t={t} />
+                </div>
                 <div className="frow"><label>{t('common.album')}</label>
                   <input className="tin" value={form.title} disabled={phase !== 'edit'}
                          onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>

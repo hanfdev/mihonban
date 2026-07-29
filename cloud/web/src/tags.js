@@ -38,7 +38,8 @@ export async function readTags(file) {
     track: fallback.track,
     disc: 1,
     duration: null,
-    artist: "", albumArtist: "", artistSort: "", albumArtistSort: "",
+    artist: "", artists: [], albumArtist: "",
+    artistSort: "", artistSorts: [], albumArtistSort: "",
     album: "", year: null,
     picture: null, // {blob, type}
   };
@@ -50,8 +51,14 @@ export async function readTags(file) {
     base.track = c.track?.no ?? base.track;
     base.disc = c.disk?.no ?? 1;
     base.artist = c.artist || "";
+    base.artists = (Array.isArray(c.artists) && c.artists.length
+      ? c.artists : (c.artist ? [c.artist] : []))
+      .map((value) => String(value || '').trim()).filter(Boolean);
     base.albumArtist = c.albumartist || c.artist || "";
     base.artistSort = c.artistsort || "";
+    base.artistSorts = (Array.isArray(c.artistsort)
+      ? c.artistsort : (c.artistsort ? [c.artistsort] : []))
+      .map((value) => String(value || '').trim()).filter(Boolean);
     base.albumArtistSort = c.albumartistsort || c.artistsort || "";
     base.album = c.album || "";
     base.year = c.year || null;

@@ -88,6 +88,21 @@ export function discogsRef(value) {
     id: match[2] }
 }
 
+export function discogsArtistId(value) {
+  const text = typeof value === 'string'
+    ? value.trim()
+    : (Number.isSafeInteger(value) ? String(value) : '')
+  if (!text || text.length > 2048) return null
+  if (ID_RE.test(text)) return text
+  let url
+  try { url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`) }
+  catch { return null }
+  if (!['discogs.com', 'www.discogs.com'].includes(url.hostname.toLowerCase())) return null
+  const match = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?artists?\/(\d+)(?:[-/]|$)/i
+    .exec(url.pathname)
+  return match && ID_RE.test(match[1]) ? match[1] : null
+}
+
 function imagesOf(data) {
   const images = (data.images || []).map((image, index) => ({
     idx: index, type: image.type || 'secondary',
@@ -107,12 +122,26 @@ export async function releaseSearch(album) {
     }, { freshSeconds: 60 * 60, staleSeconds: 7 * DAY })
     return data.results || []
   }
-  let results = await search(album.artist)
-  if (!results.length && album.artistSort && album.artistSort !== album.artist) {
-    const natural = album.artistSort.includes(',')
-      ? album.artistSort.split(',').reverse().map((part) => part.trim()).join(' ')
-      : album.artistSort
-    results = await search(natural)
+  const credits = Array.isArray(album.artists) && album.artists.length
+    ? album.artists : [{ name: album.artist, sort: album.artistSort }]
+  const terms = []
+  const seen = new Set()
+  const add = (value) => {
+    const term = String(value || '').trim()
+    const key = term.toLocaleLowerCase()
+    if (term && !seen.has(key)) { seen.add(key); terms.push(term) }
+  }
+  for (const credit of credits) {
+    add(typeof credit === 'string' ? credit : credit?.name)
+    const sort = typeof credit === 'string' ? '' : credit?.sort
+    add(sort?.includes(',')
+      ? sort.split(',').reverse().map((part) => part.trim()).join(' ')
+      : sort)
+  }
+  let results = []
+  for (const term of terms) {
+    results = await search(term)
+    if (results.length) break
   }
   if (!results.length) results = await search('')
   return { candidates: results.slice(0, 8).map((result) => ({
@@ -160,8 +189,8 @@ export async function artistSearch(name) {
 }
 
 export async function artistDetail(artistId) {
-  const id = String(artistId || '').trim()
-  if (!ID_RE.test(id)) throw new Error('Invalid Discogs artist id')
+  const id = discogsArtistId(artistId)
+  if (!id) throw new Error('Invalid Discogs artist URL or id')
   const data = await json(`artists/${id}`)
   const profile = (data.profile || '')
     .replace(/\[\/?[abiu](=[^\]]+)?\]/gi, '')

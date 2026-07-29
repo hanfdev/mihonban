@@ -121,10 +121,40 @@ def validate_album_payload(payload: object) -> str | None:
     """Return the first local error using the Worker's album API limits."""
     if not isinstance(payload, dict):
         return "专辑数据必须是对象"
+
+    def artist_list_error(value: object, *, allow_empty: bool) -> str | None:
+        if (not isinstance(value, list) or len(value) > 24
+                or (not allow_empty and not value)):
+            return "必须包含 1 到 24 位艺人" if not allow_empty else "最多包含 24 位艺人"
+        seen: set[str] = set()
+        names: list[str] = []
+        for item in value:
+            if not isinstance(item, dict):
+                return "中的每位艺人必须是对象"
+            name = item.get("name")
+            sort = item.get("sort", name)
+            if (not _bounded_text(name, 500, allow_empty=False)
+                    or not _bounded_text(sort, 500)):
+                return "中的艺人名称或罗马音无效"
+            normalized_name = unicodedata.normalize("NFC", name.strip())
+            key = normalized_name.casefold()
+            if key in seen:
+                return "中不能有重复艺人"
+            seen.add(key)
+            names.append(normalized_name)
+        separator = " × " if len(names) == 2 else ", "
+        if _js_len(separator.join(names)) > 500:
+            return "组合名称不能超过 500 字符"
+        return None
+
     folder = _storage_path(payload.get("folder"))
     if folder is None:
         return f"folder 路径无效或超过 {MAX_STORAGE_PATH} 字符"
-    if not _bounded_text(payload.get("artist"), 500, allow_empty=False):
+    artists = payload.get("artists")
+    if artists is not None:
+        if error := artist_list_error(artists, allow_empty=False):
+            return f"artists {error}"
+    elif not _bounded_text(payload.get("artist"), 500, allow_empty=False):
         return "artist 不能为空且不能超过 500 字符"
     if not _bounded_text(payload.get("title"), 1000, allow_empty=False):
         return "title 不能为空且不能超过 1000 字符"
@@ -189,6 +219,9 @@ def validate_album_payload(payload: object) -> str | None:
         if not _bounded_number(track_data.get("size"), integer=True, minimum=0,
                                maximum=MAX_SAFE_INTEGER):
             return f"第 {index} 首曲目的 size 必须是非负安全整数"
+        if "artists" in track_data:
+            if error := artist_list_error(track_data["artists"], allow_empty=True):
+                return f"第 {index} 首曲目的 artists {error}"
     return None
 
 
@@ -241,6 +274,31 @@ def _first(tags: dict, *keys) -> str:
     return ""
 
 
+def _tag_values(tags: dict, *keys) -> list[str]:
+    """Return one tag's distinct values without guessing delimiters.
+
+    Mutagen exposes a real multi-artist credit as multiple values. Commas and
+    semicolons are also valid inside artist names, so a single value is never
+    split heuristically.
+    """
+    for key in keys:
+        value = tags.get(key)
+        if not value:
+            continue
+        raw = value if isinstance(value, (list, tuple)) else [value]
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            text = unicodedata.normalize("NFC", str(item).strip())
+            marker = text.casefold()
+            if text and marker not in seen:
+                seen.add(marker)
+                out.append(text)
+        if out:
+            return out
+    return []
+
+
 def _tag_year(tags: dict) -> str:
     """Return the first valid four-digit year, preferring originaldate.
 
@@ -289,7 +347,13 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         log.warning("refusing album with too many tracks: %s (%d > %d)",
                     album_dir, len(files), MAX_TRACKS)
         return None
-    tracks, artists, artist_sorts, albums_t, years = [], [], [], [], []
+    tracks: list[dict] = []
+    album_artist_groups: list[tuple[str, ...]] = []
+    album_artist_sort_groups: list[tuple[str, ...]] = []
+    track_artist_groups: list[tuple[str, ...]] = []
+    track_artist_sort_groups: list[tuple[str, ...]] = []
+    albums_t: list[str] = []
+    years: list[str] = []
     rym: dict = {}
     genres: list[str] = []
     for f in files:
@@ -304,12 +368,11 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         title = (_first(t, "title") or f.stem).strip() or f.stem
         tno = _first(t, "tracknumber").split("/")[0]
         dno = _first(t, "discnumber").split("/")[0]
-        artists.append((_first(t, "albumartist")
-                        or _first(t, "artist")).strip())
-        artist_sorts.append((_first(t, "albumartistsort")
-                             or _first(t, "artistsort")).strip())
-        albums_t.append(_first(t, "album").strip())
-        years.append(_tag_year(t))
+        album_names = _tag_values(t, "albumartist") or _tag_values(t, "artist")
+        album_sorts = (_tag_values(t, "albumartistsort")
+                       or _tag_values(t, "artistsort"))
+        track_names = _tag_values(t, "artist") or album_names
+        track_sorts = _tag_values(t, "artistsort") or album_sorts
         if not genres:
             g = t.get("genre")
             if g:
@@ -339,6 +402,12 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
             "format": f.suffix.lstrip(".").lower(),
             "size": size,
         })
+        album_artist_groups.append(tuple(album_names))
+        album_artist_sort_groups.append(tuple(album_sorts))
+        track_artist_groups.append(tuple(track_names))
+        track_artist_sort_groups.append(tuple(track_sorts))
+        albums_t.append(_first(t, "album").strip())
+        years.append(_tag_year(t))
         if not rym:
             try:
                 raw = mutagen.File(f)  # 自定义 tag 要走非 easy 接口
@@ -356,6 +425,10 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         vals = [v.strip() for v in vals if v and v.strip()]
         return Counter(vals).most_common(1)[0][0] if vals else ""
 
+    def common_group(vals: list[tuple[str, ...]]) -> list[str]:
+        groups = [group for group in vals if group]
+        return list(Counter(groups).most_common(1)[0][0]) if groups else []
+
     cover = ""
     preferred_covers = ("cover.jpg", "cover.png", "folder.jpg", "front.jpg")
     try:
@@ -369,18 +442,36 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
             break
 
     year = common(years)
-    artist = common(artists) or album_dir.parent.name
-    artist_sort = common(artist_sorts)
-    if not artist_sort:
-        try:
-            artist_sort = resolve_sort_name(
-                artist, cache=ArtistCache(cfg.state_dir / "artist_map.json"))
-        except Exception as exc:
-            log.warning("artist sort lookup failed for %s: %s", artist, exc)
+    artist_names = common_group(album_artist_groups) or [album_dir.parent.name]
+    tagged_sorts = common_group(album_artist_sort_groups)
+    cache = ArtistCache(cfg.state_dir / "artist_map.json")
+
+    def artist_credits(names: list[str], sorts: list[str]) -> list[dict]:
+        credits: list[dict] = []
+        for index, name in enumerate(names):
+            artist_sort = sorts[index] if len(sorts) == len(names) else ""
+            if not artist_sort:
+                try:
+                    artist_sort = resolve_sort_name(name, cache=cache)
+                except Exception as exc:
+                    log.warning("artist sort lookup failed for %s: %s", name, exc)
+            credits.append({"name": name, "sort": artist_sort or name})
+        return credits
+
+    album_credits = artist_credits(artist_names, tagged_sorts)
+    for track, names_group, sorts_group in zip(
+            tracks, track_artist_groups, track_artist_sort_groups):
+        track_names = list(names_group)
+        if not track_names or track_names == artist_names:
+            continue
+        track["artists"] = artist_credits(track_names, list(sorts_group))
+    credit_separator = " × " if len(artist_names) == 2 else ", "
+    artist = credit_separator.join(artist_names)
     payload = {
         "folder": folder,
         "artist": artist,
-        "artistSort": artist_sort,
+        "artistSort": album_credits[0]["sort"],
+        "artists": album_credits,
         "title": common(albums_t) or album_dir.name,
         "year": int(year) if year.isdigit() else None,
         "coverPath": cover,
@@ -429,6 +520,8 @@ def _rym_from_tags(audio) -> dict:
 
     rating = get("RYM_RATING")
     genres = [g for g in get("RYM_GENRES").split("; ") if g]
+    secondary = [g for g in get("RYM_SECONDARY_GENRES").split("; ") if g]
+    secondary_keys = {g.casefold() for g in secondary}
     out = {
         "rating": number(rating, float),
         "votes": number(get("RYM_VOTES"), int),
@@ -437,8 +530,8 @@ def _rym_from_tags(audio) -> dict:
         "descriptors": [d for d in get("RYM_DESCRIPTORS").split("; ") if d],
     }
     if genres:
-        out["genres"] = genres
-        out["secondaryGenres"] = []
+        out["genres"] = [g for g in genres if g.casefold() not in secondary_keys]
+        out["secondaryGenres"] = secondary
     return out
 
 
@@ -649,9 +742,40 @@ def _pull_needs_download(cfg: Config, folder: str, dest: Path) -> bool:
 
 def _desired_tags(album: dict, track: dict | None) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
-    if album.get("artist"):
-        out["albumartist"] = [album["artist"]]
-        out["artist"] = [album["artist"]]
+    album_credits = album.get("artists")
+    if isinstance(album_credits, list) and album_credits:
+        album_names = [str(item.get("name") or "").strip() for item in album_credits
+                 if isinstance(item, dict) and str(item.get("name") or "").strip()]
+        album_sorts = [str(item.get("sort") or item.get("name") or "").strip()
+                 for item in album_credits if isinstance(item, dict)
+                 and str(item.get("name") or "").strip()]
+    else:
+        album_names = ([str(album.get("artist") or "").strip()]
+                       if album.get("artist") else [])
+        album_sorts = ([str(album.get("artistSort") or album_names[0]).strip()]
+                       if album_names else [])
+    track_credits = track.get("artists") if track else None
+    if isinstance(track_credits, list) and track_credits:
+        track_names = [str(item.get("name") or "").strip() for item in track_credits
+                       if isinstance(item, dict)
+                       and str(item.get("name") or "").strip()]
+        track_sorts = [str(item.get("sort") or item.get("name") or "").strip()
+                       for item in track_credits if isinstance(item, dict)
+                       and str(item.get("name") or "").strip()]
+    else:
+        track_names, track_sorts = album_names, album_sorts
+    if album_names:
+        out["albumartist"] = album_names
+        if (len(album_sorts) == len(album_names)
+                and any(sort_name != name for sort_name, name
+                        in zip(album_sorts, album_names))):
+            out["albumartistsort"] = album_sorts
+    if track_names:
+        out["artist"] = track_names
+        if (len(track_sorts) == len(track_names)
+                and any(sort_name != name for sort_name, name
+                        in zip(track_sorts, track_names))):
+            out["artistsort"] = track_sorts
     if album.get("title"):
         out["album"] = [album["title"]]
     if album.get("year"):

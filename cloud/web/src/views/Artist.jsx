@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { api, artUrl, artistArtUrl } from '../api.js'
+import { api, artUrl, artistArtUrl, discogsImageProxyUrl } from '../api.js'
 import { CropDialog, Dialog, I, Md, Reader, VisibilityToggle,
          fmtTotal, goBack, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { AlbumCard } from './Library.jsx'
+import { TrackRow } from './Tracks.jsx'
 import { preferredArtistSort } from '../aliases.js'
+import { hasArtist } from '../artist-credit.jsx'
 
 function BioDialog({ name, initialNote, onClose, onSaved }) {
   const { t } = useI18n()
@@ -102,6 +104,46 @@ function ArtistSortDialog({ name, initialSort, onClose, onSaved }) {
   )
 }
 
+function DiscogsArtistThumb({ candidate }) {
+  const initial = candidate.thumb || ''
+  const [uri, setUri] = useState(initial)
+  const [phase, setPhase] = useState(initial ? 'candidate' : 'detail')
+
+  useEffect(() => {
+    setUri(initial)
+    setPhase(initial ? 'candidate' : 'detail')
+  }, [candidate.id, initial])
+
+  useEffect(() => {
+    if (phase !== 'detail' || !candidate.id) return undefined
+    let live = true
+    api.artistDiscogsDetail(String(candidate.id))
+      .then((result) => {
+        if (!live) return
+        const image = result.images?.[0]
+        const next = image?.thumb || image?.uri || ''
+        setUri(next)
+        setPhase(next ? 'detail-ready' : 'empty')
+      })
+      .catch(() => { if (live) setPhase('empty') })
+    return () => { live = false }
+  }, [candidate.id, phase])
+
+  if (uri) {
+    return <img src={discogsImageProxyUrl(uri)} alt="" loading="lazy"
+                onError={() => {
+                  setUri('')
+                  setPhase(phase === 'candidate' ? 'detail' : 'empty')
+                }} />
+  }
+  const loading = phase === 'detail'
+  return (
+    <span className={`dg-noimg ${loading ? 'loading' : ''}`}>
+      {loading ? <I.spin size={16} /> : <I.user size={18} />}
+    </span>
+  )
+}
+
 function ArtistDiscogsDialog({ name, onClose, onImported }) {
   const { t } = useI18n()
   const [cands, setCands] = useState(null)
@@ -110,6 +152,10 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
   const [avatarUri, setAvatarUri] = useState('')
   const [useBio, setUseBio] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState('')
+  const [urlBusy, setUrlBusy] = useState(false)
+  const detailRequestSeq = useRef(0)
+  const urlInFlight = useRef(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -124,14 +170,47 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
     return () => { active = false }
   }, [name, t])
 
+  useEffect(() => () => {
+    detailRequestSeq.current++
+    urlInFlight.current = false
+  }, [])
+
+  const showDetail = (d) => {
+    setDetail(d)
+    setAvatarUri(d.images?.[0]?.uri || '')
+    setUseBio(!!d.profile)
+  }
+
   const pick = async (c) => {
+    const seq = ++detailRequestSeq.current
+    urlInFlight.current = false
+    setUrlBusy(false)
     setErr(''); setDetail('loading')
     try {
       const d = await api.artistDiscogsDetail(c.id)
-      setDetail(d)
-      setAvatarUri(d.images?.[0]?.uri || '')
-      setUseBio(!!d.profile)
-    } catch (e) { setErr(e.message); setDetail(null) }
+      if (seq === detailRequestSeq.current) showDetail(d)
+    } catch (e) {
+      if (seq === detailRequestSeq.current) { setErr(e.message); setDetail(null) }
+    }
+  }
+
+  const fetchUrl = async () => {
+    const value = url.trim()
+    if (!value || urlInFlight.current) return
+    const seq = ++detailRequestSeq.current
+    urlInFlight.current = true
+    setErr(''); setUrlBusy(true)
+    try {
+      const d = await api.artistDiscogsDetail(value)
+      if (seq === detailRequestSeq.current) showDetail(d)
+    } catch (e) {
+      if (seq === detailRequestSeq.current) setErr(e.message)
+    } finally {
+      if (seq === detailRequestSeq.current) {
+        urlInFlight.current = false
+        setUrlBusy(false)
+      }
+    }
   }
 
   const doImport = async () => {
@@ -175,15 +254,25 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
             <div className="dg-cands">
               {cands.map((c) => (
                 <div key={c.id} className="dg-cand" onClick={() => pick(c)}>
-                  {c.thumb
-                    ? <img src={c.thumb} alt="" loading="lazy" />
-                    : <span className="dg-noimg"><I.user size={18} /></span>}
+                  <DiscogsArtistThumb candidate={c} />
                   <span className="dg-main">
                     <span className="dg-title">{c.title}</span>
                   </span>
                   <I.chevR size={16} />
                 </div>
               ))}
+            </div>
+          )}
+          {cands !== null && (
+            <div className="dg-url">
+              <input className="tin" value={url}
+                     placeholder={t('discogsArtist.paste')}
+                     onChange={(e) => setUrl(e.target.value)}
+                     onKeyDown={(e) => { if (e.key === 'Enter') fetchUrl() }} />
+              <button className="btn" disabled={urlBusy || !url.trim()}
+                      onClick={fetchUrl}>
+                {urlBusy ? <I.spin size={14} /> : t('discogsArtist.read')}
+              </button>
             </div>
           )}
           {err && <div style={{ color: '#ff8b7a', marginTop: 12, fontSize: 13 }}>{err}</div>}
@@ -202,7 +291,9 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
               </div>
               <div className="ava-pick-grid">
                 {detail.images.map((im) => (
-                  <img key={im.uri} src={im.thumb} alt="" loading="lazy"
+                  <img key={im.uri}
+                       src={discogsImageProxyUrl(im.thumb || im.uri)}
+                       alt="" loading="lazy"
                        className={avatarUri === im.uri ? 'sel' : ''}
                        onClick={() => setAvatarUri(avatarUri === im.uri ? '' : im.uri)} />
                 ))}
@@ -242,6 +333,7 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
 export default function ArtistPage({ name, albums, artists, avatarVer,
                                      onAvatarChanged, onArtistChanged, isAdmin,
                                      onOpen, onOpenArtist, onOpenGenre, onPlay,
+                                     onPlayTracks, favTracks, toggleFav, currentId,
                                      showHidden, setShowHidden,
                                      currentAlbumId, playingId, onTogglePlayback }) {
   const { t } = useI18n()
@@ -256,14 +348,29 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
   const fileRef = useRef(null)
   const toast = useToast()
 
+  const meta = useMemo(() =>
+    (artists || []).find((a) => a.name === name) || {}, [artists, name])
+  const [featured, setFeatured] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    api.artistTracks(name, { hidden: isAdmin && showHidden })
+      .then((tracks) => { if (active) setFeatured(tracks) })
+      .catch(() => { if (active) setFeatured([]) })
+    return () => { active = false }
+  }, [name, isAdmin, showHidden])
+
   const allMine = useMemo(() =>
-    (albums || []).filter((a) => a.artist === name), [albums, name])
+    (albums || []).filter((a) => hasArtist(a, name)), [albums, name])
   const mine = useMemo(() => allMine.filter((a) =>
     !a.hidden || (isAdmin && showHidden)), [allMine, isAdmin, showHidden])
-  const hiddenCount = useMemo(() =>
-    allMine.filter((a) => a.hidden).length, [allMine])
+  const hiddenCount = useMemo(() => allMine.filter((a) => a.hidden).length
+    + Math.max(0, (meta.featuredTrackCount || 0)
+      - (meta.visibleFeaturedTrackCount || 0)), [allMine, meta])
   const totalDur = useMemo(() =>
-    mine.reduce((s, a) => s + (a.duration || 0), 0), [mine])
+    mine.reduce((s, a) => s + (a.duration || 0), 0)
+      + (featured || []).reduce((s, track) => s + (track.duration || 0), 0),
+  [mine, featured])
   const genres = useMemo(() => {
     const primary = new Map()
     const secondary = new Map()
@@ -284,8 +391,6 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
     })
     return { primary: [...primary.values()], secondary: [...secondary.values()] }
   }, [mine])
-  const meta = useMemo(() =>
-    (artists || []).find((a) => a.name === name) || {}, [artists, name])
   const note = meta.note || ''
   const hasBio = !!meta.hasBio
   const artistSort = preferredArtistSort(name, meta.sort)
@@ -312,7 +417,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
   const uploadAvatar = async (blob) => {
     setBusy(true)
     try {
-      const folder = allMine[0]?.folder
+      const folder = allMine[0]?.folder || featured?.[0]?.folder
       const artistDir = folder ? folder.split('/').slice(0, -1).join('/') : ''
       if (!artistDir) throw new Error('no album folder')
       // 唯一文件名，避免覆盖同路径导致缓存/读盘错乱
@@ -341,9 +446,12 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
       const details = await Promise.all(mine.map((a) => api.album(a.id)))
       const all = details.flatMap((d) => (d.tracks || []).map((tr) => ({
         id: tr.id, title: tr.title, duration: tr.duration, format: tr.format,
-        artist: d.artist, albumId: d.id, albumTitle: d.title,
+        artist: tr.artist || d.artist, artists: tr.artists || d.artists,
+        albumId: d.id, albumTitle: d.title,
       })))
-      if (all.length) onPlay({ artist: name }, all)
+      const combined = [...all, ...(featured || [])]
+      if (combined.length) onPlay({ artist: name,
+        artists: [{ name, sort: artistSort }] }, combined)
     } catch (e) { toast(e.message, 'err') }
   }
 
@@ -383,7 +491,9 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
             </div>
           )}
           <div className="hero-meta">
-            <span>{t('count.albums', mine.length)}</span>
+            {mine.length > 0 && <span>{t('count.albums', mine.length)}</span>}
+            {mine.length > 0 && featured?.length > 0 && <span>·</span>}
+            {featured?.length > 0 && <span>{t('count.tracks', featured.length)}</span>}
             {totalDur ? <><span>·</span><span>{fmtTotal(totalDur, t)}</span></> : null}
           </div>
           {(genres.primary.length > 0 || genres.secondary.length > 0) && (
@@ -421,7 +531,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
               </div>
             </div>
           )}
-          {mine.length > 0 && (
+          {(mine.length > 0 || featured?.length > 0) && (
             <div className="hero-actions">
               <button className="btn primary" onClick={playAll}>
                 <I.play size={15} /> {t('common.playAll')}
@@ -434,7 +544,8 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
               )}
             </div>
           )}
-          {mine.length === 0 && isAdmin && hiddenCount > 0 && (
+          {mine.length === 0 && featured?.length === 0
+              && isAdmin && hiddenCount > 0 && (
             <div className="hero-actions">
               <VisibilityToggle compact on={showHidden}
                                 onToggle={() => setShowHidden((value) => !value)}
@@ -446,7 +557,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
       </div>
 
       <div className="grid">
-        {mine.length === 0 && (
+        {mine.length === 0 && featured?.length === 0 && (
           <div className="empty">
             <div className="big">{t('artistPage.emptyAlbums')}</div>
           </div>
@@ -458,6 +569,22 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
                      onTogglePlayback={onTogglePlayback} />
         ))}
       </div>
+
+      {featured?.length > 0 && (
+        <section className="artist-featured">
+          <h2>{t('artistPage.featuredTracks')}</h2>
+          <div className="flat-list">
+            {featured.map((track, index) => (
+              <TrackRow key={track.id} t={track} i={index}
+                        currentId={currentId} playingId={playingId}
+                        isAdmin={isAdmin} fav={favTracks?.has(track.id) || false}
+                        onToggleFav={() => toggleFav?.('track', track.id)}
+                        onPlay={(start) => onPlayTracks(featured, start)}
+                        onOpen={onOpen} onOpenArtist={onOpenArtist} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {bioDlg && (
         <BioDialog name={name} initialNote={note}

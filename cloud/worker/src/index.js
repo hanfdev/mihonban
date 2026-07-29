@@ -197,6 +197,159 @@ function genreLists(primary, secondary) {
   return { primary: unique(primary), secondary: unique(secondary) };
 }
 
+const MAX_ALBUM_ARTISTS = 24;
+
+function artistCredit(artists) {
+  const names = (artists || []).map((artist) => artist.name).filter(Boolean);
+  if (names.length === 2) return names.join(" × ");
+  return names.join(", ");
+}
+
+function albumArtistsInput(value, fallbackName = "", fallbackSort = "") {
+  const source = value === undefined
+    ? [{ name: fallbackName, sort: fallbackSort }]
+    : value;
+  if (!Array.isArray(source) || !source.length
+      || source.length > MAX_ALBUM_ARTISTS) return INVALID_INPUT;
+  const seen = new Set();
+  const artists = [];
+  for (const item of source) {
+    const object = typeof item === "string" ? { name: item } : item;
+    if (!object || typeof object !== "object" || Array.isArray(object)) {
+      return INVALID_INPUT;
+    }
+    const name = boundedText(object.name, 500, { allowEmpty: false });
+    const sort = object.sort === undefined
+      ? name : boundedText(object.sort, 500);
+    if (name === INVALID_INPUT || sort === INVALID_INPUT) return INVALID_INPUT;
+    const normalizedName = name.normalize("NFC");
+    const normalizedSort = (sort || normalizedName).normalize("NFC");
+    const key = normalizedName.toLocaleLowerCase();
+    if (seen.has(key)) return INVALID_INPUT;
+    seen.add(key);
+    artists.push({ name: normalizedName, sort: normalizedSort });
+  }
+  if (artistCredit(artists).length > 500) return INVALID_INPUT;
+  return artists;
+}
+
+function trackArtistsInput(value) {
+  if (!Array.isArray(value) || value.length > MAX_ALBUM_ARTISTS) {
+    return INVALID_INPUT;
+  }
+  return value.length ? albumArtistsInput(value) : [];
+}
+
+const sameArtistCredit = (left, right) => left.length === right.length
+  && left.every((artist, index) => artist.name === right[index]?.name);
+
+async function applyArtistSortOverrides(db, artists) {
+  if (!artists.length) return artists;
+  const names = [...new Set(artists.map((artist) => artist.name))];
+  const overrides = new Map();
+  for (let index = 0; index < names.length; index += 80) {
+    const chunk = names.slice(index, index + 80);
+    const marks = chunk.map(() => "?").join(",");
+    const { results } = await db.prepare(`
+      SELECT id, text FROM notes WHERE kind = 'artistsort' AND id IN (${marks})`)
+      .bind(...chunk).all();
+    for (const row of results) overrides.set(row.id, row.text?.trim());
+  }
+  return artists.map((artist) => ({
+    ...artist,
+    sort: overrides.get(artist.name) || artist.sort || artist.name,
+  }));
+}
+
+function groupAlbumArtists(rows) {
+  const grouped = new Map();
+  for (const row of rows || []) {
+    const list = grouped.get(row.album_id) || [];
+    list.push({ name: row.artist, sort: row.artist_sort || row.artist });
+    grouped.set(row.album_id, list);
+  }
+  return grouped;
+}
+
+function groupTrackArtists(rows) {
+  const grouped = new Map();
+  for (const row of rows || []) {
+    const list = grouped.get(row.track_id) || [];
+    list.push({ name: row.artist, sort: row.artist_sort || row.artist });
+    grouped.set(row.track_id, list);
+  }
+  return grouped;
+}
+
+async function artistsForAlbum(db, albumId) {
+  const { results } = await db.prepare(`
+    SELECT album_id, artist, artist_sort FROM album_artists
+    WHERE album_id = ? ORDER BY position`).bind(albumId).all();
+  return groupAlbumArtists(results).get(albumId) || [];
+}
+
+async function artistsForTrack(db, trackId) {
+  const { results } = await db.prepare(`
+    SELECT track_id, artist, artist_sort FROM track_artists
+    WHERE track_id = ? ORDER BY position`).bind(trackId).all();
+  return groupTrackArtists(results).get(trackId) || [];
+}
+
+async function contributorsForAlbum(db, albumId) {
+  const { results } = await db.prepare(`
+    SELECT album_id, artist, artist_sort FROM artist_album_links
+    WHERE album_id = ? ORDER BY artist COLLATE NOCASE`).bind(albumId).all();
+  return groupAlbumArtists(results).get(albumId) || [];
+}
+
+const artistRowsForAlbum = (db, albumId, artists) => artists.map((artist, position) =>
+  db.prepare(`INSERT INTO album_artists
+    (album_id, artist, artist_sort, position) VALUES (?, ?, ?, ?)`)
+    .bind(albumId, artist.name, artist.sort || artist.name, position));
+
+const artistRowsForTrack = (db, trackId, artists) => artists.map((artist, position) =>
+  db.prepare(`INSERT INTO track_artists
+    (track_id, artist, artist_sort, position) VALUES (?, ?, ?, ?)`)
+    .bind(trackId, artist.name, artist.sort || artist.name, position));
+
+function removeInheritedTrackArtists(db, albumId, artists) {
+  const matches = artists.map(() => "(ta.position = ? AND ta.artist = ?)").join(" OR ");
+  const values = artists.flatMap((artist, position) => [position, artist.name]);
+  return db.prepare(`DELETE FROM track_artists WHERE track_id IN (
+    SELECT ta.track_id FROM track_artists ta
+    JOIN tracks t ON t.id = ta.track_id
+    WHERE t.album_id = ?
+    GROUP BY ta.track_id
+    HAVING COUNT(*) = ?
+      AND SUM(CASE WHEN ${matches} THEN 1 ELSE 0 END) = ?
+  )`).bind(albumId, artists.length, ...values, artists.length);
+}
+
+const ensureArtistRows = (db, artists) => artists.map((artist) =>
+  db.prepare(`INSERT INTO artists (name, avatar_path) VALUES (?, '')
+    ON CONFLICT(name) DO NOTHING`).bind(artist.name));
+
+async function cleanupOrphanArtists(env, artists) {
+  const names = [...new Set((artists || []).map((artist) => artist.name).filter(Boolean))];
+  for (const name of names) {
+    try {
+      const left = await env.DB.prepare(
+        "SELECT 1 FROM artist_album_links WHERE artist = ? LIMIT 1")
+        .bind(name).first();
+      if (left) continue;
+      await purgeArtistR2(env, name, false);
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM artists WHERE name = ?").bind(name),
+        env.DB.prepare(
+          "DELETE FROM notes WHERE kind IN ('artist','artistbio','artistsort') AND id = ?")
+          .bind(name),
+      ]);
+    } catch (error) {
+      console.error("orphan artist cleanup failed", name, error);
+    }
+  }
+}
+
 async function ensureSingleWriteTarget(env) {
   const { results } = await env.DB.prepare(
     "SELECT id, is_write FROM storages ORDER BY created_at, id").all();
@@ -227,8 +380,12 @@ function albumOut(row) {
   // /api/library 对每张专辑要多付 2-3 次解析；输出字节不变）
   const genres = J(row.genres);
   const secondaryGenres = J(row.sec_genres);
+  const artists = Array.isArray(row.albumArtists) && row.albumArtists.length
+    ? row.albumArtists
+    : [{ name: row.artist, sort: row.artist_sort || row.artist }];
   return {
-    id: row.id, artist: row.artist, artistSort: row.artist_sort,
+    id: row.id, artist: artistCredit(artists) || row.artist,
+    artistSort: artists[0]?.sort || row.artist_sort, artists,
     title: row.title, year: row.year, folder: row.folder,
     storageId: row.storage_id || null,
     hidden: !!row.hidden,
@@ -330,6 +487,41 @@ async function ensureMigrations(env) {
       avatar_path TEXT NOT NULL DEFAULT '',
       storage_id TEXT
     )`).run();
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS album_artists (
+      album_id TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+      artist TEXT NOT NULL,
+      artist_sort TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (album_id, artist),
+      UNIQUE (album_id, position)
+    )`).run();
+    await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_album_artists_artist
+      ON album_artists(artist, album_id)`).run();
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS track_artists (
+      track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+      artist TEXT NOT NULL,
+      artist_sort TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (track_id, artist),
+      UNIQUE (track_id, position)
+    )`).run();
+    await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_track_artists_artist
+      ON track_artists(artist, track_id)`).run();
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS track_artist_imports (
+      import_id TEXT NOT NULL,
+      track_id TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      artist_sort TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (import_id, track_id, artist),
+      UNIQUE (import_id, track_id, position)
+    )`).run();
+    // Every legacy album starts with one exact credit. Combined strings are
+    // intentionally not split: commas are valid inside names and sort keys.
+    await env.DB.prepare(`INSERT OR IGNORE INTO album_artists
+      (album_id, artist, artist_sort, position)
+      SELECT id, artist, COALESCE(NULLIF(artist_sort, ''), artist), 0
+      FROM albums WHERE TRIM(artist) != ''`).run();
     const alters = [
       "ALTER TABLE favorites ADD COLUMN sort_order INTEGER",
       "ALTER TABLE albums ADD COLUMN storage_id TEXT",
@@ -349,14 +541,38 @@ async function ensureMigrations(env) {
     await env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_images_album_source
       ON album_images(album_id, source_key)
       WHERE source_key IS NOT NULL AND source_key != ''`).run();
+    const artistLinksBody = `AS
+      SELECT album_id, artist, artist_sort FROM album_artists
+      UNION ALL
+      SELECT t.album_id, ta.artist,
+             COALESCE(MIN(NULLIF(TRIM(ta.artist_sort), '')), ta.artist) AS artist_sort
+      FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM album_artists aa
+        WHERE aa.album_id = t.album_id AND aa.artist = ta.artist
+      )
+      GROUP BY t.album_id, ta.artist`;
+    const artistLinksSql = `CREATE VIEW IF NOT EXISTS artist_album_links ${artistLinksBody}`;
+    const artistLinksView = await env.DB.prepare(`SELECT sql FROM sqlite_master
+      WHERE type = 'view' AND name = 'artist_album_links'`).first();
+    if (artistLinksView?.sql
+        && !/GROUP BY\s+t\.album_id\s*,\s*ta\.artist/i.test(artistLinksView.sql)) {
+      await env.DB.batch([
+        env.DB.prepare("DROP VIEW IF EXISTS artist_album_links"),
+        env.DB.prepare(`CREATE VIEW artist_album_links ${artistLinksBody}`),
+      ]);
+    } else {
+      await env.DB.prepare(artistLinksSql).run();
+    }
     // Older multi-storage builds inferred avatar storage from the first album
     // of the artist. Persist that same association once so future reads and
     // migrations are deterministic even when the artist spans several disks.
     try {
       await env.DB.prepare(`UPDATE artists SET storage_id = (
-        SELECT storage_id FROM albums
-        WHERE albums.artist = artists.name
-        ORDER BY albums.created_at LIMIT 1
+        SELECT a.storage_id FROM artist_album_links aa
+        JOIN albums a ON a.id = aa.album_id
+        WHERE aa.artist = artists.name
+        ORDER BY a.created_at LIMIT 1
       ) WHERE avatar_path != '' AND storage_id IS NULL`).run();
     } catch (e) {
       if (!/no such column|no such table/i.test(String(e?.message || e))) {
@@ -400,15 +616,25 @@ async function ensureMigrations(env) {
       bitrate INTEGER,
       size INTEGER,
       path TEXT NOT NULL,
+      artist_mode INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (import_id, id),
       UNIQUE (import_id, path)
     )`).run();
+    try {
+      await env.DB.prepare(
+        "ALTER TABLE track_imports ADD COLUMN artist_mode INTEGER NOT NULL DEFAULT 0")
+        .run();
+    } catch (e) {
+      if (!/duplicate column|already exists/i.test(String(e?.message || e))) throw e;
+    }
     await env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS idx_track_imports_created ON track_imports(created_at)")
       .run();
     await env.DB.prepare("DELETE FROM track_imports WHERE created_at < ?")
       .bind(Date.now() - 24 * 60 * 60 * 1000).run();
+    await env.DB.prepare(`DELETE FROM track_artist_imports WHERE import_id NOT IN
+      (SELECT DISTINCT import_id FROM track_imports)`).run();
 
     // Convert the former global OneDrive slot into an ordinary named backend.
     // No files are copied: existing catalog rows are bound to the backend that
@@ -473,8 +699,10 @@ async function ensureMigrations(env) {
         "UPDATE albums SET storage_id = ? WHERE storage_id IS NULL")
         .bind(migratedStorageId).run();
       await env.DB.prepare(`UPDATE artists SET storage_id = COALESCE((
-        SELECT storage_id FROM albums WHERE albums.artist = artists.name
-        ORDER BY albums.created_at LIMIT 1
+        SELECT a.storage_id FROM artist_album_links aa
+        JOIN albums a ON a.id = aa.album_id
+        WHERE aa.artist = artists.name
+        ORDER BY a.created_at LIMIT 1
       ), ?) WHERE avatar_path != '' AND storage_id IS NULL`)
         .bind(migratedStorageId).run();
       await env.DB.prepare(
@@ -572,6 +800,7 @@ app.use("/api/scan", adminGate);
 app.use("/api/admin/*", adminGate);
 app.use("/api/companion/*", adminGate);
 app.use("/api/discogs-lookup", adminGate);
+app.use("/api/discogs-image-proxy", adminGate);
 app.use("/api/artist-discogs-search", adminGate);
 app.use("/api/artist-discogs-detail", adminGate);
 app.use("/api/artists/*", (c, next) =>
@@ -588,14 +817,23 @@ app.get("/api/library", async (c) => {
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
   const etag = await catalogEtag(c, `lib${showHidden ? "h" : ""}`);
   if (c.req.header("If-None-Match") === etag) return notModified(etag);
-  const { results } = await c.env.DB.prepare(`
-    SELECT a.*, COUNT(t.id) AS track_count,
-           SUM(t.duration) AS total_duration
-    FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
-    WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
-    GROUP BY a.id
-    ORDER BY a.artist_sort, a.artist, a.year, a.title`).all();
-  return c.json(results.map(albumOut), 200,
+  const [{ results }, { results: artistRows }] = await Promise.all([
+    c.env.DB.prepare(`
+      SELECT a.*, COUNT(t.id) AS track_count,
+             SUM(t.duration) AS total_duration
+      FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
+      WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
+      GROUP BY a.id
+      ORDER BY a.artist_sort, a.artist, a.year, a.title`).all(),
+    c.env.DB.prepare(`SELECT aa.album_id, aa.artist, aa.artist_sort
+      FROM album_artists aa JOIN albums a ON a.id = aa.album_id
+      WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
+      ORDER BY aa.album_id, aa.position`).all(),
+  ]);
+  const artistMap = groupAlbumArtists(artistRows);
+  return c.json(results.map((row) => albumOut({
+    ...row, albumArtists: artistMap.get(row.id),
+  })), 200,
     { "ETag": etag, "Cache-Control": "private, no-cache" });
 });
 
@@ -610,10 +848,10 @@ app.get("/api/album/:id", async (c) => {
   if (album.hidden && !canSeeHidden(c)) {
     return c.json({ error: "not found" }, 404);
   }
-  const out = albumOut(album);
   // 四个子查询互不依赖：并行发出，省 3 次 D1 往返（专辑页是最热读路径之一）
-  const main = out.genres[0];
-  const [{ results: tracks }, noteRow, { results: images }, sim] =
+  const main = J(album.genres)[0];
+  const [{ results: tracks }, noteRow, { results: images }, sim,
+    { results: artistRows }, { results: trackArtistRows }] =
     await Promise.all([
       c.env.DB.prepare(`
         SELECT id, disc, track, title, duration, format, bitrate, size, path
@@ -635,8 +873,22 @@ app.get("/api/album/:id", async (c) => {
             ORDER BY a.rym_rating IS NULL, a.rym_rating DESC LIMIT 12`)
           .bind(main, id).all()
         : null,
+      c.env.DB.prepare(`SELECT album_id, artist, artist_sort
+        FROM album_artists WHERE album_id = ? ORDER BY position`).bind(id).all(),
+      c.env.DB.prepare(`SELECT ta.track_id, ta.artist, ta.artist_sort
+        FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+        WHERE t.album_id = ? ORDER BY ta.track_id, ta.position`).bind(id).all(),
     ]);
-  out.tracks = tracks;
+  const albumArtists = groupAlbumArtists(artistRows).get(id)
+    || [{ name: album.artist, sort: album.artist_sort || album.artist }];
+  const trackArtistMap = groupTrackArtists(trackArtistRows);
+  const out = albumOut({ ...album, albumArtists });
+  out.tracks = tracks.map((track) => {
+    const ownArtists = trackArtistMap.get(track.id) || [];
+    const artists = ownArtists.length ? ownArtists : albumArtists;
+    return { ...track, artists, artist: artistCredit(artists),
+      artistSort: artists[0]?.sort || "", hasCustomArtists: !!ownArtists.length };
+  });
   out.note = noteRow?.text || "";
   out.images = images.map((i) => i.id);
   out.similar = (sim?.results || []).map((s) => ({
@@ -652,14 +904,36 @@ app.get("/api/tracks", async (c) => {
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
   const etag = await catalogEtag(c, `trk${showHidden ? "h" : ""}`);
   if (c.req.header("If-None-Match") === etag) return notModified(etag);
-  const { results } = await c.env.DB.prepare(`
-    SELECT t.id, t.title, t.duration, t.format, t.track, t.disc,
-           a.id AS albumId, a.title AS albumTitle, a.artist,
-           a.artist_sort AS artistSort, a.year, a.created_at AS addedAt,
-           COALESCE(a.hidden,0) AS hidden
-    FROM tracks t JOIN albums a ON a.id = t.album_id
-    WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}`).all();
-  return c.json(results, 200,
+  const [{ results }, { results: artistRows }, { results: trackArtistRows }] =
+  await Promise.all([
+    c.env.DB.prepare(`
+      SELECT t.id, t.title, t.duration, t.format, t.track, t.disc,
+             a.id AS albumId, a.title AS albumTitle, a.artist,
+             a.artist_sort AS artistSort, a.year, a.created_at AS addedAt,
+             COALESCE(a.hidden,0) AS hidden
+      FROM tracks t JOIN albums a ON a.id = t.album_id
+      WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}`).all(),
+    c.env.DB.prepare(`SELECT aa.album_id, aa.artist, aa.artist_sort
+      FROM album_artists aa JOIN albums a ON a.id = aa.album_id
+      WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
+      ORDER BY aa.album_id, aa.position`).all(),
+    c.env.DB.prepare(`SELECT ta.track_id, ta.artist, ta.artist_sort
+      FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+      JOIN albums a ON a.id = t.album_id
+      WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
+      ORDER BY ta.track_id, ta.position`).all(),
+  ]);
+  const artistMap = groupAlbumArtists(artistRows);
+  const trackArtistMap = groupTrackArtists(trackArtistRows);
+  const output = results.map((track) => {
+    const ownArtists = trackArtistMap.get(track.id) || [];
+    const artists = ownArtists.length ? ownArtists : artistMap.get(track.albumId)
+      || [{ name: track.artist, sort: track.artistSort || track.artist }];
+    return { ...track, artists, artist: artistCredit(artists),
+      artistSort: artists[0]?.sort || track.artistSort,
+      hasCustomArtists: !!ownArtists.length };
+  });
+  return c.json(output, 200,
     { "ETag": etag, "Cache-Control": "private, no-cache" });
 });
 
@@ -748,16 +1022,32 @@ app.delete("/api/favorites/:kind/:id", async (c) => {
 app.get("/api/artists", async (c) => {
   // 仅出现在「至少有一张未隐藏音盤」的艺人；附加信息表里的孤儿行不展示
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
-  const vis = showHidden ? "1=1" : "COALESCE(hidden,0)=0";
+  const vis = showHidden ? "1=1" : "COALESCE(a.hidden,0)=0";
   const { results } = await c.env.DB.prepare(`
     SELECT names.name AS name, ar.avatar_path AS avatar_path, n.text AS note,
            COALESCE(s.text, names.album_sort, names.name) AS sort_name,
-           (b.id IS NOT NULL) AS has_bio
+           (b.id IS NOT NULL) AS has_bio,
+           (SELECT COUNT(*) FROM track_artists ta
+             JOIN tracks t ON t.id = ta.track_id
+             JOIN albums a2 ON a2.id = t.album_id
+             WHERE ta.artist = names.name
+               AND ${showHidden ? "1=1" : "COALESCE(a2.hidden,0)=0"}
+               AND NOT EXISTS (SELECT 1 FROM album_artists own
+                 WHERE own.album_id = a2.id AND own.artist = names.name)
+           ) AS featured_tracks,
+           (SELECT COUNT(*) FROM track_artists ta
+             JOIN tracks t ON t.id = ta.track_id
+             JOIN albums a2 ON a2.id = t.album_id
+             WHERE ta.artist = names.name AND COALESCE(a2.hidden,0)=0
+               AND NOT EXISTS (SELECT 1 FROM album_artists own
+                 WHERE own.album_id = a2.id AND own.artist = names.name)
+           ) AS visible_featured_tracks
     FROM (
-      SELECT artist AS name,
-             MIN(NULLIF(TRIM(artist_sort), '')) AS album_sort
-      FROM albums WHERE ${vis}
-      GROUP BY artist
+      SELECT aa.artist AS name,
+             MIN(NULLIF(TRIM(aa.artist_sort), '')) AS album_sort
+      FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+      WHERE ${vis}
+      GROUP BY aa.artist
     ) names
     LEFT JOIN artists ar ON ar.name = names.name
     LEFT JOIN notes n ON n.kind = 'artist' AND n.id = names.name
@@ -767,7 +1057,42 @@ app.get("/api/artists", async (c) => {
   return c.json(results.map((r) => ({
     name: r.name, hasAvatar: !!r.avatar_path, note: r.note || "",
     hasBio: !!r.has_bio, sort: r.sort_name || r.name,
+    featuredTrackCount: Number(r.featured_tracks) || 0,
+    visibleFeaturedTrackCount: Number(r.visible_featured_tracks) || 0,
   })));
+});
+
+app.get("/api/artists/:name/tracks", async (c) => {
+  const name = artistNameParam(c);
+  const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
+  const visibility = showHidden ? "1=1" : "COALESCE(a.hidden,0)=0";
+  const [{ results }, { results: creditRows }] = await Promise.all([
+    c.env.DB.prepare(`SELECT t.id, t.title, t.duration, t.format, t.track, t.disc,
+        a.id AS albumId, a.title AS albumTitle, a.year, a.folder,
+        COALESCE(a.hidden,0) AS hidden
+      FROM track_artists mine JOIN tracks t ON t.id = mine.track_id
+      JOIN albums a ON a.id = t.album_id
+      WHERE mine.artist = ? AND ${visibility}
+        AND NOT EXISTS (SELECT 1 FROM album_artists own
+          WHERE own.album_id = a.id AND own.artist = ?)
+      ORDER BY a.year, a.title, t.disc, t.track, t.title`)
+      .bind(name, name).all(),
+    c.env.DB.prepare(`SELECT ta.track_id, ta.artist, ta.artist_sort
+      FROM track_artists ta WHERE ta.track_id IN (
+        SELECT mine.track_id FROM track_artists mine
+        JOIN tracks t ON t.id = mine.track_id
+        JOIN albums a ON a.id = t.album_id
+        WHERE mine.artist = ? AND ${visibility}
+          AND NOT EXISTS (SELECT 1 FROM album_artists own
+            WHERE own.album_id = a.id AND own.artist = ?)
+      ) ORDER BY ta.track_id, ta.position`).bind(name, name).all(),
+  ]);
+  const credits = groupTrackArtists(creditRows);
+  return c.json(results.map((track) => {
+    const artists = credits.get(track.id) || [];
+    return { ...track, artists, artist: artistCredit(artists),
+      artistSort: artists[0]?.sort || "", hasCustomArtists: true };
+  }));
 });
 
 // 完整简介单独拉取：可能很长（Markdown），不塞进列表接口
@@ -775,7 +1100,8 @@ app.get("/api/artist-bio/:name", async (c) => {
   const name = artistNameParam(c);
   if (!canSeeHidden(c)) {
     const visible = await c.env.DB.prepare(
-      "SELECT 1 FROM albums WHERE artist = ? AND COALESCE(hidden,0)=0 LIMIT 1")
+      `SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+       WHERE aa.artist = ? AND COALESCE(a.hidden,0)=0 LIMIT 1`)
       .bind(name).first();
     if (!visible) return c.json({ error: "not found" }, 404);
   }
@@ -823,7 +1149,8 @@ app.put("/api/artists", async (c) => {
         "SELECT 1 FROM storages WHERE id = ?").bind(sid).first();
       if (!backend) return c.json({ error: "头像存储后端不存在" }, 400);
       const { results: artistAlbums } = await c.env.DB.prepare(
-        "SELECT folder, storage_id FROM albums WHERE artist = ?")
+        `SELECT a.folder, a.storage_id FROM artist_album_links aa
+         JOIN albums a ON a.id = aa.album_id WHERE aa.artist = ?`)
         .bind(name).all();
       const belongsToArtist = artistAlbums.some((album) => {
         const parent = String(album.folder || "").split("/").slice(0, -1).join("/");
@@ -891,9 +1218,16 @@ app.put("/api/artists", async (c) => {
       statements.push(c.env.DB.prepare(
         "DELETE FROM notes WHERE kind = 'artistsort' AND id = ?").bind(name));
     }
-    statements.push(c.env.DB.prepare(`
-      UPDATE albums SET artist_sort = ?, updated_at = ? WHERE artist = ?`)
-      .bind(sort || name, now, name));
+    statements.push(c.env.DB.prepare(`UPDATE album_artists
+      SET artist_sort = ? WHERE artist = ?`).bind(sort || name, name));
+    statements.push(c.env.DB.prepare(`UPDATE track_artists
+      SET artist_sort = ? WHERE artist = ?`).bind(sort || name, name));
+    statements.push(c.env.DB.prepare(`UPDATE albums
+      SET artist_sort = COALESCE((SELECT aa.artist_sort FROM album_artists aa
+        WHERE aa.album_id = albums.id ORDER BY aa.position LIMIT 1), artist_sort),
+        updated_at = ?
+      WHERE id IN (SELECT album_id FROM album_artists WHERE artist = ?)`)
+      .bind(now, name));
     await c.env.DB.batch(statements);
   }
   return c.json({ ok: true });
@@ -908,7 +1242,8 @@ function artistNameParam(c) {
 app.get("/api/artist-art/:name", async (c) => {
   const name = artistNameParam(c);
   const publiclyVisible = await c.env.DB.prepare(
-    "SELECT 1 FROM albums WHERE artist = ? AND COALESCE(hidden,0)=0 LIMIT 1")
+    `SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+     WHERE aa.artist = ? AND COALESCE(a.hidden,0)=0 LIMIT 1`)
     .bind(name).first();
   if (!canSeeHidden(c) && !publiclyVisible) {
     return c.json({ error: "not found" }, 404);
@@ -933,9 +1268,10 @@ app.get("/api/artist-art/:name", async (c) => {
   const albumVisibility = publiclyVisible
     ? "COALESCE(hidden,0)=0" : "1=1";
   const alb = await c.env.DB.prepare(`
-    SELECT id, folder, cover_path, storage_id FROM albums WHERE artist = ?
-      AND ${albumVisibility}
-    ORDER BY year IS NULL, year, created_at LIMIT 1`).bind(name).first();
+    SELECT a.id, a.folder, a.cover_path, a.storage_id FROM artist_album_links aa
+    JOIN albums a ON a.id = aa.album_id WHERE aa.artist = ?
+      AND ${albumVisibility.replaceAll("hidden", "a.hidden")}
+    ORDER BY a.year IS NULL, a.year, a.created_at LIMIT 1`).bind(name).first();
   if (alb) {
     const cover = await resolveCover(c.env, alb);
     if (cover) {
@@ -1028,9 +1364,13 @@ app.post("/api/album/:id/discogs-search", async (c) => {
   if (!token) {
     return c.json({ error: "未配置 Discogs token（管理后台 → Discogs）" }, 400);
   }
-  const al = await c.env.DB.prepare(
-    "SELECT artist, artist_sort, title, year FROM albums WHERE id = ?")
-    .bind(c.req.param("id")).first();
+  const albumId = c.req.param("id");
+  const [al, credits] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT artist, artist_sort, title, year FROM albums WHERE id = ?")
+      .bind(albumId).first(),
+    artistsForAlbum(c.env.DB, albumId),
+  ]);
   if (!al) return c.json({ error: "not found" }, 404);
 
   const search = async (artist) => {
@@ -1041,13 +1381,28 @@ app.post("/api/album/:id/discogs-search", async (c) => {
   };
 
   try {
-    // 原名 → 罗马字 sort（自然词序）→ 只按碟名，三轮兜底
-    let results = await search(al.artist);
-    if (!results.length && al.artist_sort && al.artist_sort !== al.artist) {
-      const nat = al.artist_sort.includes(",")
-        ? al.artist_sort.split(",").reverse().map((s) => s.trim()).join(" ")
-        : al.artist_sort;
-      results = await search(nat);
+    // 每位合作艺人的原名与罗马字自然词序依次尝试，最后才只按碟名。
+    // 不使用兼容显示字段（如「A × B」）作为 Discogs 的 artist 查询。
+    const source = credits.length ? credits
+      : [{ name: al.artist, sort: al.artist_sort || al.artist }];
+    const terms = [];
+    const seen = new Set();
+    const add = (value) => {
+      const term = String(value || "").trim();
+      const key = term.toLocaleLowerCase();
+      if (term && !seen.has(key)) { seen.add(key); terms.push(term); }
+    };
+    for (const credit of source) {
+      add(credit.name);
+      const sort = credit.sort || "";
+      add(sort.includes(",")
+        ? sort.split(",").reverse().map((part) => part.trim()).join(" ")
+        : sort);
+    }
+    let results = [];
+    for (const term of terms) {
+      results = await search(term);
+      if (results.length) break;
     }
     if (!results.length) results = await search("");
     return c.json({
@@ -1129,6 +1484,28 @@ async function fetchDiscogsBytes(uri) {
   return { bytes, ct };
 }
 
+// Discogs image hosts reject ordinary browser hotlinks. Keep the signed source
+// URL server-side and return verified image bytes through the authenticated
+// same-origin API so candidate and detail thumbnails render consistently.
+app.get("/api/discogs-image-proxy", async (c) => {
+  const uri = c.req.query("url");
+  if (!isDiscogsImageUrl(uri)) {
+    return c.json({ error: "Discogs 图片地址无效" }, 400);
+  }
+  try {
+    const { bytes, ct } = await fetchDiscogsBytes(uri);
+    return new Response(bytes, {
+      headers: {
+        "Content-Type": ct,
+        "Cache-Control": "private, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (e) {
+    return c.json({ error: String(e.message || e) }, 502);
+  }
+});
+
 const DISCOGS_ID_RE = /^\d{1,12}$/;
 function discogsIdFrom(value) {
   if (typeof value !== "string") return null;
@@ -1152,6 +1529,25 @@ function discogsIdFrom(value) {
     .exec(url.pathname);
   if (!m || !DISCOGS_ID_RE.test(m[2])) return null;
   return { kind: m[1].toLowerCase() === "master" ? "masters" : "releases", id: m[2] };
+}
+
+function discogsArtistIdFrom(value) {
+  const text = typeof value === "string"
+    ? value.trim()
+    : (Number.isSafeInteger(value) ? String(value) : "");
+  if (!text || text.length > 2048) return null;
+  if (DISCOGS_ID_RE.test(text)) return text;
+  let url;
+  try {
+    url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (host !== "discogs.com" && host !== "www.discogs.com") return null;
+  const match = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?artists?\/(\d+)(?:[-\/]|$)/i
+    .exec(url.pathname);
+  return match && DISCOGS_ID_RE.test(match[1]) ? match[1] : null;
 }
 
 function isDiscogsImageUrl(value) {
@@ -1335,12 +1731,8 @@ app.post("/api/artist-discogs-detail", async (c) => {
   const token = await getSetting(c.env, "discogs_token");
   if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
   const body = await requestObject(c);
-  const artistId = typeof body?.artistId === "string"
-    ? body.artistId.trim()
-    : (Number.isSafeInteger(body?.artistId) ? String(body.artistId) : "");
-  if (!DISCOGS_ID_RE.test(artistId)) {
-    return c.json({ error: "artistId 格式无效" }, 400);
-  }
+  const artistId = discogsArtistIdFrom(body?.artistId);
+  if (!artistId) return c.json({ error: "Discogs 艺人链接或 ID 格式无效" }, 400);
   try {
     const d = await discogsApiJson(c.env, token, `artists/${artistId}`);
     const imgs = (d.images || []).map((im) => ({
@@ -1375,7 +1767,9 @@ app.post("/api/artists/:name/discogs-import", async (c) => {
   }
   // 找该艺人任一专辑目录，头像放其上一级（与专辑同 storage）
   const alb = await c.env.DB.prepare(
-    "SELECT folder, storage_id FROM albums WHERE artist = ? LIMIT 1").bind(name).first();
+    `SELECT a.folder, a.storage_id FROM artist_album_links aa
+     JOIN albums a ON a.id = aa.album_id WHERE aa.artist = ?
+     ORDER BY a.created_at LIMIT 1`).bind(name).first();
   try {
     let avatarSet = false;
     let avatarPath = "";
@@ -1947,16 +2341,19 @@ app.post("/api/albums", async (c) => {
   }
   const folder = safePath(c.env, body.folder);
   if (!folder) return c.json({ error: "folder 必须在曲库根目录下" }, 400);
-  const artist = boundedText(body.artist, 500, { allowEmpty: false });
+  const legacyArtist = body.artist === undefined
+    ? "" : boundedText(body.artist, 500, { allowEmpty: false });
   const title = boundedText(body.title, 1000, { allowEmpty: false });
-  if (artist === INVALID_INPUT || title === INVALID_INPUT
+  const artistSortInput = body.artistSort === undefined
+    ? legacyArtist : boundedText(body.artistSort, 500);
+  const incomingArtists = albumArtistsInput(
+    body.artists, legacyArtist, artistSortInput || legacyArtist);
+  if (legacyArtist === INVALID_INPUT || incomingArtists === INVALID_INPUT
+      || title === INVALID_INPUT
       || !Array.isArray(body.tracks) || !body.tracks.length
       || body.tracks.length > 20_000) {
-    return c.json({ error: "artist / title / tracks 必填" }, 400);
+    return c.json({ error: "artists / title / tracks 必填且格式必须有效" }, 400);
   }
-  const artistSortInput = body.artistSort === undefined
-    ? artist : boundedText(body.artistSort, 500);
-  let artistSort = artistSortInput === "" ? artist : artistSortInput;
   const year = finiteInput(body.year, { integer: true, min: 1, max: 9999 });
   const rymRating = finiteInput(body.rymRating, { min: 0, max: 5 });
   const rymVotes = finiteInput(body.rymVotes, {
@@ -1969,7 +2366,7 @@ app.post("/api/albums", async (c) => {
   const descriptors = strictTextList(body.descriptors, {
     maxItems: 500, maxItemLength: 500,
   });
-  if ([artistSort, year, rymRating, rymVotes, rymRank, rymUrl,
+  if ([artistSortInput, year, rymRating, rymVotes, rymRank, rymUrl,
     primaryGenres, secondaryGenres, descriptors].includes(INVALID_INPUT)) {
     return c.json({ error: "专辑元数据格式无效" }, 400);
   }
@@ -1984,10 +2381,16 @@ app.post("/api/albums", async (c) => {
   const genres = genreLists(primaryGenres, secondaryGenres);
   const id = await sha16(folder);
   const now = Date.now();
-  const artistSortOverride = await c.env.DB.prepare(
-    "SELECT text FROM notes WHERE kind = 'artistsort' AND id = ?")
-    .bind(artist).first();
-  if (artistSortOverride?.text?.trim()) artistSort = artistSortOverride.text.trim();
+  const previousContributors = await contributorsForAlbum(c.env.DB, id);
+  // A legacy companion only knows the singular artist field. Once an album
+  // has been explicitly edited to multiple credits, later rescans must not
+  // collapse it back to one combined string.
+  const existingArtists = body.artists === undefined
+    ? await artistsForAlbum(c.env.DB, id) : [];
+  let albumArtists = existingArtists.length > 1 ? existingArtists : incomingArtists;
+  albumArtists = await applyArtistSortOverrides(c.env.DB, albumArtists);
+  const artist = artistCredit(albumArtists);
+  const artistSort = albumArtists[0]?.sort || albumArtists[0]?.name || artist;
   // 新专辑落到当前写入目标；已存在的专辑保持原 storage_id（ON CONFLICT 不覆盖）
   const wt = await writeTarget(c.env);
   if (!wt) return c.json({ error: "请先设置一个命名存储写入目标" }, 400);
@@ -2048,10 +2451,13 @@ app.post("/api/albums", async (c) => {
     const titleInput = boundedText(t.title, 1000);
     const trackTitle = titleInput || fallbackTitle;
     const format = boundedText(t.format, 64);
-    if ([track, discInput, duration, bitrate, size, titleInput, format]
+    const hasArtistOverride = Object.hasOwn(t, "artists");
+    let trackArtists = hasArtistOverride ? trackArtistsInput(t.artists) : null;
+    if ([track, discInput, duration, bitrate, size, titleInput, format, trackArtists]
       .includes(INVALID_INPUT)) {
       return c.json({ error: `曲目元数据格式无效: ${path}` }, 400);
     }
+    if (trackArtists && sameArtistCredit(trackArtists, albumArtists)) trackArtists = [];
     const trackId = await sha16(path);
     if (seenTrackIds.has(trackId)) {
       return c.json({ error: `曲目 ID 冲突: ${path}` }, 409);
@@ -2059,8 +2465,19 @@ app.post("/api/albums", async (c) => {
     seenTrackIds.add(trackId);
     normalizedTracks.push({
       id: trackId, albumId: id, disc, track, title: trackTitle, duration,
-      format, bitrate, size, path,
+      format, bitrate, size, path, artistMode: hasArtistOverride ? 1 : 0,
+      artists: trackArtists,
     });
+  }
+  const explicitArtists = normalizedTracks.flatMap((track) => track.artists || []);
+  const resolvedArtists = await applyArtistSortOverrides(c.env.DB, explicitArtists);
+  const resolvedSort = new Map(resolvedArtists.map((artist) =>
+    [artist.name, artist.sort || artist.name]));
+  for (const track of normalizedTracks) {
+    if (!track.artists) continue;
+    track.artists = track.artists.map((artist) => ({
+      ...artist, sort: resolvedSort.get(artist.name) || artist.sort || artist.name,
+    }));
   }
   // A path or truncated-hash id collision with another album must fail before
   // staging. A concurrent collision is still caught by the final UNIQUE write.
@@ -2093,38 +2510,73 @@ app.post("/api/albums", async (c) => {
   const importId = crypto.randomUUID();
   const stageStatements = normalizedTracks.map((t) => c.env.DB.prepare(`
     INSERT INTO track_imports (import_id, id, album_id, disc, track, title,
-      duration, format, bitrate, size, path, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      duration, format, bitrate, size, path, artist_mode, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .bind(importId, t.id, t.albumId, t.disc, t.track, t.title, t.duration,
-      t.format, t.bitrate, t.size, t.path, now));
+      t.format, t.bitrate, t.size, t.path, t.artistMode, now));
+  const creditStageStatements = normalizedTracks.flatMap((track) =>
+    (track.artists || []).map((artist, position) => c.env.DB.prepare(`
+      INSERT INTO track_artist_imports
+        (import_id, track_id, artist, artist_sort, position)
+      VALUES (?,?,?,?,?)`).bind(importId, track.id, artist.name,
+        artist.sort || artist.name, position)));
   try {
     await runD1Batches(c.env.DB, stageStatements);
+    await runD1Batches(c.env.DB, creditStageStatements);
+    // Old clients omit track artists. Preserve any manually curated override
+    // for surviving track IDs instead of erasing it during a rescan.
+    await c.env.DB.prepare(`INSERT OR IGNORE INTO track_artist_imports
+      (import_id, track_id, artist, artist_sort, position)
+      SELECT ?, ta.track_id, ta.artist, ta.artist_sort, ta.position
+      FROM track_artists ta JOIN track_imports ti ON ti.id = ta.track_id
+      WHERE ti.import_id = ? AND ti.artist_mode = 0`)
+      .bind(importId, importId).run();
     // D1 batch is transactional. The live album is untouched until every
     // staged row exists, then metadata, favorites and tracks change together.
     await c.env.DB.batch([
       albumStmt,
+      c.env.DB.prepare("DELETE FROM album_artists WHERE album_id = ?").bind(id),
+      ...ensureArtistRows(c.env.DB, albumArtists),
+      ...artistRowsForAlbum(c.env.DB, id, albumArtists),
       c.env.DB.prepare(`DELETE FROM favorites
         WHERE kind = 'track' AND item_id IN (
           SELECT id FROM tracks WHERE album_id = ? AND id NOT IN (
             SELECT id FROM track_imports WHERE import_id = ?
           )
         )`).bind(id, importId),
+      c.env.DB.prepare(`DELETE FROM track_artists WHERE track_id IN
+        (SELECT id FROM tracks WHERE album_id = ?)`).bind(id),
       c.env.DB.prepare("DELETE FROM tracks WHERE album_id = ?").bind(id),
       c.env.DB.prepare(`INSERT INTO tracks
         (id, album_id, disc, track, title, duration, format, bitrate, size, path)
         SELECT id, album_id, disc, track, title, duration, format, bitrate, size, path
         FROM track_imports WHERE import_id = ?`).bind(importId),
+      c.env.DB.prepare(`INSERT OR IGNORE INTO artists (name, avatar_path)
+        SELECT DISTINCT artist, '' FROM track_artist_imports
+        WHERE import_id = ?`).bind(importId),
+      c.env.DB.prepare(`INSERT INTO track_artists
+        (track_id, artist, artist_sort, position)
+        SELECT track_id, artist, artist_sort, position
+        FROM track_artist_imports WHERE import_id = ?`).bind(importId),
+      removeInheritedTrackArtists(c.env.DB, id, albumArtists),
+      c.env.DB.prepare("DELETE FROM track_artist_imports WHERE import_id = ?")
+        .bind(importId),
       c.env.DB.prepare("DELETE FROM track_imports WHERE import_id = ?")
         .bind(importId),
     ]);
   } catch (error) {
-    await c.env.DB.prepare("DELETE FROM track_imports WHERE import_id = ?")
-      .bind(importId).run().catch(() => null);
+    await Promise.all([
+      c.env.DB.prepare("DELETE FROM track_imports WHERE import_id = ?")
+        .bind(importId).run().catch(() => null),
+      c.env.DB.prepare("DELETE FROM track_artist_imports WHERE import_id = ?")
+        .bind(importId).run().catch(() => null),
+    ]);
     throw error;
   }
   if (c.get("role") === "companion") {
     await setSetting(c.env, "companion_last_seen", String(Date.now()));
   }
+  await cleanupOrphanArtists(c.env, previousContributors);
   return c.json({ ok: true, id });
 });
 
@@ -2132,29 +2584,40 @@ app.patch("/api/album/:id", async (c) => {
   const id = c.req.param("id");
   const b = await requestObject(c);
   if (!b) return c.json({ error: "请求 JSON 无效" }, 400);
-  const current = await c.env.DB.prepare(
-    "SELECT artist, folder, genres, sec_genres FROM albums WHERE id = ?")
-    .bind(id).first();
+  const [current, currentArtists] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT artist, artist_sort, folder, genres, sec_genres FROM albums WHERE id = ?")
+      .bind(id).first(),
+    artistsForAlbum(c.env.DB, id),
+  ]);
   if (!current) return c.json({ error: "not found" }, 404);
   const sets = [], vals = [];
   const put = (column, value) => { sets.push(`${column} = ?`); vals.push(value); };
-  let nextArtist = current.artist;
-  if ("artist" in b) {
-    nextArtist = boundedText(b.artist, 500, { allowEmpty: false });
-    if (nextArtist === INVALID_INPUT) {
-      return c.json({ error: "artist 格式无效" }, 400);
+  let nextArtists = null;
+  if ("artists" in b) {
+    nextArtists = albumArtistsInput(b.artists);
+  } else if ("artist" in b) {
+    const name = boundedText(b.artist, 500, { allowEmpty: false });
+    const sort = "artistSort" in b ? boundedText(b.artistSort, 500) : name;
+    nextArtists = (name === INVALID_INPUT || sort === INVALID_INPUT)
+      ? INVALID_INPUT : albumArtistsInput(undefined, name, sort || name);
+  } else if ("artistSort" in b) {
+    const sort = boundedText(b.artistSort, 500);
+    if (sort !== INVALID_INPUT) {
+      const base = currentArtists.length ? currentArtists
+        : [{ name: current.artist, sort: current.artist_sort || current.artist }];
+      nextArtists = base.map((artist, index) => index === 0
+        ? { ...artist, sort: sort || artist.name } : artist);
+    } else {
+      nextArtists = INVALID_INPUT;
     }
-    put("artist", nextArtist);
-    // The edit form does not expose artistSort.  Keeping the former artist's
-    // sort key after a rename makes the album appear under the wrong letter.
-    if (!("artistSort" in b)) put("artist_sort", nextArtist);
   }
-  if ("artistSort" in b) {
-    const value = boundedText(b.artistSort, 500);
-    if (value === INVALID_INPUT) {
-      return c.json({ error: "artistSort 格式无效" }, 400);
-    }
-    put("artist_sort", value || nextArtist);
+  if (nextArtists === INVALID_INPUT) {
+    return c.json({ error: "artists 格式无效、重复或过长" }, 400);
+  }
+  if (nextArtists) {
+    put("artist", artistCredit(nextArtists));
+    put("artist_sort", nextArtists[0].sort || nextArtists[0].name);
   }
   if ("title" in b) {
     const value = boundedText(b.title, 1000, { allowEmpty: false });
@@ -2250,28 +2713,58 @@ app.patch("/api/album/:id", async (c) => {
         "DELETE FROM notes WHERE kind = 'album' AND id = ?").bind(id));
     }
   }
+  if (nextArtists) {
+    statements.push(c.env.DB.prepare(
+      "DELETE FROM album_artists WHERE album_id = ?").bind(id));
+    statements.push(...ensureArtistRows(c.env.DB, nextArtists));
+    statements.push(...artistRowsForAlbum(c.env.DB, id, nextArtists));
+    statements.push(removeInheritedTrackArtists(c.env.DB, id, nextArtists));
+  }
   if (statements.length) await c.env.DB.batch(statements);
   if (sets.length && "coverPath" in b) {
     await invalidateR2(c.env, `art:${id}:`); // 换封面清 R2
+  }
+  if (nextArtists) {
+    const kept = new Set(nextArtists.map((artist) => artist.name));
+    for (const removed of currentArtists.filter((artist) => !kept.has(artist.name))) {
+      const left = await c.env.DB.prepare(
+        "SELECT 1 FROM artist_album_links WHERE artist = ? LIMIT 1")
+        .bind(removed.name).first();
+      if (left) continue;
+      await purgeArtistR2(c.env, removed.name, false);
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM artists WHERE name = ?").bind(removed.name),
+        c.env.DB.prepare(
+          "DELETE FROM notes WHERE kind IN ('artist','artistbio','artistsort') AND id = ?")
+          .bind(removed.name),
+      ]);
+    }
   }
   return c.json({ ok: true });
 });
 
 app.delete("/api/album/:id", async (c) => {
   const id = c.req.param("id");
-  const album = await c.env.DB.prepare(
-    "SELECT folder, storage_id, artist FROM albums WHERE id = ?").bind(id).first();
+  const [album, relatedArtists] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT folder, storage_id, artist, artist_sort FROM albums WHERE id = ?")
+      .bind(id).first(),
+    contributorsForAlbum(c.env.DB, id),
+  ]);
   if (!album) return c.json({ error: "not found" }, 404);
+  const albumArtists = relatedArtists.length ? relatedArtists
+    : [{ name: album.artist, sort: album.artist_sort || album.artist }];
   // 删除会使旧的公开 CDN URL 失去其数据库引用；在真正删除目录前，
   // 必须确认已登记的 R2 镜像也被移除，避免已删除/私有音源仍可被已知 URL 访问。
   if (!(await purgeAlbumR2(c.env, id, true))) {
     return c.json({ error: "公开 R2 镜像删除失败，数据库未修改" }, 502);
   }
-  const remainingArtistAlbums = await c.env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM albums WHERE artist = ? AND id != ?")
-    .bind(album.artist, id).first();
-  if (!remainingArtistAlbums?.n && !(await purgeArtistR2(c.env, album.artist, true))) {
-    return c.json({ error: "艺人公开头像镜像删除失败，数据库未修改" }, 502);
+  for (const artist of albumArtists) {
+    const remaining = await c.env.DB.prepare(`SELECT 1 FROM artist_album_links
+      WHERE artist = ? AND album_id != ? LIMIT 1`).bind(artist.name, id).first();
+    if (!remaining && !(await purgeArtistR2(c.env, artist.name, true))) {
+      return c.json({ error: "艺人公开头像镜像删除失败，数据库未修改" }, 502);
+    }
   }
   let filesDeleted = false;
   if (c.req.query("files") === "1") {
@@ -2292,20 +2785,26 @@ app.delete("/api/album/:id", async (c) => {
     c.env.DB.prepare(
       "DELETE FROM notes WHERE kind = 'album' AND id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM album_images WHERE album_id = ?").bind(id),
+    c.env.DB.prepare(`DELETE FROM track_artists WHERE track_id IN
+      (SELECT id FROM tracks WHERE album_id = ?)`).bind(id),
     c.env.DB.prepare("DELETE FROM tracks WHERE album_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM album_artists WHERE album_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM albums WHERE id = ?").bind(id),
   ]);
-  // 该艺人若已无任何音盤，清掉艺术家附加信息（头像/简介行）
-  try {
+  // Any contributor that no longer owns an album becomes an orphan. Clear its
+  // optional metadata only after the catalog deletion has committed.
+  for (const artist of albumArtists) {
     const left = await c.env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM albums WHERE artist = ?").bind(album.artist).first();
-    if (!left?.n) {
-      await c.env.DB.prepare("DELETE FROM artists WHERE name = ?").bind(album.artist).run();
-      await c.env.DB.prepare(
-        "DELETE FROM notes WHERE kind IN ('artist','artistbio') AND id = ?")
-        .bind(album.artist).run();
-    }
-  } catch { /* ignore */ }
+      "SELECT 1 FROM artist_album_links WHERE artist = ? LIMIT 1")
+      .bind(artist.name).first();
+    if (left) continue;
+    await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM artists WHERE name = ?").bind(artist.name),
+      c.env.DB.prepare(
+        "DELETE FROM notes WHERE kind IN ('artist','artistbio','artistsort') AND id = ?")
+        .bind(artist.name),
+    ]);
+  }
   return c.json({ ok: true, filesDeleted });
 });
 
@@ -2318,8 +2817,11 @@ app.post("/api/album/:id/hide", async (c) => {
     return c.json({ error: "hidden 参数无效" }, 400);
   }
   const on = hidden === true || hidden === 1 || hidden === "1";
-  const album = await c.env.DB.prepare(
-    "SELECT hidden, artist FROM albums WHERE id = ?").bind(id).first();
+  const [album, relatedArtists] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT hidden, artist, artist_sort FROM albums WHERE id = ?").bind(id).first(),
+    contributorsForAlbum(c.env.DB, id),
+  ]);
   if (!album) return c.json({ error: "not found" }, 404);
   if (on) {
     const purged = await purgeAlbumR2(c.env, id, true);
@@ -2328,13 +2830,18 @@ app.post("/api/album/:id/hide", async (c) => {
         error: "隐藏前无法删除公开 R2 镜像；请检查 R2 凭据后重试",
       }, 502);
     }
-    const anotherVisible = await c.env.DB.prepare(`
-      SELECT 1 FROM albums WHERE artist = ? AND id != ?
-      AND COALESCE(hidden,0)=0 LIMIT 1`).bind(album.artist, id).first();
-    if (!anotherVisible && !(await purgeArtistR2(c.env, album.artist, true))) {
-      return c.json({
-        error: "隐藏前无法删除公开艺人头像镜像；请检查 R2 凭据后重试",
-      }, 502);
+    const albumArtists = relatedArtists.length ? relatedArtists
+      : [{ name: album.artist, sort: album.artist_sort || album.artist }];
+    for (const artist of albumArtists) {
+      const anotherVisible = await c.env.DB.prepare(`
+        SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+        WHERE aa.artist = ? AND a.id != ?
+        AND COALESCE(a.hidden,0)=0 LIMIT 1`).bind(artist.name, id).first();
+      if (!anotherVisible && !(await purgeArtistR2(c.env, artist.name, true))) {
+        return c.json({
+          error: "隐藏前无法删除公开艺人头像镜像；请检查 R2 凭据后重试",
+        }, 502);
+      }
     }
   }
   await c.env.DB.prepare(
@@ -2477,8 +2984,11 @@ app.get("/api/image/:imgId", async (c) => {
 
 app.post("/api/album/:id/tracks", async (c) => {
   const id = c.req.param("id");
-  const album = await c.env.DB.prepare(
-    "SELECT folder FROM albums WHERE id = ?").bind(id).first();
+  const [album, albumCredits] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT folder, artist, artist_sort FROM albums WHERE id = ?").bind(id).first(),
+    artistsForAlbum(c.env.DB, id),
+  ]);
   if (!album) return c.json({ error: "not found" }, 404);
   const b = await requestObject(c);
   if (!b || typeof b.path !== "string") {
@@ -2489,8 +2999,11 @@ app.post("/api/album/:id/tracks", async (c) => {
     return c.json({ error: "path 必须在该专辑目录下" }, 400);
   }
   const tid = await sha16(p);
-  const priorTrack = await c.env.DB.prepare(
-    "SELECT album_id FROM tracks WHERE id = ?").bind(tid).first();
+  const [priorTrack, previousCredits] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT album_id FROM tracks WHERE id = ?").bind(tid).first(),
+    "artists" in b ? artistsForTrack(c.env.DB, tid) : [],
+  ]);
   if (priorTrack && priorTrack.album_id !== id) {
     return c.json({ error: "该曲目路径已经登记在其他专辑" }, 409);
   }
@@ -2502,12 +3015,19 @@ app.post("/api/album/:id/tracks", async (c) => {
     max: Number.MAX_SAFE_INTEGER });
   const titleInput = boundedText(b.title, 1000);
   const format = boundedText(b.format, 64);
-  if ([discInput, track, duration, bitrate, size, titleInput, format]
+  let trackCredits = "artists" in b ? trackArtistsInput(b.artists) : null;
+  if ([discInput, track, duration, bitrate, size, titleInput, format, trackCredits]
     .includes(INVALID_INPUT)) {
     return c.json({ error: "曲目元数据格式无效" }, 400);
   }
+  if (trackCredits) {
+    trackCredits = await applyArtistSortOverrides(c.env.DB, trackCredits);
+    const inherited = albumCredits.length ? albumCredits
+      : [{ name: album.artist, sort: album.artist_sort || album.artist }];
+    if (sameArtistCredit(trackCredits, inherited)) trackCredits = [];
+  }
   const disc = discInput ?? 1;
-  await c.env.DB.prepare(`
+  const statements = [c.env.DB.prepare(`
     INSERT INTO tracks (id, album_id, disc, track, title, duration,
       format, bitrate, size, path)
     VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -2516,33 +3036,76 @@ app.post("/api/album/:id/tracks", async (c) => {
       duration=excluded.duration, format=excluded.format,
       bitrate=excluded.bitrate, size=excluded.size`)
     .bind(tid, id, disc, track, titleInput || p.split("/").pop(), duration,
-      format, bitrate, size, p).run();
-  await c.env.DB.prepare("UPDATE albums SET updated_at = ? WHERE id = ?")
-    .bind(Date.now(), id).run();
+      format, bitrate, size, p)];
+  if (trackCredits) {
+    statements.push(c.env.DB.prepare(
+      "DELETE FROM track_artists WHERE track_id = ?").bind(tid));
+    statements.push(...ensureArtistRows(c.env.DB, trackCredits));
+    statements.push(...artistRowsForTrack(c.env.DB, tid, trackCredits));
+  }
+  statements.push(c.env.DB.prepare(
+    "UPDATE albums SET updated_at = ? WHERE id = ?").bind(Date.now(), id));
+  await c.env.DB.batch(statements);
+  if ("artists" in b) await cleanupOrphanArtists(c.env, previousCredits);
   return c.json({ ok: true, id: tid });
 });
 
 app.patch("/api/album/:id/tracks/:tid", async (c) => {
   const b = await requestObject(c);
   if (!b) return c.json({ error: "请求 JSON 无效" }, 400);
-  if (typeof b.title !== "string" || !b.title.trim() || b.title.length > 1000) {
-    return c.json({ error: "title 必填" }, 400);
+  if (!("title" in b) && !("artists" in b)) {
+    return c.json({ error: "没有可更新字段" }, 400);
   }
-  const r = await c.env.DB.prepare(
-    "UPDATE tracks SET title = ? WHERE id = ? AND album_id = ?")
-    .bind(b.title.trim(), c.req.param("tid"), c.req.param("id")).run();
-  if (!r.meta?.changes) return c.json({ error: "not found" }, 404);
-  await c.env.DB.prepare("UPDATE albums SET updated_at = ? WHERE id = ?")
-    .bind(Date.now(), c.req.param("id")).run();
+  const albumId = c.req.param("id");
+  const trackId = c.req.param("tid");
+  const [album, inheritedCredits, exists, previousCredits] = await Promise.all([
+    c.env.DB.prepare("SELECT artist, artist_sort FROM albums WHERE id = ?")
+      .bind(albumId).first(),
+    artistsForAlbum(c.env.DB, albumId),
+    c.env.DB.prepare("SELECT 1 FROM tracks WHERE id = ? AND album_id = ?")
+      .bind(trackId, albumId).first(),
+    "artists" in b ? artistsForTrack(c.env.DB, trackId) : [],
+  ]);
+  if (!exists || !album) return c.json({ error: "not found" }, 404);
+  const statements = [];
+  if ("title" in b) {
+    const title = boundedText(b.title, 1000, { allowEmpty: false });
+    if (title === INVALID_INPUT) return c.json({ error: "title 格式无效" }, 400);
+    statements.push(c.env.DB.prepare(
+      "UPDATE tracks SET title = ? WHERE id = ? AND album_id = ?")
+      .bind(title, trackId, albumId));
+  }
+  let nextCredits = null;
+  if ("artists" in b) {
+    nextCredits = trackArtistsInput(b.artists);
+    if (nextCredits === INVALID_INPUT) {
+      return c.json({ error: "artists 格式无效、重复或过长" }, 400);
+    }
+    nextCredits = await applyArtistSortOverrides(c.env.DB, nextCredits);
+    const inherited = inheritedCredits.length ? inheritedCredits
+      : [{ name: album.artist, sort: album.artist_sort || album.artist }];
+    if (sameArtistCredit(nextCredits, inherited)) nextCredits = [];
+    statements.push(c.env.DB.prepare(
+      "DELETE FROM track_artists WHERE track_id = ?").bind(trackId));
+    statements.push(...ensureArtistRows(c.env.DB, nextCredits));
+    statements.push(...artistRowsForTrack(c.env.DB, trackId, nextCredits));
+  }
+  statements.push(c.env.DB.prepare(
+    "UPDATE albums SET updated_at = ? WHERE id = ?").bind(Date.now(), albumId));
+  await c.env.DB.batch(statements);
+  if ("artists" in b) await cleanupOrphanArtists(c.env, previousCredits);
   return c.json({ ok: true });
 });
 
 app.delete("/api/album/:id/tracks/:tid", async (c) => {
   const tid = c.req.param("tid");
-  const row = await c.env.DB.prepare(
-    "SELECT t.path, a.storage_id FROM tracks t " +
-    "JOIN albums a ON a.id = t.album_id WHERE t.id = ? AND t.album_id = ?")
-    .bind(tid, c.req.param("id")).first();
+  const [row, previousCredits] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT t.path, a.storage_id FROM tracks t " +
+      "JOIN albums a ON a.id = t.album_id WHERE t.id = ? AND t.album_id = ?")
+      .bind(tid, c.req.param("id")).first(),
+    artistsForTrack(c.env.DB, tid),
+  ]);
   if (!row) return c.json({ error: "not found" }, 404);
   let fileDeleted = false;
   if (c.req.query("file") === "1") {
@@ -2558,10 +3121,12 @@ app.delete("/api/album/:id/tracks/:tid", async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
       "DELETE FROM favorites WHERE kind = 'track' AND item_id = ?").bind(tid),
+    c.env.DB.prepare("DELETE FROM track_artists WHERE track_id = ?").bind(tid),
     c.env.DB.prepare("DELETE FROM tracks WHERE id = ?").bind(tid),
     c.env.DB.prepare("UPDATE albums SET updated_at = ? WHERE id = ?")
       .bind(Date.now(), c.req.param("id")),
   ]);
+  await cleanupOrphanArtists(c.env, previousCredits);
   return c.json({ ok: true, fileDeleted });
 });
 
@@ -3134,7 +3699,8 @@ app.post("/api/admin/r2/purge-hidden", async (c) => {
     c.env.DB.prepare(
       "SELECT COUNT(*) AS n FROM albums WHERE COALESCE(hidden,0)=1").first(),
     c.env.DB.prepare(`SELECT COUNT(*) AS n FROM artists ar WHERE NOT EXISTS (
-      SELECT 1 FROM albums a WHERE a.artist = ar.name
+      SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+      WHERE aa.artist = ar.name
       AND COALESCE(a.hidden,0)=0)`).first(),
   ]);
   const total = nAlbums + nArtists;
@@ -3149,7 +3715,8 @@ app.post("/api/admin/r2/purge-hidden", async (c) => {
   if (tasks.length < limit && offset + tasks.length >= nAlbums) {
     const { results } = await c.env.DB.prepare(`
       SELECT ar.name FROM artists ar WHERE NOT EXISTS (
-        SELECT 1 FROM albums a WHERE a.artist = ar.name
+        SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+        WHERE aa.artist = ar.name
         AND COALESCE(a.hidden,0)=0
       ) ORDER BY ar.name COLLATE NOCASE LIMIT ? OFFSET ?`)
       .bind(limit - tasks.length, Math.max(0, offset - nAlbums)).all();
@@ -3234,7 +3801,8 @@ app.post("/api/admin/r2/prewarm", async (c) => {
       WHERE COALESCE(a.hidden,0)=0`).first(),
     c.env.DB.prepare(`SELECT COUNT(*) AS n FROM artists ar
       WHERE ar.avatar_path != '' AND EXISTS (
-        SELECT 1 FROM albums a WHERE a.artist = ar.name
+        SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+        WHERE aa.artist = ar.name
         AND COALESCE(a.hidden,0)=0)`).first(),
   ]);
   const total = nAlbums + nImages + nAvatars;
@@ -3268,7 +3836,8 @@ app.post("/api/admin/r2/prewarm", async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT ar.avatar_path, ar.storage_id FROM artists ar
       WHERE ar.avatar_path != '' AND EXISTS (
-        SELECT 1 FROM albums a WHERE a.artist = ar.name
+        SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
+        WHERE aa.artist = ar.name
         AND COALESCE(a.hidden,0)=0
       ) ORDER BY ar.name COLLATE NOCASE LIMIT ? OFFSET ?`)
       .bind(limit - tasks.length,
@@ -3756,19 +4325,26 @@ async function migrateAlbumStep(env, albumId, targetId, fileIndex = 0) {
     "SELECT path, size FROM tracks WHERE album_id = ?").bind(albumId).all();
   const { results: imgs } = await env.DB.prepare(
     "SELECT path FROM album_images WHERE album_id = ?").bind(albumId).all();
-  const avatar = await env.DB.prepare(
-    "SELECT avatar_path, storage_id FROM artists WHERE name = ?")
-    .bind(album.artist).first();
   const sourceId = album.storage_id || null;
-  const avatarPath = avatar?.avatar_path
-    && (avatar.storage_id || null) === sourceId ? avatar.avatar_path : null;
+  const albumParent = album.folder.split("/").slice(0, -1).join("/");
+  const { results: relatedAvatars } = await env.DB.prepare(`
+    SELECT DISTINCT ar.name, ar.avatar_path, ar.storage_id
+    FROM artist_album_links aa JOIN artists ar ON ar.name = aa.artist
+    WHERE aa.album_id = ? AND ar.avatar_path != ''`).bind(albumId).all();
+  // Only move an avatar physically owned by this album's parent directory.
+  // A collaboration may reference artists whose shared avatar lives beside a
+  // different album; migrating this album must not move that unrelated file.
+  const avatars = relatedAvatars.filter((avatar) =>
+    (avatar.storage_id || null) === sourceId && albumParent
+    && avatar.avatar_path.startsWith(`${albumParent}/`));
+  const avatarPaths = new Set(avatars.map((avatar) => avatar.avatar_path));
   const manifestKey = `mig:${albumId}:${sourceId || "none"}:${targetId}`;
   let files = await env.KV.get(manifestKey, "json").catch(() => null);
   if (Array.isArray(files) && !files.every((file) => {
     if (!plainObject(file) || typeof file.path !== "string") return false;
     const path = safePath(env, file.path);
     const inScope = path === file.path &&
-      (path.startsWith(album.folder + "/") || path === avatarPath);
+      (path.startsWith(album.folder + "/") || avatarPaths.has(path));
     return inScope && (file.size === null || file.size === undefined
       || (Number.isSafeInteger(file.size) && file.size >= 0));
   })) {
@@ -3787,13 +4363,13 @@ async function migrateAlbumStep(env, albumId, targetId, fileIndex = 0) {
       ...tracks.map((t) => ({ path: t.path, size: Number(t.size) || null })),
       ...imgs.map((i) => ({ path: i.path, size: null })),
       album.cover_path ? { path: album.cover_path, size: null } : null,
-      avatarPath ? { path: avatarPath, size: null } : null,
+      ...avatars.map((avatar) => ({ path: avatar.avatar_path, size: null })),
       ...discovered,
     ].filter(Boolean);
     const byPath = new Map();
     for (const candidate of candidates) {
       const candidatePath = safePath(env, candidate.path);
-      if (!candidatePath || (candidatePath !== avatarPath
+      if (!candidatePath || (!avatarPaths.has(candidatePath)
           && !candidatePath.startsWith(album.folder + "/"))) {
         return { ok: false, error: `迁移清单含越界路径: ${candidate.path}` };
       }
@@ -3816,15 +4392,17 @@ async function migrateAlbumStep(env, albumId, targetId, fileIndex = 0) {
     const updates = [env.DB.prepare(
       "UPDATE albums SET storage_id = ?, updated_at = ? WHERE id = ?")
       .bind(targetId || null, Date.now(), albumId)];
-    if (avatarPath) {
+    for (const avatar of avatars) {
       updates.push(env.DB.prepare(
         "UPDATE artists SET storage_id = ? WHERE name = ? AND avatar_path = ?")
-        .bind(targetId || null, album.artist, avatarPath));
+        .bind(targetId || null, avatar.name, avatar.avatar_path));
     }
     await env.DB.batch(updates);
     await env.KV.delete(manifestKey).catch(() => null);
     await invalidateR2(env, `art:${albumId}:`);
-    if (avatarPath) await purgeArtistR2(env, album.artist, false);
+    for (const avatar of avatars) {
+      await purgeArtistR2(env, avatar.name, false);
+    }
     return {
       ok: true, finished: true, total: files.length,
       albumId, artist: album.artist, title: album.title,

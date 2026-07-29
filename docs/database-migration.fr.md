@@ -19,6 +19,8 @@ Si vous restez local, sauvegardez `<DATA_DIR>/mihonban.sqlite`, les paramètres 
 
 Le JSON administrateur seul n’est pas une sauvegarde de catalogue. Un fichier SQL D1 seul ne contient pas d’audio ni, par défaut, d’identifiants.
 
+Les crédits ordonnés d’un album sont stockés dans `album_artists`. Les crédits propres à un morceau ne sont stockés dans `track_artists` que si nécessaire ; sans ligne, le morceau hérite des artistes de l’album. Les deux tables figurent dans les exports SQL logiques. Après une mise à niveau, Mihonban les crée et reprend l’ancien texte d’artiste comme un seul crédit exact. Il ne le découpe pas aux virgules, valides dans les noms et les clés de tri. Utilisez l’éditeur d’album pour une collaboration complète, ou le bouton artiste de la gestion des morceaux pour un invité présent sur quelques titres.
+
 ## Avant de déplacer le stockage local Node vers Cloudflare
 
 Cloudflare ne peut pas lire un backend Node `local`. Tant que l’ancienne application Node est toujours disponible :

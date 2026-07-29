@@ -9,6 +9,8 @@ import { I, CropDialog, Dialog, Heart, Md, NoteText, Rating, Reader,
 import { useI18n } from '../i18n.jsx'
 import { galleryImageLoadState, gallerySwipeDirection } from '../gallery-gesture.js'
 import { albumPlaybackState } from '../album-playback.js'
+import { ArtistCredit, ArtistEditor, artistCreditText, creditsFromTags,
+         creditsOf, sameArtistNames } from '../artist-credit.jsx'
 
 const cleanName = (s) =>
   (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
@@ -89,16 +91,16 @@ function useMediaQuery(query) {
   return matches
 }
 
-function EditDialog({ album, onClose, onSaved }) {
+function EditDialog({ album, artistOptions, onClose, onSaved }) {
   const { t } = useI18n()
   const [f, setF] = useState({
-    artist: album.artist, artistSort: album.artistSort || '',
     title: album.title, year: album.year || '',
     genres: (album.genres || []).join('; '),
     secGenres: (album.secondaryGenres || []).join('; '),
     descriptors: (album.rym?.descriptors || []).join('; '),
     note: album.note || '',
   })
+  const [credits, setCredits] = useState(() => creditsOf(album))
   const [cover, setCover] = useState(null)
   const [cropFile, setCropFile] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -111,10 +113,14 @@ function EditDialog({ album, onClose, onSaved }) {
 
   const save = async () => {
     if (saveInFlight.current) return
-    const artist = f.artist.trim()
+    const artists = credits.map((artist) => ({
+      name: artist.name.trim(), sort: (artist.sort || artist.name).trim(),
+    }))
     const title = f.title.trim()
     const yearText = String(f.year || '').trim()
-    if (!artist || !title) {
+    const artistKeys = new Set(artists.map((artist) => artist.name.toLocaleLowerCase()))
+    if (!artists.length || artists.some((artist) => !artist.name)
+        || artistKeys.size !== artists.length || !title) {
       toast(t('albumPage.saveFail', t('importPage.needMeta')), 'err')
       return
     }
@@ -126,8 +132,9 @@ function EditDialog({ album, onClose, onSaved }) {
       toast(t('albumPage.saveFail', t('importPage.invalidYear')), 'err')
       return
     }
-    const artistSort = f.artistSort.trim()
-    if (artist.length > 500 || artistSort.length > 500 || title.length > 1000
+    if (artists.length > 24 || artistCreditText({ artists }).length > 500
+        || artists.some((artist) => artist.name.length > 500 || artist.sort.length > 500)
+        || title.length > 1000
         || f.note.length > 200_000
         || genres.length > 200 || secondaryGenres.length > 200
         || descriptors.length > 500
@@ -150,7 +157,7 @@ function EditDialog({ album, onClose, onSaved }) {
         await api.uploadCover(coverPath, cover)
       }
       await api.patchAlbum(album.id, {
-        artist, artistSort, title,
+        artists, title,
         year,
         genres,
         secondaryGenres,
@@ -165,7 +172,8 @@ function EditDialog({ album, onClose, onSaved }) {
   }
 
   return (
-    <Dialog title={t('albumPage.edit')} onClose={onClose}>
+    <Dialog title={t('albumPage.edit')} onClose={onClose}
+            className="album-edit-dialog">
       <div className="meta-form">
         <label className="cover-pick">
           {cover
@@ -179,11 +187,9 @@ function EditDialog({ album, onClose, onSaved }) {
                  }} />
         </label>
         <div className="fields">
-          <div className="frow"><label>{t('albumPage.artist')}</label>
-            <input className="tin" value={f.artist} onChange={set('artist')} /></div>
-          <div className="frow"><label>{t('albumPage.artistSort')}</label>
-            <input className="tin" value={f.artistSort} onChange={set('artistSort')}
-                   placeholder={t('albumPage.artistSortPh')} /></div>
+          <div className="frow artist-editor-field"><label>{t('albumPage.artists')}</label>
+            <ArtistEditor value={credits} onChange={setCredits}
+                          suggestions={artistOptions} t={t} /></div>
           <div className="frow"><label>{t('albumPage.title')}</label>
             <input className="tin" value={f.title} onChange={set('title')} /></div>
           <div className="frow"><label>{t('albumPage.year')}</label>
@@ -1019,8 +1025,64 @@ function Gallery({ album, isAdmin, onChanged }) {
   )
 }
 
-/* 曲目管理：拖拽排序 / 改名 / 删除 / 补传音频（管理员） */
-function TracksDialog({ album, onClose, onChanged }) {
+function TrackArtistsDialog({ album, track, artistOptions, onClose, onSaved }) {
+  const { t } = useI18n()
+  const [custom, setCustom] = useState(!!track.hasCustomArtists)
+  const [credits, setCredits] = useState(() => track.hasCustomArtists
+    ? creditsOf(track) : creditsOf(album))
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  const save = async () => {
+    const artists = credits.map((artist) => ({
+      name: artist.name.trim(), sort: (artist.sort || artist.name).trim(),
+    }))
+    const unique = new Set(artists.map((artist) => artist.name.toLocaleLowerCase()))
+    if (custom && (!artists.length || artists.some((artist) => !artist.name)
+        || unique.size !== artists.length || artists.length > 24
+        || artistCreditText({ artists }).length > 500)) {
+      toast(t('tracksManage.artistInvalid'), 'err')
+      return
+    }
+    setBusy(true)
+    try {
+      await api.patchTrack(album.id, track.id, { artists: custom ? artists : [] })
+      onSaved()
+    } catch (error) { toast(error.message, 'err') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog title={t('tracksManage.artistTitle', track.title)} onClose={onClose}
+            className="track-artist-dialog">
+      <label className="track-credit-mode">
+        <input type="checkbox" checked={custom}
+               onChange={(event) => {
+                 const enabled = event.target.checked
+                 setCustom(enabled)
+                 if (enabled && !credits.length) setCredits(creditsOf(album))
+               }} />
+        <span><b>{t('tracksManage.customArtists')}</b>
+          <small>{custom ? t('tracksManage.customArtistsHint')
+            : t('tracksManage.inheritsArtists', artistCreditText(album))}</small>
+        </span>
+      </label>
+      {custom && (
+        <ArtistEditor value={credits} onChange={setCredits}
+                      suggestions={artistOptions} t={t} />
+      )}
+      <div className="actions">
+        <button className="btn" onClick={onClose}>{t('common.cancel')}</button>
+        <button className="btn primary" disabled={busy} onClick={save}>
+          {busy ? <I.spin /> : t('common.save')}
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
+/* 曲目管理：拖拽排序 / 改名 / 艺人署名 / 删除 / 补传音频（管理员） */
+function TracksDialog({ album, artistOptions, onClose, onChanged }) {
   const { t } = useI18n()
   const [rows, setRows] = useState(album.tracks)
   const [orderDirty, setOrderDirty] = useState(false)
@@ -1029,6 +1091,7 @@ function TracksDialog({ album, onClose, onChanged }) {
   const [armed, setArmed] = useState('')   // 待二次确认删除的曲目 id
   const [adding, setAdding] = useState([]) // [{name, pct}]
   const [rescanning, setRescanning] = useState(false)
+  const [creditTrack, setCreditTrack] = useState(null)
   const dragIdx = useRef(-1)
   const saveOrderInFlight = useRef(false)
   const addFilesInFlight = useRef(false)
@@ -1115,10 +1178,14 @@ function TracksDialog({ album, onClose, onChanged }) {
           await uploadFileToOneDrive(path, f, (done) =>
             setAdding((a) => a.map((x) =>
               x.name === f.name ? { ...x, pct: Math.round(done / f.size * 100) } : x)))
+          const taggedArtists = creditsFromTags(meta)
           await api.addTrack(album.id, {
             path, title: meta.title, track: meta.track, disc: meta.disc,
             duration: meta.duration, format: meta.format,
             bitrate: meta.bitrate || null, size: meta.size,
+            ...(taggedArtists.length
+              && !sameArtistNames(taggedArtists, creditsOf(album))
+              ? { artists: taggedArtists } : {}),
           })
         } catch (e) {
           toast(t('tracksManage.uploadFail', f.name, e.message), 'err')
@@ -1141,7 +1208,8 @@ function TracksDialog({ album, onClose, onChanged }) {
     setRescanning(true)
     try {
       await api.scanFolder(album.folder, {
-        artist: album.artist, title: album.title, year: album.year,
+        artist: album.artist, artists: album.artists,
+        title: album.title, year: album.year,
       })
       toast(t('tracksManage.rescanned'), 'ok')
       await refresh()
@@ -1173,6 +1241,16 @@ function TracksDialog({ album, onClose, onChanged }) {
                    onBlur={(e) => rename(tr, e.target.value)}
                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
             <span className="td-dur">{fmtDur(tr.duration)}</span>
+            <button type="button"
+                    className={`icon-btn xs td-artists${tr.hasCustomArtists ? ' on' : ''}`}
+                    title={tr.hasCustomArtists
+                      ? t('tracksManage.editArtists', artistCreditText(tr))
+                      : t('tracksManage.inheritedArtists', artistCreditText(album))}
+                    aria-label={t('tracksManage.editArtists', artistCreditText(tr))}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={() => setCreditTrack(tr)}>
+              <I.user size={14} />
+            </button>
             <span className="td-updown">
               <button className="icon-btn xs" disabled={i === 0}
                       onClick={() => move(i, i - 1)}><I.chevUp size={14} /></button>
@@ -1228,6 +1306,15 @@ function TracksDialog({ album, onClose, onChanged }) {
           </button>
         )}
       </div>
+      {creditTrack && (
+        <TrackArtistsDialog album={album} track={creditTrack}
+                            artistOptions={artistOptions}
+                            onClose={() => setCreditTrack(null)}
+                            onSaved={async () => {
+                              setCreditTrack(null)
+                              await refresh()
+                            }} />
+      )}
     </Dialog>
   )
 }
@@ -1236,7 +1323,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
                                     currentAlbumId, onTogglePlayback,
                                     isAdmin, favAlbums, favTracks, toggleFav,
                                     onChanged, onOpen, onOpenArtist, onOpenGenre,
-                                    onAuthError }) {
+                                    onAuthError, artistOptions }) {
   const { t } = useI18n()
   const [al, setAl] = useState(null)
   const [loadError, setLoadError] = useState('')
@@ -1353,8 +1440,8 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
         </div>
         <div className="hero-info">
           <div className="hero-identity">
-            <div className="hero-artist link" onClick={() => onOpenArtist(al.artist)}>
-              {al.artist}</div>
+            <ArtistCredit value={al} onOpen={onOpenArtist}
+                          className="hero-artist" />
             <h1 className="hero-title">{al.title}</h1>
             <div className="hero-meta">
               {al.year && <span>{al.year}</span>}
@@ -1504,7 +1591,13 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
                 ? <span className="eq"><i /><i /><i /></span>
                 : t.track ?? i + 1}
             </span>
-            <span className="t-title">{t.title}</span>
+            <span className="album-track-main">
+              <span className="t-title">{t.title}</span>
+              {t.hasCustomArtists && (
+                <ArtistCredit value={t} onOpen={onOpenArtist}
+                              className="album-track-artists" />
+              )}
+            </span>
             <span className="t-fmt">
               {t.format}{t.bitrate ? ` · ${t.bitrate}k` : ''}</span>
             <span className="t-dur">{fmtDur(t.duration)}</span>
@@ -1534,10 +1627,12 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       )}
 
       {dlg === 'edit' &&
-        <EditDialog album={al} onClose={() => setDlg('')}
+        <EditDialog album={al} artistOptions={artistOptions}
+                    onClose={() => setDlg('')}
                     onSaved={() => { setDlg(''); load(); onChanged() }} />}
       {dlg === 'tracks' &&
-        <TracksDialog album={al} onClose={() => { setDlg(''); load() }}
+        <TracksDialog album={al} artistOptions={artistOptions}
+                      onClose={() => { setDlg(''); load() }}
                       onChanged={() => { load(); onChanged() }} />}
       {dlg === 'rym' &&
         <RymDialog album={al} onClose={() => setDlg('')}

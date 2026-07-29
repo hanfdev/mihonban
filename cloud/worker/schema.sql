@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS track_imports (
   bitrate    INTEGER,
   size       INTEGER,
   path       TEXT NOT NULL,
+  artist_mode INTEGER NOT NULL DEFAULT 0, -- 0 = preserve override; 1 = replace
   created_at INTEGER NOT NULL,
   PRIMARY KEY (import_id, id),
   UNIQUE (import_id, path)
@@ -95,12 +96,63 @@ CREATE TABLE IF NOT EXISTS favorites (
   PRIMARY KEY (kind, item_id)
 );
 
--- 艺术家附加信息（头像等；name 与 albums.artist 精确匹配）
+-- 艺术家附加信息（头像等；name 是稳定的展示名称）
 CREATE TABLE IF NOT EXISTS artists (
   name        TEXT PRIMARY KEY,
   avatar_path TEXT NOT NULL DEFAULT '', -- 存储相对路径
   storage_id  TEXT                      -- 有头像时记录其命名存储后端
 );
+
+-- 专辑与艺人的有序多对多关系。albums.artist / artist_sort 继续保留为
+-- 兼容旧客户端的显示字段；所有艺人维度的业务逻辑以本表为准。
+CREATE TABLE IF NOT EXISTS album_artists (
+  album_id   TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  artist     TEXT NOT NULL,
+  artist_sort TEXT NOT NULL DEFAULT '',
+  position   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (album_id, artist),
+  UNIQUE (album_id, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_album_artists_artist
+  ON album_artists(artist, album_id);
+
+-- Optional per-track credit override. No rows means inherit album artists.
+CREATE TABLE IF NOT EXISTS track_artists (
+  track_id    TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+  artist      TEXT NOT NULL,
+  artist_sort TEXT NOT NULL DEFAULT '',
+  position    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (track_id, artist),
+  UNIQUE (track_id, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_track_artists_artist
+  ON track_artists(artist, track_id);
+
+CREATE TABLE IF NOT EXISTS track_artist_imports (
+  import_id   TEXT NOT NULL,
+  track_id    TEXT NOT NULL,
+  artist      TEXT NOT NULL,
+  artist_sort TEXT NOT NULL DEFAULT '',
+  position    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (import_id, track_id, artist),
+  UNIQUE (import_id, track_id, position)
+);
+
+-- Shared contributor surface for visibility, avatars, and storage ownership.
+-- Album credits win when the same artist also has a per-track credit.
+CREATE VIEW IF NOT EXISTS artist_album_links AS
+  SELECT album_id, artist, artist_sort FROM album_artists
+  UNION ALL
+  SELECT t.album_id, ta.artist,
+         COALESCE(MIN(NULLIF(TRIM(ta.artist_sort), '')), ta.artist) AS artist_sort
+  FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM album_artists aa
+    WHERE aa.album_id = t.album_id AND aa.artist = ta.artist
+  )
+  GROUP BY t.album_id, ta.artist;
 
 -- 专辑内页/写真等附加图片（管理员上传，存 OneDrive，专辑删除时级联）
 CREATE TABLE IF NOT EXISTS album_images (

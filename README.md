@@ -7,6 +7,7 @@ Mihonban is a private, self-hosted music library with a responsive web player. R
 ## Highlights
 
 - Responsive album, track, artist, favorites, import, and administration views
+- Ordered multi-artist album credits plus per-track collaboration overrides, with per-artist pages, search, and player links
 - Listener and administrator passwords, plus an optional passwordless read-only guest mode
 - Persistent playback queue, complete mobile previous/play-pause/next controls, gesture-safe playback, shuffle/repeat, Range seeking, and Media Session controls
 - Named OneDrive, WebDAV, Google Drive, and Node-only local-folder storage backends

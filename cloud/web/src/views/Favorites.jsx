@@ -8,6 +8,7 @@ import { AlbumCard } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
 import { defaultCollator, jaCollator } from '../format.js'
 import { locateTrackRow } from '../track-locate.js'
+import { artistSearchText, creditsOf, hasArtist } from '../artist-credit.jsx'
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 const storedSort = (key, allowed) => {
@@ -90,7 +91,8 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
 
   const aArtists = useMemo(() => {
     const m = new Map()
-    favAlbumsRaw?.forEach((a) => m.set(a.artist, (m.get(a.artist) || 0) + 1))
+    favAlbumsRaw?.forEach((a) => creditsOf(a).forEach((credit) =>
+      m.set(credit.name, (m.get(credit.name) || 0) + 1)))
     return [...m.entries()].sort((x, y) => y[1] - x[1])
   }, [favAlbumsRaw])
   const aDecades = useMemo(() => {
@@ -114,9 +116,10 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
     if (!favAlbumsRaw) return null
     const wantG = fGenre.toLowerCase()
     const out = favAlbumsRaw.filter((a) => {
-      if (needle && !zhNorm(`${a.title} ${a.artist} ${a.artistSort || ''} ${romajiOf(a.artist)}`)
+      if (needle && !zhNorm(`${a.title} ${artistSearchText(a)} ${creditsOf(a)
+        .map((credit) => romajiOf(credit.name)).join(' ')}`)
         .includes(needle)) return false
-      if (fArtist && a.artist !== fArtist) return false
+      if (fArtist && !hasArtist(a, fArtist)) return false
       if (fDecade && decadeOf(a.year) !== fDecade) return false
       if (wantG && ![...(a.genres || []), ...(a.secondaryGenres || [])]
         .some((g) => g.toLowerCase() === wantG)) return false
@@ -131,7 +134,9 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
     const byId = new Map(tracks.map((t) => [t.id, t]))
     const out = favs.tracks.map((f) => byId.get(f.id)).filter(Boolean)
       .filter((t) => !needle ||
-        zhNorm(`${t.title} ${t.artist} ${romajiOf(t.artist)} ${t.albumTitle}`).includes(needle))
+        zhNorm(`${t.title} ${artistSearchText(t)} ${creditsOf(t)
+          .map((credit) => romajiOf(credit.name)).join(' ')} ${t.albumTitle}`)
+          .includes(needle))
     const fn = TRACK_SORTS[tSort].fn
     return fn ? [...out].sort(fn) : out // fav 模式 = 后端顺序
   }, [tracks, favs, needle, tSort])

@@ -5,25 +5,30 @@ import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { jaCollator } from '../format.js'
+import { creditsOf } from '../artist-credit.jsx'
+import { compareArtistActivity } from '../artist-ranking.js'
 
 export default function ArtistsPage({ albums, artists, q, avatarVer,
                                       onOpenArtist, isAdmin,
                                       showHidden, setShowHidden, onClearQuery }) {
   const { t } = useI18n()
-  const [sort, setSort] = useState('name')
+  const [sort, setSort] = useState('count')
   const [genre, setGenre] = useState('')
 
   const SORTS = useMemo(() => ({
+    count: { label: t('artists.sortCount'),
+      fn: compareArtistActivity },
     name: { label: t('artists.sortName'),
       fn: (a, b) => jaCollator.compare(a.sort, b.sort) },
-    count: { label: t('artists.sortCount'),
-      fn: (a, b) => b.count - a.count || jaCollator.compare(a.sort, b.sort) },
     added: { label: t('artists.sortAdded'),
-      fn: (a, b) => b.latest - a.latest },
+      fn: (a, b) => b.latest - a.latest
+        || jaCollator.compare(a.sort, b.sort) },
   }), [t])
 
   const noteBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, a.note])), [artists])
+  const sortBy = useMemo(() =>
+    new Map((artists || []).map((a) => [a.name, a.sort || a.name])), [artists])
   // 有自定义头像时 URL 带 'c'，避免浏览器把「无头像 302 封面」缓存当成头像
   const avatarFlagBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, !!a.hasAvatar])), [artists])
@@ -32,19 +37,33 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
     const m = new Map()
     for (const a of albums || []) {
       if (a.hidden && !(isAdmin && showHidden)) continue
-      const e = m.get(a.artist) || {
-        name: a.artist, sort: a.artistSort || a.artist,
-        count: 0, hiddenCount: 0, genres: new Set(), latest: 0, years: [],
+      for (const credit of creditsOf(a)) {
+        const e = m.get(credit.name) || {
+          name: credit.name, sort: sortBy.get(credit.name) || credit.sort || credit.name,
+          count: 0, trackCount: 0, hiddenCount: 0,
+          genres: new Set(), latest: 0, years: [],
+        }
+        e.count++
+        if (a.hidden) e.hiddenCount++
+        ;(a.genres || []).forEach((g) => e.genres.add(g))
+        e.latest = Math.max(e.latest, a.updatedAt || 0)
+        if (a.year) e.years.push(a.year)
+        m.set(credit.name, e)
       }
-      e.count++
-      if (a.hidden) e.hiddenCount++
-      ;(a.genres || []).forEach((g) => e.genres.add(g))
-      e.latest = Math.max(e.latest, a.updatedAt || 0)
-      if (a.year) e.years.push(a.year)
-      m.set(a.artist, e)
+    }
+    for (const artist of artists || []) {
+      const trackCount = isAdmin && showHidden
+        ? artist.featuredTrackCount : artist.visibleFeaturedTrackCount
+      const e = m.get(artist.name) || {
+        name: artist.name, sort: artist.sort || artist.name,
+        count: 0, trackCount: 0, hiddenCount: 0,
+        genres: new Set(), latest: 0, years: [],
+      }
+      e.trackCount = trackCount || 0
+      if (e.count || e.trackCount) m.set(artist.name, e)
     }
     return [...m.values()]
-  }, [albums, isAdmin, showHidden])
+  }, [albums, artists, isAdmin, showHidden, sortBy])
 
   const hiddenAlbumCount = useMemo(() =>
     (albums || []).filter((album) => album.hidden).length, [albums])
@@ -136,32 +155,47 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
             <div className="big">{t('artists.empty')}</div>
           </div>
         )}
-        {albums && shown.map((e) => (
-          <div key={e.name}
-               className={`acard ${e.hiddenCount === e.count ? 'is-hidden' : ''}`}
-               onClick={() => onOpenArtist(e.name)}>
-            <div className="acard-avatar">
-              <img loading="lazy"
-                   src={artistArtUrl(e.name,
-                     avatarFlagBy.get(e.name)
-                       ? `c${avatarVer || ''}`
-                       : avatarVer)}
-                   alt="" />
+        {albums && shown.map((e) => {
+          const year = yearsOf(e)
+          const featured = e.trackCount
+            ? t('artists.featuredTracks', e.trackCount) : ''
+          const primary = e.count
+            ? [t('artists.albums', e.count), year].filter(Boolean).join(' · ')
+            : featured
+          const secondary = e.count ? featured : ''
+          return (
+            <div key={e.name}
+                 className={`acard ${e.count > 0 && !e.trackCount
+                   && e.hiddenCount === e.count ? 'is-hidden' : ''}`}
+                 onClick={() => onOpenArtist(e.name)}>
+              <div className="acard-avatar">
+                <img loading="lazy"
+                     src={artistArtUrl(e.name,
+                       avatarFlagBy.get(e.name)
+                         ? `c${avatarVer || ''}`
+                         : avatarVer)}
+                     alt="" />
+              </div>
+              {e.hiddenCount > 0 && (
+                <span className="acard-hidden-mark" title={t('library.showHidden')}>
+                  <I.eye size={11} /><b>{e.hiddenCount}</b>
+                </span>
+              )}
+              <div className="acard-name" title={e.name}>{e.name}</div>
+              <div className="acard-meta">
+                <div className="acard-sub" title={primary}>
+                  <span>{primary}</span>
+                  {noteBy.get(e.name)
+                    ? <I.list size={10} aria-hidden="true" />
+                    : null}
+                </div>
+                {secondary && (
+                  <div className="acard-featured" title={secondary}>{secondary}</div>
+                )}
+              </div>
             </div>
-            {e.hiddenCount > 0 && (
-              <span className="acard-hidden-mark" title={t('library.showHidden')}>
-                <I.eye size={11} /><b>{e.hiddenCount}</b>
-              </span>
-            )}
-            <div className="acard-name" title={e.name}>{e.name}</div>
-            <div className="acard-sub">
-              {t('artists.albums', e.count)}{yearsOf(e) ? ` · ${yearsOf(e)}` : ''}
-              {noteBy.get(e.name)
-                ? <I.list size={10} style={{ marginLeft: 5, opacity: 0.6 }} />
-                : null}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </>
   )

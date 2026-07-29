@@ -6,6 +6,7 @@ import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { defaultCollator, jaCollator } from '../format.js'
 import { locateTrackRow } from '../track-locate.js'
+import { ArtistCredit, artistSearchText, creditsOf } from '../artist-credit.jsx'
 
 function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
                          onToggleFav, onPlay, onOpen, onOpenArtist, showAlbum = true }) {
@@ -32,8 +33,7 @@ function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
             : <span className="t-name">{t.title}</span>}
         </span>
         <span className="t-sub">
-          <a onClick={(e) => { e.stopPropagation(); onOpenArtist(t.artist) }}>
-            {t.artist}</a>
+          <ArtistCredit value={t} onOpen={onOpenArtist} />
         </span>
       </span>
       {showAlbum && (
@@ -99,8 +99,8 @@ export default function TracksPage({ tracks, ensureTracks, q, isAdmin,
   // 排序只随排序键/可见性重算。输出与单一 memo 版逐字节一致。
   const withHay = useMemo(() => tracks && tracks.map((tr) => ({
     tr,
-    hay: zhNorm(`${tr.title} ${tr.artist} ${tr.artistSort || ''} ` +
-      `${romajiOf(tr.artist)} ${tr.albumTitle}`),
+    hay: zhNorm(`${tr.title} ${artistSearchText(tr)} ${creditsOf(tr)
+      .map((credit) => romajiOf(credit.name)).join(' ')} ${tr.albumTitle}`),
   })), [tracks])
 
   const sorted = useMemo(() => {

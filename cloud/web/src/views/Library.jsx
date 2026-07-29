@@ -6,6 +6,8 @@ import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { albumPlaybackState } from '../album-playback.js'
 import { defaultCollator, jaCollator } from '../format.js'
+import { ArtistCredit, artistCreditText, artistSearchText, creditsOf,
+         hasArtist } from '../artist-credit.jsx'
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 
@@ -25,9 +27,10 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
   return (
     <div className={`card ${a.hidden ? 'is-hidden' : ''}`}>
       <div className="cover" role="button" tabIndex={0}
-           aria-label={`${a.title} · ${a.artist}`}
+           aria-label={`${a.title} · ${artistCreditText(a)}`}
            onKeyDown={openAlbumWithKey} onClick={() => onOpen(a.id)}>
-        <img loading="lazy" src={artUrl(a.id, 400)} alt={`${a.title} · ${a.artist}`} />
+        <img loading="lazy" src={artUrl(a.id, 400)}
+             alt={`${a.title} · ${artistCreditText(a)}`} />
         {a.hidden && <span className="badge-hidden">{t('albumPage.hiddenBadge')}</span>}
         <button className={`play-fab ${playback.current ? 'is-current' : ''} ${
                   playback.playing ? 'is-playing' : ''}`}
@@ -49,10 +52,8 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
              onClick={() => onOpen(a.id)} title={a.title}>{a.title}</div>
         <div className="card-sub">
           <span className="card-byline">
-            <span className="card-artist" title={a.artist}
-                  onClick={() => onOpenArtist(a.artist)}>
-              {a.artist}
-            </span>
+            <ArtistCredit value={a} onOpen={onOpenArtist}
+                          className="card-artist" />
             {a.year ? <span className="card-year">· {a.year}</span> : null}
           </span>
           <Rating value={a.rym?.rating} />
@@ -117,7 +118,8 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
 
   const artistList = useMemo(() => {
     const m = new Map()
-    optionAlbums.forEach((a) => m.set(a.artist, (m.get(a.artist) || 0) + 1))
+    optionAlbums.forEach((a) => creditsOf(a).forEach((credit) =>
+      m.set(credit.name, (m.get(credit.name) || 0) + 1)))
     return [...m.entries()].sort((x, y) => y[1] - x[1])
   }, [optionAlbums])
 
@@ -140,7 +142,8 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     const m = new Map()
     for (const a of albums || []) {
       m.set(a.id, zhNorm(
-        `${a.title} ${a.artist} ${a.artistSort || ''} ${romajiOf(a.artist)} ` +
+        `${a.title} ${artistSearchText(a)} ${creditsOf(a)
+          .map((credit) => romajiOf(credit.name)).join(' ')} ` +
         `${(a.genres || []).join(' ')} ${(a.secondaryGenres || []).join(' ')}`))
     }
     return m
@@ -156,7 +159,7 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
       if (needle && !searchHay.get(a.id).includes(needle)) return false
       if (minR && (a.rym?.rating ?? 0) < minR) return false
       if (decade && decadeOf(a.year) !== decade) return false
-      if (artist && a.artist !== artist) return false
+      if (artist && !hasArtist(a, artist)) return false
       if (wantG && ![...(a.genres || []), ...(a.secondaryGenres || [])]
         .some((g) => g.toLowerCase() === wantG)) return false
       return true
