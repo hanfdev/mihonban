@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { artistDetail, discogsRef, releaseImages, releaseSearch,
+import { artistDetail, discogsRef, releaseImages, releaseSearch, releaseThumbnail,
          resetDiscogsCacheForTest } from '../src/discogs-api.js'
 
 test('browser Discogs search uses the public API and caches results', async () => {
@@ -16,7 +16,8 @@ test('browser Discogs search uses the public API and caches results', async () =
     return Response.json({ results: [{
       id: 42, title: 'Artist - Album', year: 1984, country: 'Japan',
       format: ['LP'], label: ['Label'], genre: ['Electronic'],
-      style: ['Synth-pop'], thumb: 'https://i.discogs.com/thumb.jpeg',
+      style: ['Synth-pop'], thumb: '',
+      cover_image: 'https://i.discogs.com/cover.jpeg',
     }] })
   }
   try {
@@ -24,6 +25,7 @@ test('browser Discogs search uses the public API and caches results', async () =
     const first = await releaseSearch(album)
     const second = await releaseSearch(album)
     assert.equal(first.candidates[0].year, 1984)
+    assert.equal(first.candidates[0].thumb, 'https://i.discogs.com/cover.jpeg')
     assert.deepEqual(second, first)
     assert.equal(seen.length, 1)
     assert.equal(seen[0].origin, 'https://api.discogs.com')
@@ -63,6 +65,31 @@ test('browser Discogs details use stale cache during upstream rate limits', asyn
     assert.equal(calls, 2)
   } finally {
     Date.now = realNow
+    globalThis.fetch = realFetch
+    if (realCaches === undefined) delete globalThis.caches
+    else globalThis.caches = realCaches
+    resetDiscogsCacheForTest()
+  }
+})
+
+test('missing search artwork is filled from the cached release details', async () => {
+  const realFetch = globalThis.fetch
+  const realCaches = globalThis.caches
+  let calls = 0
+  delete globalThis.caches
+  resetDiscogsCacheForTest()
+  globalThis.fetch = async () => {
+    calls += 1
+    return Response.json({ images: [{
+      type: 'primary', uri: 'https://i.discogs.com/full.jpeg',
+      uri150: 'https://i.discogs.com/thumb.jpeg', width: 600, height: 600,
+    }] })
+  }
+  try {
+    assert.equal(await releaseThumbnail('42'), 'https://i.discogs.com/thumb.jpeg')
+    assert.equal((await releaseImages('42')).images.length, 1)
+    assert.equal(calls, 1)
+  } finally {
     globalThis.fetch = realFetch
     if (realCaches === undefined) delete globalThis.caches
     else globalThis.caches = realCaches

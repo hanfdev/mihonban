@@ -490,17 +490,27 @@ select option { background-color: var(--bg2); color: var(--ink); }
   min-width: 0;
   flex: none;
 }
-.card-sub .card-artist {
+.card-byline {
+  display: flex;
+  align-items: baseline;
+  gap: .42em;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
+}
+.card-byline .card-artist {
+  min-width: 0;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .card-year {
-  flex: none;
+  flex: 0 0 auto;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.card-sub > .rating-pill {
+  margin-left: auto;
 }
 
 .rating-pill {
@@ -2760,6 +2770,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   place-items: center;
   color: var(--ink-faint);
 }
+.dg-noimg.loading { color: var(--gold-dim); }
 .dg-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .dg-title {
   font-size: 13.5px; color: var(--ink);

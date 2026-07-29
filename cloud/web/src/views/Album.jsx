@@ -313,6 +313,58 @@ function RymDialog({ album, onClose, onSaved }) {
 /* Discogs 导入：自动匹配（服务器调官方 API）或手动拖入保存的发行页 HTML。
  * 只取风格数据：Discogs Style（细）→ 主风格，Genre（粗）→ 次风格，
  * 与现有值大小写不敏感去重后合并。 */
+function DiscogsReleaseThumb({ albumId, candidate }) {
+  const initial = candidate.thumb || ''
+  const [src, setSrc] = useState(initial)
+  const [phase, setPhase] = useState(initial ? 'ready' : 'idle')
+  const targetRef = useRef(null)
+
+  useEffect(() => {
+    setSrc(initial)
+    setPhase(initial ? 'ready' : 'idle')
+  }, [candidate.id, initial])
+
+  useEffect(() => {
+    if (phase !== 'idle' || !candidate.id) return undefined
+    const target = targetRef.current
+    if (!target || typeof IntersectionObserver === 'undefined') {
+      setPhase('loading')
+      return undefined
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting) return
+      setPhase('loading')
+      observer.disconnect()
+    }, { root: target.closest('.dg-cands'), rootMargin: '96px 0px' })
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [candidate.id, phase])
+
+  useEffect(() => {
+    if (phase !== 'loading' || src || !candidate.id) return undefined
+    let live = true
+    api.discogsThumbnail(albumId, String(candidate.id))
+      .then((url) => {
+        if (!live) return
+        setSrc(url || '')
+        setPhase(url ? 'ready' : 'empty')
+      })
+      .catch(() => { if (live) setPhase('empty') })
+    return () => { live = false }
+  }, [albumId, candidate.id, phase, src])
+
+  if (src) {
+    return <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer"
+                onError={() => { setSrc(''); setPhase('empty') }} />
+  }
+  const loading = phase === 'idle' || phase === 'loading'
+  return (
+    <span ref={targetRef} className={`dg-noimg ${loading ? 'loading' : ''}`}>
+      {loading ? <I.spin size={16} /> : <I.disc size={18} />}
+    </span>
+  )
+}
+
 function DiscogsDialog({ album, onClose, onSaved }) {
   const { t } = useI18n()
   const [cands, setCands] = useState(null)  // null = 匹配中
@@ -534,9 +586,7 @@ function DiscogsDialog({ album, onClose, onSaved }) {
             <div className="dg-cands">
               {cands.map((c) => (
                 <div key={c.id} className="dg-cand" onClick={() => pick(c)}>
-                  {c.thumb
-                    ? <img src={c.thumb} alt="" loading="lazy" />
-                    : <span className="dg-noimg"><I.disc size={18} /></span>}
+                  <DiscogsReleaseThumb albumId={album.id} candidate={c} />
                   <span className="dg-main">
                     <span className="dg-title">{c.title}</span>
                     <span className="dg-sub">

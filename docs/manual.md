@@ -70,7 +70,7 @@ Mihonban does not automate requests to Rate Your Music. Save a release page manu
 
 ## Discogs
 
-Administrators can search releases or artists and preview an import of images, genres/styles, and biography text. On Cloudflare, the administrator browser calls the official public API directly and caches public metadata locally, avoiding shared Worker egress limits. The personal token in Admin is optional and is used only by the server-side fallback; it is never sent to the browser. Image downloads still pass through the authenticated Worker and its Discogs-host, size, and file-signature checks.
+Administrators can search releases or artists and preview an import of images, genres/styles, and biography text. On Cloudflare, the administrator browser calls the official public API directly and caches public metadata locally, avoiding shared Worker egress limits. The personal token in Admin is optional and is used only by the server-side fallback; it is never sent to the browser. When search results omit artwork, visible candidates lazily reuse the cached release details to fill it in. Preview thumbnails are public Discogs images loaded by the browser; files actually imported into configured storage still pass through the authenticated Worker and its Discogs-host, size, and file-signature checks.
 
 Album-image imports are idempotent. Re-importing the same Discogs images skips the copies already registered for that release instead of creating duplicates.
 

@@ -119,7 +119,8 @@ export async function releaseSearch(album) {
     id: result.id, title: result.title || '', year: result.year || '',
     country: result.country || '', format: (result.format || []).slice(0, 3).join(' · '),
     label: (result.label || [])[0] || '', genres: result.genre || [],
-    styles: result.style || [], thumb: result.thumb || '',
+    styles: result.style || [],
+    thumb: result.thumb || result.cover_image || '',
     url: result.id ? `https://www.discogs.com/release/${result.id}` : '',
   })) }
 }
@@ -141,6 +142,11 @@ export async function releaseImages(value) {
   const ref = discogsRef(value)
   if (!ref) throw new Error('Invalid Discogs release / master URL')
   return { images: imagesOf(await json(`${ref.kind}/${ref.id}`)) }
+}
+
+export async function releaseThumbnail(value) {
+  const { images } = await releaseImages(value)
+  return images[0]?.thumb || ''
 }
 
 export async function artistSearch(name) {

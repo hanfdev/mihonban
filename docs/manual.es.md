@@ -70,7 +70,7 @@ Mihonban no automatiza las solicitudes a Rate Your Music. Guarda manualmente una
 
 ## Discogs
 
-Los administradores pueden buscar lanzamientos o artistas y previsualizar la importación de imágenes, géneros/estilos y biografías. En Cloudflare, el navegador administrador llama directamente a la API pública oficial de Discogs y guarda en caché local los metadatos públicos para evitar los límites de salida compartida del Worker. El token personal de Admin es opcional y solo se usa como respaldo del servidor; nunca se envía al navegador. Las imágenes siguen pasando por el Worker autenticado y sus comprobaciones de host Discogs, tamaño y firma de archivo.
+Los administradores pueden buscar lanzamientos o artistas y previsualizar la importación de imágenes, géneros/estilos y biografías. En Cloudflare, el navegador administrador llama directamente a la API pública oficial de Discogs y guarda en caché local los metadatos públicos para evitar los límites de salida compartida del Worker. El token personal de Admin es opcional y solo se usa como respaldo del servidor; nunca se envía al navegador. Cuando una búsqueda no incluye portada, solo los candidatos visibles reutilizan bajo demanda los detalles del lanzamiento ya almacenados en caché para completarla. Las miniaturas de vista previa son imágenes públicas de Discogs cargadas por el navegador; los archivos que se importan realmente al almacenamiento configurado siguen pasando por el Worker autenticado y sus comprobaciones de host Discogs, tamaño y firma de archivo.
 
 La importación de imágenes del álbum es idempotente. Al volver a importar las mismas imágenes de una publicación de Discogs, las ya registradas se omiten y no se crean copias duplicadas.
 

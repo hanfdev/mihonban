@@ -70,7 +70,7 @@ Mihonban n’automatise pas les requêtes à Rate Your Music. Sauvegardez manuel
 
 ## Discogs
 
-Les administrateurs peuvent rechercher les sorties ou artistes et prévisualiser l’importation d’images, genres/styles et biographies. Sur Cloudflare, le navigateur administrateur appelle directement l’API publique officielle de Discogs et met les métadonnées publiques en cache local afin d’éviter les limites de sortie partagée du Worker. Le token personnel dans Admin est facultatif et réservé au repli côté serveur ; il n’est jamais envoyé au navigateur. Les images passent toujours par le Worker authentifié et ses contrôles d’hôte Discogs, de taille et de signature de fichier.
+Les administrateurs peuvent rechercher les sorties ou artistes et prévisualiser l’importation d’images, genres/styles et biographies. Sur Cloudflare, le navigateur administrateur appelle directement l’API publique officielle de Discogs et met les métadonnées publiques en cache local afin d’éviter les limites de sortie partagée du Worker. Le token personnel dans Admin est facultatif et réservé au repli côté serveur ; il n’est jamais envoyé au navigateur. Lorsqu’une recherche ne fournit pas de pochette, seuls les candidats visibles réutilisent à la demande les détails de sortie déjà mis en cache pour la compléter. Les vignettes d’aperçu sont des images publiques Discogs chargées par le navigateur ; les fichiers réellement importés dans le stockage configuré passent toujours par le Worker authentifié et ses contrôles d’hôte Discogs, de taille et de signature de fichier.
 
 L’importation des images d’album est idempotente. Si les mêmes images d’une sortie Discogs sont importées de nouveau, celles déjà enregistrées sont ignorées et aucune copie en double n’est créée.
 

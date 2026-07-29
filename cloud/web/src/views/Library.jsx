@@ -48,11 +48,13 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
              onKeyDown={openAlbumWithKey}
              onClick={() => onOpen(a.id)} title={a.title}>{a.title}</div>
         <div className="card-sub">
-          <span className="card-artist" title={a.artist}
-                onClick={() => onOpenArtist(a.artist)}>
-            {a.artist}
+          <span className="card-byline">
+            <span className="card-artist" title={a.artist}
+                  onClick={() => onOpenArtist(a.artist)}>
+              {a.artist}
+            </span>
+            {a.year ? <span className="card-year">· {a.year}</span> : null}
           </span>
-          {a.year ? <span className="card-year">· {a.year}</span> : null}
           <Rating value={a.rym?.rating} />
         </div>
       </div>

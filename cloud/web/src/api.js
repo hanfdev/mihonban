@@ -73,6 +73,13 @@ export const api = {
   discogsImageList: (id, ref) =>
     discogsFirst(() => discogsDirect.releaseImages(ref),
       () => req("POST", `/api/album/${id}/discogs-image-list`, { ref })),
+  discogsThumbnail: (id, ref) => discogsFirst(
+    () => discogsDirect.releaseThumbnail(ref),
+    async () => {
+      const result = await req(
+        "POST", `/api/album/${id}/discogs-image-list`, { ref });
+      return result.images?.[0]?.thumb || '';
+    }),
   discogsImageSource: async (id, ref, uri) => {
     const response = await req(
       "POST", `/api/album/${id}/discogs-image-source`, { ref, uri }, true);

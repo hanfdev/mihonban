@@ -1057,7 +1057,7 @@ app.post("/api/album/:id/discogs-search", async (c) => {
         format: (r.format || []).slice(0, 3).join(" · "),
         label: (r.label || [])[0] || "",
         genres: r.genre || [], styles: r.style || [],
-        thumb: r.thumb || "",
+        thumb: r.thumb || r.cover_image || "",
         url: r.id ? `https://www.discogs.com/release/${r.id}` : "",
       })),
     });
