@@ -7,6 +7,7 @@ import { romajiOf } from '../aliases.js'
 import { AlbumCard } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
 import { defaultCollator, jaCollator } from '../format.js'
+import { locateTrackRow } from '../track-locate.js'
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 const storedSort = (key, allowed) => {
@@ -199,12 +200,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   }, [tab, hasCurrent, shownTracks?.length])
 
   const locate = () => {
-    const el = document.querySelector(`.trow[data-tid="${currentId}"]`)
-    if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.remove('flash'); void el.offsetWidth
-    el.classList.add('flash')
-    setTimeout(() => el.classList.remove('flash'), 1700)
+    locateTrackRow(currentId)
   }
 
   const playAlbum = async (a) => {

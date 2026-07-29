@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="見本盤">
-  <rect width="96" height="96" rx="22" fill="#0d0b09"/>
+  <rect width="96" height="96" fill="#0d0b09"/>
   <circle cx="48" cy="48" r="31" fill="#12100d" stroke="#4a4132" stroke-width="2.5"/>
   <circle cx="48" cy="48" r="23" fill="none" stroke="#2b251d" stroke-width="1.5"/>
   <circle cx="48" cy="48" r="12" fill="#ece3d0"/>

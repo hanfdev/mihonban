@@ -5,6 +5,7 @@ import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { defaultCollator, jaCollator } from '../format.js'
+import { locateTrackRow } from '../track-locate.js'
 
 function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
                          onToggleFav, onPlay, onOpen, onOpenArtist, showAlbum = true }) {
@@ -128,12 +129,7 @@ export default function TracksPage({ tracks, ensureTracks, q, isAdmin,
     !!currentId && !!shown?.some((tr) => tr.id === currentId), [shown, currentId])
 
   const locate = () => {
-    const el = document.querySelector(`.trow[data-tid="${currentId}"]`)
-    if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.remove('flash'); void el.offsetWidth
-    el.classList.add('flash')
-    setTimeout(() => el.classList.remove('flash'), 1700)
+    locateTrackRow(currentId)
   }
 
   return (

@@ -178,13 +178,15 @@ export function useI18n() {
 export function LangSelect({ className = '' }) {
   const { lang, setLang, langs, t } = useI18n()
   return (
-    <select className={`lang-sel ${className}`} value={lang}
-            aria-label={t('common.language')}
-            title={langs.find((l) => l.id === lang)?.label || t('common.language')}
-            onChange={(e) => setLang(e.target.value)}>
-      {langs.map((l) => (
-        <option key={l.id} value={l.id}>{l.short}</option>
-      ))}
-    </select>
+    <span className={`lang-wrap ${className}`}>
+      <select className="lang-sel" value={lang}
+              aria-label={t('common.language')}
+              title={langs.find((l) => l.id === lang)?.label || t('common.language')}
+              onChange={(e) => setLang(e.target.value)}>
+        {langs.map((l) => (
+          <option key={l.id} value={l.id}>{l.short}</option>
+        ))}
+      </select>
+    </span>
   )
 }

@@ -221,8 +221,29 @@ img { display: block; }
 
 .hdr-count { color: var(--ink-faint); font-size: 12.5px; white-space: nowrap; }
 .hdr-lang { flex: none; }
+.lang-wrap {
+  position: relative;
+  display: inline-flex;
+  color: var(--ink-faint);
+}
+.lang-wrap::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 8px;
+  width: 0;
+  height: 0;
+  margin-top: -2px;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  pointer-events: none;
+}
+.lang-wrap:focus-within { color: var(--ink); }
 .lang-sel {
   appearance: none;
+  -webkit-appearance: none;
   background: var(--bg1);
   border: 1px solid var(--line);
   color: var(--ink-dim);
@@ -236,11 +257,6 @@ img { display: block; }
   min-width: 0;
   max-width: 4.6em;
   cursor: pointer;
-  background-image: linear-gradient(45deg, transparent 50%, var(--ink-faint) 50%),
-    linear-gradient(135deg, var(--ink-faint) 50%, transparent 50%);
-  background-position: calc(100% - 11px) 55%, calc(100% - 7px) 55%;
-  background-size: 4px 4px, 4px 4px;
-  background-repeat: no-repeat;
 }
 .lang-sel:focus { outline: none; border-color: #4a4132; color: var(--ink); }
 .login-lang { margin-top: 14px; display: flex; justify-content: center; }
@@ -249,8 +265,8 @@ img { display: block; }
     padding: 4px 18px 4px 7px;
     font-size: 11px;
     max-width: 3.8em;
-    background-position: calc(100% - 9px) 55%, calc(100% - 5px) 55%;
   }
+  .lang-wrap::after { right: 6px; }
 }
 
 /* 中宽屏：主导航再收一点 padding，中间搜索列收窄 */
@@ -1347,10 +1363,10 @@ select.tin { appearance: auto; }
 .trow.flat {
   grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 52px 34px;
   padding: 7px 12px;
-  /* 全库曲目一次全渲染：跳过屏外行的布局/绘制（DOM 结构不变，
-     locate/flash 的 querySelector 照常工作）。42px 封面 + 上下 7px。 */
+  /* 全库曲目一次全渲染：跳过屏外行的布局/绘制（DOM 结构不变）。
+     预估高度必须与最终 60px 行高一致，否则远距离定位会累积偏移。 */
   content-visibility: auto;
-  contain-intrinsic-size: auto 56px;
+  contain-intrinsic-size: auto 60px;
 }
 .t-art {
   width: 42px; height: 42px;
@@ -3465,7 +3481,11 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   .cover .play-fab { right: 9px; bottom: 9px; width: 42px; height: 42px; }
   .tracks, .flat-list { padding-inline: 10px; }
   .trow { border-radius: 9px; }
-  .trow.flat { min-height: 58px; margin-block: 1px; }
+  .trow.flat {
+    min-height: 58px;
+    margin-block: 1px;
+    contain-intrinsic-size: auto 58px;
+  }
   .hero, .artist-hero { padding-inline: 16px; }
   .hero { padding-top: 22px; }
   .artist-hero { padding-top: 22px; }

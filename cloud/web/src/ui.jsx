@@ -202,13 +202,16 @@ export function usePointerReorder({ itemSelector, onMove, onCommit, enabled }) {
 export const Logo = ({ size = 26 }) => (
   <svg width={size} height={size} viewBox="0 0 96 96">
     <rect width="96" height="96" rx="22" fill="#1a1611"/>
-    <circle cx="48" cy="48" r="30" fill="none" stroke="#4a4132" strokeWidth="2.5"/>
-    <circle cx="48" cy="48" r="21" fill="none" stroke="#332d24" strokeWidth="1.5"/>
-    {/* 見本盤 = 白标宣传盘：米白唱标 + 一枚盖歪了的橙色「見本」章 */}
-    <circle cx="48" cy="48" r="10" fill="#ece3d0"/>
-    <circle cx="48" cy="48" r="2.6" fill="#0d0b09"/>
-    <rect x="46.5" y="39.8" width="10" height="5.2" rx="1.2" fill="#e8542f"
-          transform="rotate(-12 51.5 42.4)"/>
+    <circle cx="48" cy="48" r="31" fill="#12100d" stroke="#4a4132" strokeWidth="2.5"/>
+    <circle cx="48" cy="48" r="23" fill="none" stroke="#2b251d" strokeWidth="1.5"/>
+    {/* 見本盤 = 白标宣传盘：放大的米白唱标 + 一枚盖歪的橙红样本章。 */}
+    <circle cx="48" cy="48" r="12" fill="#ece3d0"/>
+    <circle cx="48" cy="48" r="3" fill="#0d0b09"/>
+    <g transform="rotate(-13 55 39)">
+      <rect x="47" y="35.5" width="17" height="7" rx="2" fill="#e8542f"/>
+      <path d="M51 38.9h9" stroke="#fff4e8" strokeWidth="1.2"
+            strokeLinecap="round" opacity=".7"/>
+    </g>
   </svg>
 )
 
