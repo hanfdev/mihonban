@@ -43,9 +43,10 @@ class ImportOutcome:
 def _render_config(cfg: Config) -> Path:
     tmpl_path = cfg.beets_template or repo_root() / "config" / "beets.yaml.tmpl"
     tmpl = tmpl_path.read_text(encoding="utf-8")
-    # mihonban_artist 插件所在目录。beets 2.12 把 pluginpath 的每一项直接并进
+    # Directory containing the mihonban_artist plugin. beets 2.12 adds every
     # beetsplug.__path__（plugins.py: beetsplug.__path__ = paths + ...），
-    # 所以这里要指向 beetsplug/ 目录**本身**。绝对路径，两种运行场景都对。
+    # pluginpath entry directly to its import path, so this must point to the
+    # beetsplug directory itself. An absolute path works in both execution modes.
     pluginpath = (repo_root() / "config" / "beetsplug").as_posix()
     rendered = tmpl.format(
         music_root=cfg.music_root.as_posix(),
@@ -127,8 +128,9 @@ def quiet_import(cfg: Config, album_dir: Path,
         if duplicate:
             detail = f"duplicate of existing library album; {detail}"
         elif detail.startswith("Skipping"):
-            # 自动匹配不自信（MusicBrainz 多半没有这张碟——现场盘/私录常见），
-            # 属设计内流程：进隔离区等 `mihonban review` 人工裁决
+            # Low-confidence automatic matching is expected when MusicBrainz lacks
+            # a release, as often happens with live recordings and private pressings.
+            # Quarantine it for manual resolution through `mihonban review`.
             detail = ("beets 无自信匹配（MB 可能无此发行），"
                       "运行 `mihonban review` 人工裁决入库")
     log.info("beets import %s -> %s %s",

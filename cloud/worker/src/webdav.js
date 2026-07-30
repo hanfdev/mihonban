@@ -222,10 +222,12 @@ export async function putSmallFile(conf, path, bytes, contentType) {
 export async function putFile(conf, path, body, contentType) {
   const parent = path.split("/").slice(0, -1).join("/");
   await ensureDir(conf, parent);
-  // timeout=0：整曲流式上传（浏览器→Worker→WebDAV）耗时随文件与上行带宽而定，
-  // 30–80MB 的 FLAC 在家用上行常超 30 秒。默认超时的计时器在响应头到达前就跑，
-  // 对 PUT 而言那要等整个请求体被服务端消费完，会中途 abort 掉几乎所有整轨上传。
-  // 元数据类请求（PROPFIND/MKCOL/DELETE）保持默认超时。
+  // timeout=0: streaming a full track from browser to Worker to WebDAV depends on
+  // file size and uplink speed. A 30-80MB FLAC commonly exceeds 30 seconds on a
+  // home uplink. The default timeout runs until response headers arrive, which
+  // for PUT means waiting for the server to consume the entire body; it would
+  // abort nearly every full-track upload midstream. Metadata requests such as
+  // PROPFIND, MKCOL, and DELETE retain the default timeout.
   const r = await dfetch(conf, path, {
     method: "PUT",
     headers: {

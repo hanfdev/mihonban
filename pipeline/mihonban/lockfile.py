@@ -1,10 +1,11 @@
-"""跨进程单实例锁。
+"""Cross-process single-instance lock.
 
-用 OS 级文件锁（Windows msvcrt / POSIX flock）：持有者存活期间锁有效，
-进程无论怎么死（崩溃、被杀）OS 都会自动释放——没有"陈旧锁文件"问题。
+Use an OS-level file lock (Windows msvcrt or POSIX flock). The lock remains valid
+while its owner lives and the OS releases it after any process exit, including a
+crash or kill, so stale lock files are not a concern.
 
-用途：防止两个 watch / ingest 同时抢收件箱里的同一批收件项
-（两个实例会互相把对方正在处理的文件搬走，输家崩溃）。
+This prevents two watch/ingest processes from racing for the same inbox batch,
+moving files out from under one another and crashing the loser.
 """
 
 from __future__ import annotations
@@ -17,8 +18,8 @@ log = logging.getLogger("mihonban.lock")
 
 
 def try_lock(path: Path):
-    """尝试拿独占锁。成功返回句柄（调用方保持引用，退出时可 release），
-    已被其他进程持有则返回 None。"""
+    """Try to acquire an exclusive lock. Return a handle that the caller retains
+    and releases on exit, or None when another process already owns it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         fd = os.open(str(path), os.O_CREAT | os.O_RDWR)
@@ -35,7 +36,7 @@ def try_lock(path: Path):
     except OSError:
         os.close(fd)
         return None
-    try:  # 记下持有者 PID，纯粹为了人肉排查方便
+    try:  # Record the owner's PID solely to aid manual diagnosis.
         os.ftruncate(fd, 0)
         os.lseek(fd, 0, os.SEEK_SET)
         os.write(fd, str(os.getpid()).encode())

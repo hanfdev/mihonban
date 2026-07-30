@@ -1,5 +1,5 @@
-// 浏览器端 RYM 专辑页解析器 —— 与 pipeline/mihonban/rym/parse.py 同一套选择器。
-// 只解析用户手动保存的 HTML 文件，绝不向 rateyourmusic.com 发请求。
+// Browser-side RYM album parser using the same selectors as pipeline/mihonban/rym/parse.py.
+// It parses only HTML saved manually by the user and never requests rateyourmusic.com.
 
 const directText = (el) => {
   if (!el) return "";

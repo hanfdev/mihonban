@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // 0.0.0.0：IPv4 的 localhost / 127.0.0.1 / 局域网 IP 都能进（默认有时只绑 ::1）
+    // Bind all interfaces so IPv4 localhost, 127.0.0.1, and LAN addresses work; some defaults bind only ::1.
     host: true,
     port: 5173,
     strictPort: true,

@@ -1,5 +1,5 @@
 // Lightweight i18n — no external deps.
-// Language names always appear in their own script (English, 简体中文, …).
+// Language names always appear in their own script (English, Simplified Chinese, etc.).
 // Prefer calm, clear phrasing over slang; keep Japanese product voice where branded.
 
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
@@ -66,8 +66,8 @@ const detect = () => {
   return detectBrowserLang()
 }
 
-// en 常驻主包兜底；其余语言按需异步加载（一个访客只用一种语言，
-// 没必要让所有人下载 7 套字典 + 6 套后台翻译）。
+// English remains in the main bundle as the fallback. Load other languages on demand because each visitor
+// uses only one, and everyone should not have to download all seven dictionaries and six admin translations.
 const DICTS = { en }
 
 const LOADERS = {
@@ -79,19 +79,19 @@ const LOADERS = {
   es: () => import('./locales/es.js'),
 }
 
-// 首屏语言包通常数百毫秒内完成。若浏览器/代理让 chunk 请求永久 pending，
-// 8 秒后先用英文兜底开放界面；原请求随后成功时仍会切回目标语言。
+// The initial locale chunk normally arrives within a few hundred milliseconds. If a browser or proxy leaves
+// the request pending indefinitely, open the interface in English after eight seconds and switch when it succeeds.
 export const LOCALE_BOOT_TIMEOUT_MS = 8000
 
-/** 确保语言包就绪；en 或未知语言立即返回。返回是否加载成功（失败不抛出，回退英文）。 */
+/** Ensure a locale bundle is ready. English and unknown locales return immediately; failures fall back without throwing. */
 export async function loadLocale(lang) {
   if (DICTS[lang] || !LOADERS[lang]) return true
   try {
     DICTS[lang] = (await LOADERS[lang]()).default
     return true
   } catch {
-    // 网络失败/陈旧 chunk 404：不缓存失败态，下次切回该语言会重试；
-    // 调用方据返回值决定继续（此刻先用英文兜底渲染，绝不白屏）。
+    // Do not cache network failures or stale-chunk 404s, so selecting the locale again retries.
+    // The caller can proceed in English for now; the interface must never remain blank.
     return false
   }
 }
@@ -118,15 +118,15 @@ const I18nCtx = createContext({ lang: 'en', t: (k) => k, setLang: () => {} })
 
 export function I18nProvider({ children }) {
   const [lang, setLangState] = useState(detect)
-  // 语言包异步到位后 +1，驱动 t 换新引用、消费者重渲染
+  // Increment when an async locale arrives so t gets a new reference and consumers re-render.
   const [dictVersion, setDictVersion] = useState(0)
   const ready = !!DICTS[lang] || !LOADERS[lang]
-  // 首屏（尚未渲染过任何内容）等待检测到的语言就绪，避免英文闪现；
-  // booted 之后切换语言绝不卸载子树（播放器状态必须存活）。
+  // Before first paint, wait for the detected locale to avoid an English flash.
+  // After boot, changing language never unmounts the subtree because player state must survive.
   const [booted, setBooted] = useState(ready)
 
-  // 静态 HTML 以英文作为脚本启动前的安全默认值；检测或用户切换语言后，
-  // 同步真实 BCP-47 标签，让读屏、断字和浏览器翻译使用正确语言。
+  // Static HTML uses English as a safe pre-script default. After detection or a user change, synchronize the real
+  // BCP-47 tag so screen readers, line breaking, and browser translation use the correct language.
   useEffect(() => {
     document.documentElement.lang = lang
   }, [lang])
@@ -137,8 +137,8 @@ export function I18nProvider({ children }) {
     const deadline = !booted
       ? setTimeout(() => { if (active) setBooted(true) }, LOCALE_BOOT_TIMEOUT_MS)
       : null
-    // 加载尝试完成后无论成败都放开启动闸门：成功用目标语言，失败用英文兜底
-    // （translate() 内置回退）。请求若永久 pending，上方 deadline 也会放开闸门。
+    // Release the startup gate after the load attempt: use the target locale on success or English on failure
+    // through translate()'s fallback. The deadline above also releases a permanently pending request.
     loadLocale(lang).then(() => {
       if (!active) return
       if (deadline !== null) clearTimeout(deadline)
@@ -149,8 +149,8 @@ export function I18nProvider({ children }) {
       active = false
       if (deadline !== null) clearTimeout(deadline)
     }
-    // booted 只决定本次是否需要首屏 deadline；把它加入依赖会在超时后
-    // 立即重复发起同一个 chunk 请求。切换语言由 lang 驱动，加载完成由 ready 驱动。
+    // booted only decides whether this run needs the first-paint deadline. Adding it as a dependency would immediately
+    // repeat the same chunk request after timeout. lang drives locale changes; ready drives load completion.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang, ready])
 
@@ -174,7 +174,7 @@ export function useI18n() {
   return useContext(I18nCtx)
 }
 
-/** Compact language picker — short codes (EN / 简 / JP …) for mobile density. */
+/** Compact language picker using short codes for mobile density. */
 export function LangSelect({ className = '' }) {
   const { lang, setLang, langs, t } = useI18n()
   return (

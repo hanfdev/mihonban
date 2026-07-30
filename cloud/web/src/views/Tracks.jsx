@@ -16,8 +16,8 @@ function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
          aria-label={`${t.title} — ${t.artist}`}
          onClick={() => onPlay(i)}
          onKeyDown={(e) => {
-           // 只响应落在行本身的按键；焦点在嵌套的收藏心/艺人链接上时放行，
-           // 否则回车会变成「播放」而不是「收藏」，把嵌套控件按死。
+           // Handle keys only when the row itself owns focus. Let nested favorite and artist controls receive their keys;
+           // otherwise Enter would play the track instead of activating the focused control.
            if (e.target !== e.currentTarget) return
            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(i) }
          }}>
@@ -52,8 +52,8 @@ function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
   )
 }
 
-// 播放态每变一次（切歌/暂停）不该 reconcile 几千行；只有「本行数据变了」
-// 或「本行正是/曾是当前曲目」才重渲染。回调引用不稳定时退化为原行为。
+// A playback-state change must not reconcile thousands of rows. Re-render only when this row's data changes or
+// it is/was the current track. Fall back to normal behavior when callback references are unstable.
 export const TrackRow = React.memo(TrackRowInner, (prev, next) =>
   prev.t === next.t && prev.i === next.i && prev.fav === next.fav
   && prev.isAdmin === next.isAdmin && prev.showAlbum === next.showAlbum
@@ -94,9 +94,9 @@ export default function TracksPage({ tracks, ensureTracks, q, isAdmin,
 
   useEffect(() => { if (tracks === null) ensureTracks() }, [tracks, ensureTracks])
 
-  // 搜索/排序/过滤拆成三级 memo：搜索关键词只触发最后一级的廉价 includes；
-  // zhNorm 干草堆（每字符查 4000 项映射表）只随曲目列表本身重建，
-  // 排序只随排序键/可见性重算。输出与单一 memo 版逐字节一致。
+  // Split search, sorting, and filtering into three memoized stages. Query changes trigger only the final cheap includes pass;
+  // the zhNorm haystack (a 4,000-entry lookup per character) rebuilds only with the track list, and sorting only with its key
+  // or visibility. The output remains byte-for-byte identical to the former single-memo implementation.
   const withHay = useMemo(() => tracks && tracks.map((tr) => ({
     tr,
     hay: zhNorm(`${tr.title} ${artistSearchText(tr)} ${creditsOf(tr)

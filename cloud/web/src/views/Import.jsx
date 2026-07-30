@@ -22,7 +22,7 @@ const coverExt = (blob) => ({
 
 export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
   const { t } = useI18n()
-  const [items, setItems] = useState([])       // readTags 结果
+  const [items, setItems] = useState([])       // Results from readTags
   const [form, setForm] = useState({
     artists: [{ name: '', sort: '' }], title: '', year: '',
   })
@@ -54,7 +54,7 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
     }
     if (failed) toast(t('importPage.fail', `${failed} file(s) could not be read`), 'err')
     if (!parsed.length) return
-    // 已在编辑阶段 = 追加（同名文件跳过），否则全新开始
+    // Append during the editing stage, skipping duplicate filenames; otherwise begin a new import.
     const appending = phase === 'edit' && items.length > 0
     const seen = new Set(items.map((i) => i.filename))
     const merged = appending
@@ -62,7 +62,7 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
       : parsed
     merged.sort((a, b) => (a.disc - b.disc) || ((a.track ?? 99) - (b.track ?? 99)))
     setItems(merged)
-    // 罗马字艺名自动换成原名（别名库命中才换；表单仍可手改）
+    // Replace a romaji artist name with the original only when the alias catalog matches; the form remains editable.
     const rawArtist = mostCommon(merged.map((p) => p.albumArtist))
       || mostCommon(merged.map((p) => p.artist))
     const artist = toJa(rawArtist) || rawArtist

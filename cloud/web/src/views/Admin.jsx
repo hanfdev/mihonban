@@ -61,12 +61,12 @@ function PasswordCard() {
   )
 }
 
-/* 云盘（OneDrive / Microsoft Graph）凭据：token 过期、换应用、换账号
-   都在这里粘贴新值，立即生效。留空的项保持原值不变。 */
-/* {t('admin.guest')}策略：普通用户是否需要口令。关 = 陌生人打开链接直接只读浏览。 */
+/* OneDrive/Microsoft Graph credentials can be replaced here after token expiry or an app/account change.
+   New values take effect immediately; blank fields preserve their current values. */
+/* Guest-access policy: when disabled, visitors who open the link can browse read-only without a password. */
 function AccessCard() {
   const { t } = useI18n()
-  const [open, setOpen] = useState(null) // null = 加载中
+  const [open, setOpen] = useState(null) // null = loading
   const [busy, setBusy] = useState(false)
   const toast = useToast()
 
@@ -109,7 +109,7 @@ function AccessCard() {
 
 const PAGE = 50
 
-/* Discogs：官方 API token，用于专辑页「Discogs」自动匹配风格 */
+/* Official Discogs API token used by automatic genre matching on album pages. */
 function DiscogsCard() {
   const { t } = useI18n()
   const [tok, setTok] = useState('')
@@ -162,7 +162,7 @@ function SourceCard() {
   const [s, setS] = useState(null)
   const [saving, setSaving] = useState(false)
   const [scanning, setScanning] = useState('') // '' | 'quick' | 'deep'
-  // 帖子列表：状态 tab + 搜索 + 分页
+  // Source-post list with status tabs, search, and pagination.
   const [tab, setTab] = useState('new')
   const [pq, setPq] = useState('')
   const [posts, setPosts] = useState([])
@@ -329,7 +329,7 @@ function SourceCard() {
   )
 }
 
-/* 可插拔模块开关：Cloudflare 资源站扫描 / 音源代理等可选工作流。 */
+/* Feature switches for optional workflows such as Cloudflare source scanning and audio proxying. */
 function ModulesCard({ modSource, streamProxy, streamProxyUrl, onChange }) {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
@@ -408,15 +408,15 @@ function ModulesCard({ modSource, streamProxy, streamProxyUrl, onChange }) {
   )
 }
 
-/* R2 图床（Cloudflare）：封面/图片优先走 CDN，回退 OneDrive。凭据后台可改。
-   预热按钮把存量封面批量镜像到 R2。 */
+/* Cloudflare R2 image mirror: covers and images prefer the CDN and fall back to OneDrive.
+   Credentials are editable here, and prewarming mirrors existing artwork in batches. */
 function R2Card() {
   const { t } = useI18n()
   const [cur, setCur] = useState(null)
   const [f, setF] = useState({ accessKey: '', secretKey: '', endpoint: '', bucket: '', publicUrl: '' })
   const [busy, setBusy] = useState('')
   const [test, setTest] = useState(null)
-  const [warm, setWarm] = useState(null) // { processed, total, done } 或 null
+  const [warm, setWarm] = useState(null) // { processed, total, done } or null
   const toast = useToast()
 
   const load = () => api.getR2().then(setCur).catch(() => {})
@@ -425,7 +425,7 @@ function R2Card() {
   const save = async () => {
     setBusy('save')
     try {
-      // 空字符串的密钥项不提交（保持不变）；其余（含 endpoint/bucket/url）照传
+      // Omit blank secret fields to preserve them; submit endpoint, bucket, and URL fields as entered.
       const payload = {}
       for (const k of ['accessKey', 'secretKey']) if (f[k].trim()) payload[k] = f[k].trim()
       for (const k of ['endpoint', 'bucket', 'publicUrl']) payload[k] = f[k]
@@ -467,7 +467,7 @@ function R2Card() {
     finally { setBusy(''); setWarm(null) }
   }
 
-  // 用 f 有值就显示 f，否则显示当前脱敏值作 placeholder
+  // Show a newly entered value from f, otherwise use the current masked value as the placeholder.
   const F = [
     ['accessKey', t('admin.accessKey'), true],
     ['secretKey', t('admin.secretKey'), true],
@@ -529,7 +529,7 @@ function R2Card() {
   )
 }
 
-/* 通用存储后端：OneDrive / WebDAV / Google Drive / Node 本地盘一律是命名后端。 */
+/* Unified named storage backends for OneDrive, WebDAV, Google Drive, and Node local folders. */
 const emptyOd = () => ({ clientId: '', clientSecret: '', refreshToken: '', driveId: '' })
 const emptyWd = () => ({ baseUrl: '', username: '', password: '' })
 const emptyGd = () => ({ clientId: '', clientSecret: '', refreshToken: '', rootId: 'root' })
@@ -554,7 +554,7 @@ function StorageBackendsCard() {
   const [cfg, setCfg] = useState(emptyOd())
   const [gdCode, setGdCode] = useState('')
   const [gdAuthUrl, setGdAuthUrl] = useState('')
-  const [mig, setMig] = useState(null) // 单张 or 整库进度
+  const [mig, setMig] = useState(null) // Single-album or whole-library migration progress
   const [albums, setAlbums] = useState(null)
   const [bulkTarget, setBulkTarget] = useState('')
   const [editId, setEditId] = useState(null)
@@ -910,7 +910,7 @@ function StorageBackendsCard() {
         </div>
       )}
 
-      {/* 整库一键迁移 */}
+      {/* One-step whole-library migration */}
       {data && data.storages.length > 0 && (
         <div className="stor-bulk" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
           <div className="dg-group" style={{ marginBottom: 8 }}>{t('admin.bulkTitle')}</div>
@@ -939,7 +939,7 @@ function StorageBackendsCard() {
         </div>
       )}
 
-      {/* {t('admin.oneMigrate')}面板 */}
+      {/* Single-album migration panel */}
       {albums && (
         <div className="stor-migrate">
           <div className="dg-group" style={{ marginBottom: 8 }}>
@@ -986,7 +986,7 @@ function StorageBackendsCard() {
   )
 }
 
-/* 配置备份：导出 / 导入 OneDrive + R2 + 存储后端等设置，便于重新部署后一键还原。 */
+/* Configuration backup: export/import OneDrive, R2, storage backends, and related settings for redeployment recovery. */
 function ConfigBackupCard() {
   const { t } = useI18n()
   const [busy, setBusy] = useState('')

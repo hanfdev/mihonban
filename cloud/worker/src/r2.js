@@ -1,9 +1,10 @@
-// Cloudflare R2 图床（S3 API + SigV4）。凭据全部来自 DB 设置（后台可改），
-// 不写死、不进 wrangler.jsonc——迁移云盘或轮换密钥都在管理后台完成。
+// Cloudflare R2 image host using the S3 API and SigV4. Credentials come entirely
+// from database settings editable in Admin; nothing is hardcoded or stored in
+// wrangler.jsonc, so storage migration and key rotation require no redeploy.
 //
-// 写：PUT 走 S3 API（api endpoint + SigV4 签名）。
-// 读：走公开域名（自定义域 / r2.dev），无需签名——图片字节永远不过 Worker，
-//     彻底避免大库封面把 OneDrive Graph API 打爆。
+// Writes: PUT through the S3 API endpoint with a SigV4 signature.
+// Reads: unsigned public custom-domain or r2.dev URLs, so image bytes never pass
+// through the Worker and a large cover library cannot overwhelm OneDrive Graph.
 
 import { getSetting } from "./auth.js";
 import { discardResponse, fetchWithTimeout } from "./net.js";
@@ -36,7 +37,8 @@ async function hmac(key, msg) {
   return new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(msg)));
 }
 
-/** 读取 R2 配置（DB 优先，env 兜底）。缺关键项 → enabled:false。 */
+/** Read R2 configuration, preferring the database and falling back to env.
+ *  Missing required values yields enabled:false. */
 export async function r2Conf(env) {
   const [ak, sk, endpoint, bucket, pub, on] = await Promise.all([
     getSetting(env, "r2_access_key"),
@@ -59,13 +61,14 @@ export async function r2Conf(env) {
   };
   conf.ready = !!(conf.enabled && conf.accessKey && conf.secretKey
     && conf.endpoint && conf.bucket && conf.publicUrl);
-  // configured = 凭据齐全（不含 enabled）：用于「先测试再启用」
+  // configured means credentials are complete, independently of enabled, so
+  // connectivity can be tested before activation.
   conf.configured = !!(conf.accessKey && conf.secretKey
     && conf.endpoint && conf.bucket && conf.publicUrl);
   return conf;
 }
 
-/** 公开读地址（不签名，走 CDN）。稳定版本号可绕过浏览器缓存过的旧 404。 */
+/** Public unsigned CDN URL. A stable version parameter bypasses browser-cached old 404s. */
 export const r2PublicUrl = (conf, key, version = null) => {
   const url = new URL(`${conf.publicUrl}/${key}`);
   if (version !== null && version !== undefined && version !== "") {
@@ -89,7 +92,7 @@ export async function r2PublicObjectExists(conf, key) {
   throw new Error(`R2 public object check failed: ${response.status}`);
 }
 
-/** SigV4 上传对象到 R2。返回 true/false。 */
+/** Upload an object to R2 with SigV4. Return true or false. */
 export async function r2Put(conf, key, bytes, contentType = "application/octet-stream") {
   const url = new URL(`${conf.endpoint}/${conf.bucket}/${key}`);
   const host = url.host;
@@ -260,7 +263,8 @@ export async function r2Delete(conf, key) {
   return response.ok || response.status === 404;
 }
 
-/** 连通性测试：上传一个探针对象再公开读回。返回 {ok, error?}。 */
+/** Test connectivity by uploading a probe object and reading it back publicly.
+ *  Returns {ok, error?}. */
 export async function r2Test(conf) {
   if (!conf.configured) return { ok: false, error: "R2 配置不完整" };
   const key = `_probe/mihonban-${Date.now().toString(36)}-` +
@@ -271,7 +275,8 @@ export async function r2Test(conf) {
     if (!put) return { ok: false, error: "上传失败（检查密钥/endpoint/桶名）" };
     const readable = await fetchWithTimeout(
       r2PublicUrl(conf, key), { method: "GET" });
-    // 探测只看状态码；两个分支都要取消 body，别占着子请求连接
+    // The probe checks status only; cancel the body on both branches so it does
+    // not retain a subrequest connection.
     await discardResponse(readable);
     if (!readable.ok) {
       return { ok: false, error: `公开读失败 ${readable.status}（检查公开域名/桶公开权限）` };

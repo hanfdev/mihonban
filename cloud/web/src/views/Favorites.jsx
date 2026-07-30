@@ -21,7 +21,7 @@ const saveSort = (key, value) => {
   try { localStorage.setItem(key, value) } catch { /* storage unavailable */ }
 }
 
-// 收藏专用排序：不含评分（歌曲没有评分；音盤也统一不按评分排，避免与曲库重复）
+// Favorites-specific sorting excludes ratings: tracks have none, and albums deliberately differ from the library view.
 const cmpArtist = (a, b) =>
   defaultCollator.compare(a.artistSort || a.artist || '',
     b.artistSort || b.artist || '') ||
@@ -36,7 +36,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
                                         tab = 'albums', onTabChange }) {
   const { t } = useI18n()
   const toast = useToast()
-  // 排序偏好持久化：用户挑的顺序下次进来还在（含「默认顺序自己调」的诉求）
+  // Persist the selected sort so it survives the next visit, including the user-defined default order.
   const [aSort, setASort] = useState(() => storedSort(
     'mihonban_favorite_album_sort', ['fav', 'artist', 'title', 'yearNew', 'yearOld']))
   const [tSort, setTSort] = useState(() => storedSort(
@@ -44,7 +44,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   const [fArtist, setFArtist] = useState('')
   const [fDecade, setFDecade] = useState('')
   const [fGenre, setFGenre] = useState('')
-  const [shuf, setShuf] = useState(playerShuffle) // 歌曲 tab 的随机开关（只切状态，不触发播放）
+  const [shuf, setShuf] = useState(playerShuffle) // Tracks-tab shuffle toggle; changes state without starting playback.
   useEffect(() => setShuf(playerShuffle), [playerShuffle])
   useEffect(() => { saveSort('mihonban_favorite_album_sort', aSort) }, [aSort])
   useEffect(() => { saveSort('mihonban_favorite_track_sort', tSort) }, [tSort])
@@ -82,7 +82,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   const needle = zhNorm(q.trim())
   const hasAlbumFilter = !!(fArtist || fDecade || fGenre || needle)
 
-  // 收藏音盤：按 favs.albums 的后端顺序（sort_order）取，保证「收藏顺序」可手动排
+  // Preserve the backend favs.albums order (sort_order) so the favorites sequence remains manually controllable.
   const favAlbumsRaw = useMemo(() => {
     if (!albums) return null
     const byId = new Map(albums.map((a) => [a.id, a]))
@@ -126,7 +126,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
       return true
     })
     const fn = ALBUM_SORTS[aSort].fn
-    return fn ? [...out].sort(fn) : out // fav 模式 = 后端顺序，不再排
+    return fn ? [...out].sort(fn) : out // Favorite mode keeps backend order without another sort.
   }, [favAlbumsRaw, needle, fArtist, fDecade, fGenre, aSort])
 
   const favTrackList = useMemo(() => {
@@ -138,17 +138,17 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
           .map((credit) => romajiOf(credit.name)).join(' ')} ${t.albumTitle}`)
           .includes(needle))
     const fn = TRACK_SORTS[tSort].fn
-    return fn ? [...out].sort(fn) : out // fav 模式 = 后端顺序
+    return fn ? [...out].sort(fn) : out // Favorite mode keeps backend order.
   }, [tracks, favs, needle, tSort])
 
-  // ---- 手动拖动排序（仅收藏顺序 + 管理员 + 无筛选/搜索时可拖）----
+  // ---- Manual drag ordering: administrator only, favorite order only, and disabled during filtering/search ----
   const canDragA = isAdmin && aSort === 'fav' && !hasAlbumFilter
   const canDragT = isAdmin && tSort === 'fav' && !needle
-  const [drag, setDrag] = useState(null)   // 拖动中的临时 id 序
-  const dragRef = useRef(null)             // 最新 id 序（避开 onCommit 闭包读到旧 state）
+  const [drag, setDrag] = useState(null)   // Temporary ID order during a drag
+  const dragRef = useRef(null)             // Latest ID order, avoiding stale state in the onCommit closure
   const setDragOrder = (ids) => { dragRef.current = ids; setDrag(ids) }
 
-  // 应用拖动中的临时顺序到显示列表
+  // Apply the temporary drag order to the displayed list.
   const orderBy = (list, ids) => {
     if (!ids || !list) return list
     const byId = new Map(list.map((x) => [x.id, x]))
@@ -157,7 +157,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   const shownAlbums = drag && canDragA ? orderBy(favAlbumList, drag) : favAlbumList
   const shownTracks = drag && canDragT ? orderBy(favTrackList, drag) : favTrackList
 
-  // onMove 用 ref 读当前显示序（避开闭包旧值）；起手时以当前序为基准
+  // onMove reads the current displayed order from a ref to avoid stale closures; a drag starts from the current order.
   const listRef = useRef({ a: null, t: null })
   listRef.current = { a: shownAlbums, t: shownTracks }
   const moveIn = (which, from, to) => {
@@ -186,7 +186,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
     onCommit: () => commit('track'),
   })
 
-  // 定位正在播放的歌
+  // Locate the currently playing track.
   const hasCurrent = useMemo(() =>
     !!currentId && !!shownTracks?.some((t) => t.id === currentId), [shownTracks, currentId])
   const filterRailRef = useRef(null)
@@ -211,7 +211,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   const playAlbum = async (a) => {
     try {
       const detail = await api.album(a.id)
-      if (detail.tracks?.length) onPlay(detail, detail.tracks) // 起点交给播放器状态
+      if (detail.tracks?.length) onPlay(detail, detail.tracks) // Let player state choose the starting position.
     } catch (e) { toast(e.message, 'err') }
   }
 

@@ -71,8 +71,9 @@ def _workspace_for(cfg: Config, item: Path) -> Path:
 
 
 def _move_with_suffix(src: Path, dest_dir: Path) -> Path | None:
-    """搬走 src；同名自动加 -1/-2 后缀。src 已消失（被并发实例抢先
-    处理掉）时返回 None 而不是崩——绝不能因为一个文件毁掉整批。"""
+    """Move ``src``, adding -1/-2 suffixes for name collisions. Return None
+    instead of crashing if another process has already removed it; one file must
+    never ruin the whole batch."""
     if not src.exists():
         log.warning("要移动的文件已不存在（可能被其他进程处理）：%s", src)
         return None
@@ -91,7 +92,7 @@ def _move_with_suffix(src: Path, dest_dir: Path) -> Path | None:
 
 
 def _quarantine(cfg: Config, item: Path, group: str, reason: str) -> Path | None:
-    if not item.exists():   # 已被并发实例移走：不留空目录垃圾
+    if not item.exists():   # Another process moved it; do not leave an empty directory behind.
         log.warning("待隔离对象已不存在，跳过：%s（%s）", item.name, reason)
         return None
     qdir = cfg.quarantine_dir / group
@@ -314,7 +315,7 @@ def run_ingest(cfg: Config, apply: bool, keep_workspace: bool = False,
             items = archives if archives is not None else find_inbox_items(cfg)
         results = []
         for item in items:
-            if not item.exists():   # 清单可能已过时（别的进程处理掉了）
+            if not item.exists():   # The list may be stale because another process handled the item.
                 log.info("跳过已消失的 %s", item.name)
                 continue
             log.info("=== %s (%s) ===", item.name,
@@ -327,7 +328,7 @@ def run_ingest(cfg: Config, apply: bool, keep_workspace: bool = False,
                 log.exception("unexpected failure on %s", item.name)
                 r = ArchiveResult(archive=item, status="error", detail=str(e))
                 if apply:
-                    try:   # 隔离失败也不许毁掉整批
+                    try:   # Quarantine failure must not ruin the entire batch.
                         _quarantine(cfg, item, _slug(item.stem),
                                     f"unexpected error: {e}")
                     except Exception:  # noqa: BLE001

@@ -1,5 +1,5 @@
-// Collator 实例化开销大；localeCompare(x, 'ja') 每次比较都隐式新建一个。
-// 模块级单例快约一个数量级，排序结果与 localeCompare 完全一致。
+// Collator construction is expensive; localeCompare(x, 'ja') implicitly creates one for each comparison.
+// Module-level singletons are roughly an order of magnitude faster while producing identical ordering.
 export const jaCollator = new Intl.Collator('ja')
 export const defaultCollator = new Intl.Collator()
 

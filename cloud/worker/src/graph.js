@@ -1,5 +1,6 @@
-// Microsoft Graph（OneDrive 个人版）客户端：token 刷新、直链、上传会话。
-// 音频字节永远不经过 Worker —— 播放走 @microsoft.graph.downloadUrl 302 直链。
+// Microsoft Graph client for personal OneDrive: token refresh, direct URLs, and
+// upload sessions. Audio bytes never pass through the Worker; playback redirects
+// to @microsoft.graph.downloadUrl.
 
 import { discardResponse, fetchWithTimeout } from "./net.js";
 
@@ -17,8 +18,9 @@ function httpsUrl(value) {
   }
 }
 
-/* ---------- 凭据：后台设置（DB）优先，部署时的环境变量兜底 ----------
-   token 过期 / 换 OneDrive 账号时在管理后台粘贴新值即可，不用重新部署。 */
+/* ---------- Credentials: Admin settings in the database take priority, with
+   deployment environment variables as fallback. Paste updated values in Admin
+   when a token expires or the OneDrive account changes; no redeploy is needed. */
 
 async function getSettingRaw(env, k) {
   const row = await env.DB.prepare("SELECT v FROM settings WHERE k = ?")
@@ -41,7 +43,8 @@ export async function storageConf(env) {
   };
 }
 
-/** 取有效 access token；KV 缓存 + 自动刷新（MSA refresh token 轮换后新值存回 KV）。 */
+/** Get a valid access token using KV caching and automatic refresh; persist a
+ *  rotated MSA refresh token back to KV. */
 export async function accessToken(env, force = false) {
   if (!force) {
     const cached = await env.KV.get("ms:token", "json");
@@ -123,7 +126,8 @@ function retryDelay(response, attempt) {
   return exponential + Math.floor(Math.random() * 250);
 }
 
-/** Microsoft Graph 会偶发 429/5xx 或直接断线；上传操作在这里统一自动重试。 */
+/** Microsoft Graph occasionally returns 429/5xx or drops connections; retry all
+ *  upload operations consistently here. */
 async function retryGraphRequest(makeRequest, label) {
   let lastError = null;
   for (let attempt = 0; attempt < GRAPH_MAX_ATTEMPTS; attempt += 1) {
@@ -181,13 +185,14 @@ function validChild(item) {
 const drivePath = async (env, p) =>
   `/drives/${(await storageConf(env)).driveId}/root:/${enc(p)}`;
 
-/** 换凭据后清 token 缓存（旧的轮换 refresh token 也要丢掉）。 */
+/** Clear token caches after credential changes, including any rotated old refresh token. */
 export async function resetTokenCache(env) {
   await env.KV.delete("ms:token");
   await env.KV.delete("ms:refresh");
 }
 
-/** 连通性测试：强制刷新 token 并读盘信息。返回 {ok, owner?, used?, total?, error?} */
+/** Test connectivity by forcing a token refresh and reading drive information.
+ *  Returns {ok, owner?, used?, total?, error?}. */
 export async function testStorage(env) {
   try {
     await resetTokenCache(env);
@@ -207,7 +212,8 @@ export async function testStorage(env) {
   }
 }
 
-/** 文件的临时直链（微软 CDN，支持 Range，~1h 有效）；KV 缓存 45 分钟。 */
+/** Temporary file URL from Microsoft's CDN, with Range support and roughly one
+ *  hour of validity; cached in KV for 45 minutes. */
 export async function downloadUrl(env, path) {
   const key = `dl:${path}`;
   const cached = await env.KV.get(key);
@@ -232,7 +238,7 @@ export async function getFile(env, path, range) {
   return retryGraphRead(() => gfetch(env, target, { headers }));
 }
 
-/** 列目录（分页拉全）。返回 [{name,id,size,file,folder,audio,image}] */
+/** List an entire directory across all pages. Returns [{name,id,size,file,folder,audio,image}]. */
 export async function listChildren(env, folder, strict = false) {
   const out = [];
   const seenLinks = new Set();
@@ -273,7 +279,7 @@ export async function listChildren(env, folder, strict = false) {
   return out;
 }
 
-/** OneDrive 缩略图（c 尺寸裁切）；失败返回 null。 */
+/** OneDrive thumbnail using c-size cropping; return null on failure. */
 export async function thumbnailUrl(env, path, size = "c400x400") {
   const r = await gfetch(env,
     `${await drivePath(env, path)}:/thumbnails?select=${size}`);
@@ -282,7 +288,8 @@ export async function thumbnailUrl(env, path, size = "c400x400") {
   return httpsUrl(t?.value?.[0]?.[size]?.url);
 }
 
-/** 创建大文件上传会话；浏览器直接对 uploadUrl 分片 PUT（微软端支持 CORS）。 */
+/** Create a large-file upload session. The browser sends chunked PUT requests
+ *  directly to uploadUrl because Microsoft supports CORS there. */
 export async function createUploadSession(env, path) {
   const target = `${await drivePath(env, path)}:/createUploadSession`;
   const r = await retryGraphRequest(() => gfetch(env, target, {
@@ -300,7 +307,7 @@ export async function createUploadSession(env, path) {
   return uploadUrl;
 }
 
-/** 小文件直接上传（封面等 <4MB）。 */
+/** Upload small files such as covers under 4MB directly. */
 export async function putSmallFile(env, path, bytes, contentType) {
   const target = `${await drivePath(env, path)}:/content`;
   const r = await retryGraphRequest(() => gfetch(env, target, {
@@ -311,15 +318,16 @@ export async function putSmallFile(env, path, bytes, contentType) {
   return r.ok;
 }
 
-/** 删除文件/目录（进回收站，可恢复）。 */
+/** Delete a file or directory into the recoverable recycle bin. */
 export async function deleteItem(env, path) {
   const r = await gfetch(env, await drivePath(env, path), { method: "DELETE" });
   return r.ok || r.status === 404;
 }
 
-/* ---------- 带显式 config 的变体（多 OneDrive 账号容量池） ----------
-   每个命名存储自带 {clientId, clientSecret, refreshToken, driveId}。缓存按
-   storage id 隔离；同一个盘被不同凭据重复挂载时也不会串用 access token。 */
+/* ---------- Explicit-config variants for a pool of multiple OneDrive accounts ----------
+   Each named storage carries {clientId, clientSecret, refreshToken, driveId}.
+   Caches are isolated by storage ID, so mounting one drive under different
+   credentials cannot mix access tokens. */
 
 const tokenNamespace = (config) => config.__storageId || config.driveId;
 

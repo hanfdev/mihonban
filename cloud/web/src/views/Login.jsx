@@ -3,7 +3,7 @@ import { api } from '../api.js'
 import { I, Logo } from '../ui.jsx'
 import { useI18n, LangSelect } from '../i18n.jsx'
 
-/* guestReturn：已在浏览态时叠层输入管理员口令（升权限）；可取消回浏览。 */
+/* guestReturn opens an admin-password overlay while browsing, allowing elevation or cancellation back to the library. */
 export default function Login({ onOk, guestReturn, onCancel }) {
   const { t } = useI18n()
   const [pw, setPw] = useState('')

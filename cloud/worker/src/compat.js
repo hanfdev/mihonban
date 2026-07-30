@@ -1,6 +1,7 @@
-// Node/VPS 运行时的 D1 与 KV 兼容层（better-sqlite3 后端）。
-// 只实现本项目用到的 D1 方法面：prepare().bind().first()/all()/run() 与
-// batch()；KV 的 get/put(expirationTtl)/delete/list。业务代码零改动跨运行时。
+// D1 and KV compatibility layer for the Node/VPS runtime, backed by better-sqlite3.
+// It implements only the surface this project uses: prepare().bind().first()/all()/run()
+// and batch() for D1; get/put(expirationTtl)/delete/list for KV. Business logic
+// runs unchanged across runtimes.
 
 export function d1FromSqlite(db) {
   const wrap = (sql, params = []) => ({
@@ -56,8 +57,9 @@ export function kvFromSqlite(db) {
       db.prepare("DELETE FROM _kv WHERE k = ?").run(k);
     },
     list: async ({ prefix = "", cursor = "", limit = 1000 } = {}) => {
-      // 键集分页（cursor = 上一页最后一个键）。调用方（graph/gdrive 的缓存清理）
-      // 会边翻页边删除已返回的键；OFFSET 分页在这种用法下会跳过存活的键。
+      // Keyset pagination, where cursor is the previous page's final key. Callers
+      // such as graph/gdrive cache cleanup delete returned keys while paging;
+      // OFFSET pagination would skip surviving keys in that pattern.
       const rows = db.prepare(
         "SELECT k FROM _kv WHERE (exp IS NULL OR exp >= ?) " +
         "AND substr(k, 1, length(?)) = ? AND k > ? ORDER BY k LIMIT ?")

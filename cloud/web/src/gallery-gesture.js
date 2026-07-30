@@ -1,4 +1,4 @@
-/** 返回 1=下一张、-1=上一张、0=回弹。 */
+/** Return 1 for next, -1 for previous, or 0 to snap back. */
 export function gallerySwipeDirection({ dx, dy = 0, elapsed = 1, width = 390 }) {
   const distance = Math.abs(Number(dx) || 0)
   const vertical = Math.abs(Number(dy) || 0)

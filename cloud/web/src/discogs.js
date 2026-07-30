@@ -1,7 +1,7 @@
-// 解析手存的 Discogs 发行页 HTML（Ctrl+S 保存）。
-// 结构：ld+json 的 MusicAlbum 节点带 标题/年份/艺人/genres；
-// styles（更细的风格，主要目标）藏在页面的 Relay 缓存 JSON 里，正则扫最稳。
-// 与 RYM 同一红线：只解析本地文件，绝不请求 Discogs 网页。
+// Parse a manually saved Discogs release page (saved with Ctrl+S).
+// The MusicAlbum node in ld+json provides title, year, artist, and genres.
+// Styles, the more specific taxonomy we primarily want, live in Relay cache JSON and are most reliably located by regex.
+// As with RYM, this parser reads local files only and never requests Discogs pages.
 
 export function parseDiscogsHtml(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -23,7 +23,7 @@ export function parseDiscogsHtml(html) {
           else if (n.genre) genres = [n.genre]
         }
       }
-    } catch { /* 有些 ld+json 块与发行无关，忽略 */ }
+    } catch { /* Ignore ld+json blocks unrelated to the release. */ }
   }
 
   const st = html.match(/"styles"\s*:\s*\[([^\]]*)\]/)

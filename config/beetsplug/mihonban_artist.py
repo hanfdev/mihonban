@@ -1,19 +1,25 @@
-"""beets 插件：把候选发行的罗马字艺人名折算回日文原名（打分前）。
+"""beets plugin that restores romanized candidate artists to original Japanese
+script before scoring.
 
-**为什么需要**：jpop80ss 系源的文件标签是日文原名（"太田裕美"），而
-MusicBrainz/Discogs 候选常把艺人存成罗马字（"Hiromi Ohta"）。beets 在
-autotag/distance.py 里 `add_string("artist", 文件日文名, 候选罗马字名)` 逐字
-比对，单这一项就把相似度从 ~90% 拉到 70%，卡在自动接受门槛下 → 正确的冷门盘
-无谓进隔离区。
+Why it is needed: files from jpop80ss-derived sources use original Japanese artist
+tags, while MusicBrainz and Discogs candidates often use romanization. In
+``autotag/distance.py``, beets compares the file's Japanese name against the
+candidate's romanized name character by character. That field alone can reduce a
+roughly 90% match to 70%, below automatic acceptance, sending a correct obscure
+release to quarantine unnecessarily.
 
-**介入点**：beets 2.12 已移除 album_distance 插件钩子，但 metadata_plugins
-的 `candidates()` 带 @notify_info_yielded("albuminfo_received")，在候选返回、
-_add_candidate 算距离**之前**触发，携带可写的 AlbumInfo。我们在此把候选的罗马字
-artist 折算成日文原名，距离计算就变成"日文比日文"。
+Integration point: beets 2.12 removed the ``album_distance`` plugin hook, but
+``metadata_plugins.candidates()`` carries
+``@notify_info_yielded("albuminfo_received")``. It fires after a candidate is
+returned but before ``_add_candidate`` calculates distance, with a mutable
+``AlbumInfo``. Restoring the candidate artist here makes the comparison
+Japanese-to-Japanese.
 
-**安全**：只有能高置信度确认同一人（候选自带日文 sort/artists，或 MB alias
-搜索确认）才改写；否则原样不动。折算逻辑与文件端补标签（mb_artist.
-canonicalize_artists）共用 resolve_original，缓存与语义完全一致。
+Safety: rewrite only when the identity is confirmed with high confidence through
+Japanese ``sort``/``artists`` data on the candidate or a MusicBrainz alias search.
+Otherwise leave it unchanged. Candidate conversion and file-side tag completion
+(``mb_artist.canonicalize_artists``) share ``resolve_original``, keeping their
+cache and semantics identical.
 """
 
 from __future__ import annotations
@@ -27,50 +33,55 @@ from mihonban.mb_artist import ArtistCache, has_cjk, resolve_original
 
 
 def _state_dir() -> Path:
-    """artist_map.json 所在的 state 目录。
+    """Return the state directory that contains ``artist_map.json``.
 
-    beets_runner 把 BEETSDIR 设为 <data_dir>/beets，state 是它的兄弟目录
-    <data_dir>/state（见 Config.state_dir）。据此反推，无需重载 toml。
+    ``beets_runner`` sets ``BEETSDIR`` to ``<data_dir>/beets``; state is its
+    sibling ``<data_dir>/state`` (see ``Config.state_dir``). Derive it from that
+    relationship without reloading TOML.
     """
     beetsdir = os.environ.get("BEETSDIR")
     if beetsdir:
         return Path(beetsdir).parent / "state"
-    return Path.home() / ".mihonban-state"   # 兜底（正常路径不会走到）
+    return Path.home() / ".mihonban-state"   # Defensive fallback; normal execution never reaches it.
 
 
 class MihonbanArtist(BeetsPlugin):
     def __init__(self):
         super().__init__()
-        # 缓存与文件端补标签共用同一个 artist_map.json（同一条 MB 查询不重复）
+        # Cache and file-side tag completion share one artist_map.json, avoiding
+        # duplicate MusicBrainz queries for the same artist.
         self._cache = ArtistCache(_state_dir() / "artist_map.json")
         self.register_listener("albuminfo_received", self.canon_album)
         self.register_listener("trackinfo_received", self.canon_track)
 
     def _canon(self, info) -> None:
-        """把 info 的罗马字 artist 折算成日文原名（原地改写）。"""
+        """Replace ``info``'s romanized artist with the original Japanese name in place."""
         name = getattr(info, "artist", None)
         if not name or has_cjk(name):
             return
-        # 多值合作专辑不碰：主 artist 是罗马字合成名（"A & B"/"Various"），
-        # 折算语义不清晰，交给人工/文件标签
+        # Leave multi-artist collaborations alone. Their primary artist is a
+        # composite romanized value such as "A & B" or "Various", whose conversion
+        # is ambiguous and belongs to manual review or file tags.
         artists = getattr(info, "artists", None) or []
         if len(artists) > 1:
             return
 
-        # 零网络优先：候选自带的 sort / 单值 artists 里若已有日文原名，直接采用
+        # Prefer a zero-network path: use a Japanese original already present in
+        # candidate sort data or a single-value artists field.
         for cand in self._sidecar_original(info):
             if cand and has_cjk(cand):
                 self._apply(info, cand)
                 return
 
-        # 否则走缓存 + MB alias 搜索（resolve_original 把关，宁缺毋滥）
+        # Otherwise use the cache and MusicBrainz alias search. resolve_original
+        # applies the confidence gate and favors no conversion over a wrong one.
         entry = resolve_original(name, self._cache)
         if entry:
             self._apply(info, entry["name"], entry.get("sort"))
 
     @staticmethod
     def _sidecar_original(info) -> list[str]:
-        """候选对象上可能自带的日文原名候选：sort 名、单值 artists。"""
+        """Yield possible original Japanese names already present in candidate sort or single-value artists data."""
         out = []
         srt = getattr(info, "artist_sort", None)
         if srt:
@@ -94,5 +105,5 @@ class MihonbanArtist(BeetsPlugin):
         self._canon(info)
 
     def canon_track(self, info) -> None:
-        # 单曲候选也归一化（as Tracks / 单曲匹配路径）
+        # Normalize track candidates too, covering the as-Tracks and single-track paths.
         self._canon(info)

@@ -1,10 +1,11 @@
-"""`mihonban watch` —— 收件箱守望者：压缩包或文件夹全自动上架。
+"""``mihonban watch`` inbox watcher for fully automatic archive and folder import.
 
-轮询 INBOX，发现新压缩包或文件夹（内容稳定后）自动执行：
-  ingest --apply → mihonban cloud sync（rclone 上传 + 云端登记）
+Poll INBOX and, after new archives or folders become stable, run:
+``ingest --apply`` -> ``mihonban cloud sync`` (rclone upload plus cloud registration).
 
-设计为常驻进程（开机自启 vbs），任何一步失败都不会中断守望，
-失败的收件项会按 ingest 的既有规则进隔离区并写日志。
+This is a long-lived process launched at startup by VBS. No individual failure
+stops the watcher; failed inbox items follow ingest's existing quarantine and
+logging rules.
 """
 
 from __future__ import annotations
@@ -98,7 +99,8 @@ def run_watch(cfg: Config, console) -> int:
                         run_sync)
     from .lockfile import release, try_lock
 
-    # 单实例：两个守望者会抢同一批收件项（谁先搬走谁赢，输家崩溃）
+    # Single instance: two watchers race for the same inbox items; the first moves
+    # an item and the other crashes when it disappears.
     cfg.ensure_dirs()
     watch_lock = try_lock(cfg.state_dir / "watch.lock")
     if watch_lock is None:
@@ -113,18 +115,20 @@ def run_watch(cfg: Config, console) -> int:
 
     stability: dict[Path, StabilityState] = {}
     last_heartbeat = 0.0
-    # 有过同步失败（rclone/登记非零退出或异常）时置位：下个心跳周期做一次
-    # 全量对账重试，成功即清。否则一次瞬时网络故障会让专辑本地有、云端无，
-    # 且没有任何自动补救路径。
+    # Set after a sync failure, whether a nonzero rclone/registration exit or an
+    # exception. The next heartbeat performs one full reconciliation and clears
+    # the flag on success. Without it, a transient network failure could leave an
+    # album local-only with no automatic repair path.
     pending_sync_retry = False
     try:
         while True:
-            # 每 10 分钟报一次心跳（后台「守望在线」状态），顺带拉新解压密码，
-            # 并把网页上传的新专辑拉回本地库。网络抖动只记日志，不中断守望。
+            # Every ten minutes, report a heartbeat for Admin watcher status,
+            # refresh archive passwords, and pull web-uploaded albums into the
+            # local library. Network instability is logged without stopping watch.
             if cloud_ready(cfg) and time.time() - last_heartbeat > 600:
                 try:
                     merge_cloud_passwords(cfg)
-                except Exception:  # noqa: BLE001 — 守望不能死
+                except Exception:  # noqa: BLE001 - the watcher must stay alive
                     log.exception("cloud password refresh failed inside watch")
                 pull_quietly(cfg, console)
                 if pending_sync_retry:
@@ -135,8 +139,10 @@ def run_watch(cfg: Config, console) -> int:
                     except Exception:  # noqa: BLE001
                         log.exception("deferred sync retry crashed inside watch")
                 last_heartbeat = time.time()
-            # 收件箱本身也可能瞬时不可用（网络盘断连、目录被重建、权限抖动）；
-            # 模块契约是「任何一步失败都不会中断守望」，扫描同样要兜住。
+            # The inbox itself may become temporarily unavailable through a
+            # disconnected network drive, directory recreation, or permission
+            # fluctuation. The module promises that no step stops the watcher, so
+            # scanning needs the same protection.
             try:
                 ready = _stable(_inbox_items(cfg), stability)
             except OSError as e:
@@ -149,23 +155,24 @@ def run_watch(cfg: Config, console) -> int:
                 log.info("watch picked up: %s", names)
                 if cloud_ready(cfg):
                     try:
-                        merge_cloud_passwords(cfg)   # 用最新密码解压
+                        merge_cloud_passwords(cfg)   # Extract with the latest passwords.
                     except Exception:  # noqa: BLE001
                         log.exception("cloud password refresh failed inside watch")
                     last_heartbeat = time.time()
                 imported: list[Path] = []
                 need_full_sync = False
                 try:
-                    # 只喂内容已连续稳定的清单，别让 ingest 自己重扫收件箱
-                    # 撞上还在拷贝的半截文件或目录树。
+                    # Pass only items that have remained stable. Do not let ingest
+                    # rescan the inbox and encounter half-copied files or trees.
                     results = run_ingest(cfg, apply=True, items=ready)
                     seen: set[str] = set()
                     for result in results:
-                        # 只有 status="error"（逐项异常被吞、albums 被清空）才可能
-                        # 存在「已被 beets 搬进库却拿不到 library_path」的专辑，
-                        # 需要全量对账兜底。"quarantined"（密码不对/没有音频）根本
-                        # 没有东西入库，绝不能为它扫全库——那会让每个坏压缩包都
-                        # 触发一次全库重读 tag + 全库 rclone。
+                        # Only status="error", where an item exception is swallowed
+                        # and albums cleared, can leave an album moved by beets but
+                        # missing its library_path; full reconciliation covers that.
+                        # "quarantined" from a wrong password or no audio imports
+                        # nothing, so it must not trigger a full-library tag scan and
+                        # rclone for every bad archive.
                         if result.status == "error":
                             need_full_sync = True
                         for album in result.albums:
@@ -173,21 +180,24 @@ def run_watch(cfg: Config, console) -> int:
                                     and album.library_path not in seen):
                                 seen.add(album.library_path)
                                 imported.append(Path(album.library_path))
-                except Exception:  # noqa: BLE001 — 守望不能死
+                except Exception:  # noqa: BLE001 - the watcher must stay alive
                     need_full_sync = True
                     log.exception("ingest crashed inside watch")
                     console.print("[red]ingest 出错（见日志），继续守望[/red]")
                 if cloud_ready(cfg) and (need_full_sync or imported):
                     try:
                         if need_full_sync:
-                            # 有专辑可能已落库但未被逐项记录：全量对账兜底
+                            # An album may have entered the library without an item
+                            # record; full reconciliation is the fallback.
                             if run_sync(cfg, console, upload=True) != 0:
                                 pending_sync_retry = True
                         else:
-                            # 只同步本批新入库的专辑；大库不再每批全库重读
-                            # tag / 全库 rclone。全量对账走 `mihonban cloud sync`。
-                            # run_sync 失败以退出码表达而非异常：必须接住，
-                            # 否则一次网络抖动就让这张专辑永远漂在本地。
+                            # Sync only albums imported in this batch. Large libraries
+                            # no longer reread every tag and rclone the full library
+                            # per batch; `mihonban cloud sync` handles reconciliation.
+                            # run_sync reports failure through its exit code rather
+                            # than an exception, so capture it or one network wobble
+                            # can leave an album local-only forever.
                             for directory in imported:
                                 if run_sync(cfg, console, upload=True,
                                             only_dir=directory) != 0:

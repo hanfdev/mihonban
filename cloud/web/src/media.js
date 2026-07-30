@@ -10,8 +10,8 @@ export function storedVolume(value, fallback = 1) {
 }
 
 /**
- * 曲库时长来自文件标签/解析器，比 Safari 对 OGG 流的动态估算稳定。
- * 只有曲库没有时长时，才采用浏览器报告的 duration。
+ * Catalog duration comes from file tags or parsers and is more stable than Safari's evolving OGG stream estimate.
+ * Use the browser-reported duration only when the catalog has no valid value.
  */
 export function mediaDuration(knownDuration, nativeDuration) {
   return positive(knownDuration) || positive(nativeDuration)
@@ -32,7 +32,7 @@ export function seekAudio(audio, seconds, knownDuration, fast = false) {
   return target
 }
 
-/** 将可靠时长/进度主动同步给 iOS 锁屏和控制中心。 */
+/** Push reliable duration and progress to the iOS lock screen and Control Center. */
 export function updateMediaPosition(session, audio, knownDuration) {
   if (!session || !audio || typeof session.setPositionState !== 'function') return false
   const duration = mediaDuration(knownDuration, audio.duration)

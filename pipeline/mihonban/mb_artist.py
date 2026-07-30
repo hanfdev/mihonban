@@ -59,9 +59,10 @@ def _default_resolver(name: str) -> dict | None:
     # the plain `artist` search field does NOT cover aliases — romaji names
     # of Japanese artists only surface through an explicit alias clause
     esc = _lucene_escape(name)
-    # musicbrainzngs 没有 timeout 参数，底层 opener.open() 不限时：断网/静默
-    # 防火墙会让常驻的 watch 守望者永久卡死。临时设 socket 级默认超时兜底；
-    # 超时以 socket.timeout 抛出，走下面的 best-effort 分支缓存为「未命中」。
+    # musicbrainzngs exposes no timeout, and its underlying opener.open() waits
+    # indefinitely. A network outage or silent firewall could freeze the long-lived
+    # watcher permanently. Apply a temporary socket-level default timeout; it
+    # raises socket.timeout and follows the best-effort miss-caching path below.
     old_timeout = socket.getdefaulttimeout()
     socket.setdefaulttimeout(MB_TIMEOUT_SECONDS)
     try:
@@ -147,20 +148,20 @@ class ArtistCache:
 
 
 def has_cjk(s: str) -> bool:
-    """原文汉字/日文假名（CJK 基本区 + 假名）——判定是否"已是原名"。"""
+    """Return whether text already uses original CJK or Japanese kana script."""
     return any(0x3000 <= ord(c) <= 0x9FFF for c in s)
 
 
-# ---------- 人工精选的别名库（repo 内，单一事实源，web 端同吃这份 JSON） ----------
+# ---------- Curated alias library: one repository source of truth shared with the web app ----------
 
 ALIAS_PATH = (Path(__file__).resolve().parents[2]
               / "cloud" / "web" / "src" / "artist-aliases.json")
-_ALIAS_MISS = object()   # 库里没有这个键（区别于「明确保留拉丁名」的 null）
+_ALIAS_MISS = object()   # Key absent from the library, distinct from explicit null preserving a Latin name
 _alias_cache: dict | None = None
 
 
 def norm_alias_key(name: str) -> str:
-    """别名键归一：小写、去重音、折叠空白、×→x。"""
+    """Normalize alias keys: lowercase, remove diacritics, collapse whitespace, and map multiplication signs to x."""
     import unicodedata
     s = unicodedata.normalize("NFKD", str(name))
     s = "".join(c for c in s if not unicodedata.combining(c))
@@ -181,14 +182,15 @@ def _alias_map() -> dict:
 
 
 def alias_lookup(name: str):
-    """查别名库。命中返回 {name, sort} 或 None（明确保留拉丁名）；
-    没这个键返回 _ALIAS_MISS 哨兵。自动尝试「名 姓」/「姓 名」两种词序。"""
+    """Look up the alias library. Return ``{name, sort}``, or ``None`` when the
+    Latin name is explicitly authoritative. Return the ``_ALIAS_MISS`` sentinel
+    when no key exists. Try both given-family and family-given word order."""
     m = _alias_map()
     key = norm_alias_key(name)
     if key in m:
         return m[key]
     parts = key.split(" ")
-    if len(parts) == 2:   # GOTO KUMIKO ↔ KUMIKO GOTO 同一人
+    if len(parts) == 2:   # GOTO KUMIKO and KUMIKO GOTO refer to the same person.
         rev = f"{parts[1]} {parts[0]}"
         if rev in m:
             return m[rev]
@@ -197,16 +199,18 @@ def alias_lookup(name: str):
 
 def resolve_original(name: str, cache: ArtistCache,
                      resolver: Resolver | None = None) -> dict | None:
-    """把一个（可能是罗马字的）艺人名折算成 {name: 原名, sort: 罗马字}。
+    """Convert a possibly romanized artist into ``{name: original, sort: romanized}``.
 
-    查找顺序：人工别名库（零网络、可版本控制）→ 本机缓存 → MB alias 搜索。
-    别名库里显式的 null = 官方拉丁名，直接放行不再问 MB。
-    仅在能高置信度确认时返回；否则返回 None（宁可不改不可错改）。
-    文件端补写标签（canonicalize_artists）和匹配端改写候选（beets 插件）
-    共用这一个入口，语义与缓存完全一致。
+    Lookup order is the curated version-controlled alias library with no network,
+    then the local cache, then MusicBrainz alias search. Explicit ``null`` in the
+    alias library means the official name is Latin, so accept it without querying
+    MusicBrainz. Return a value only with high confidence; otherwise return None,
+    preferring no change over a wrong one. File-side tag completion
+    (``canonicalize_artists``) and candidate rewriting in the beets plugin share
+    this entry point, cache, and semantics.
     """
     if not name or has_cjk(name):
-        return None                      # 已是原名，无需折算
+        return None                      # Already in original script; no conversion needed.
     hit = alias_lookup(name)
     if hit is not _ALIAS_MISS:
         return hit if (hit and has_cjk(hit.get("name", ""))) else None
@@ -217,7 +221,7 @@ def resolve_original(name: str, cache: ArtistCache,
     if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
         return None
     if not has_cjk(entry["name"]):
-        # 折算必须"获得原文"；罗马字→另一种罗马字不值得改
+        # Conversion must recover original script; one romanization to another is not useful.
         return None
     return {
         "name": entry["name"],

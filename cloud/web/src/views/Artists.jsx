@@ -29,7 +29,7 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
     new Map((artists || []).map((a) => [a.name, a.note])), [artists])
   const sortBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, a.sort || a.name])), [artists])
-  // 有自定义头像时 URL 带 'c'，避免浏览器把「无头像 302 封面」缓存当成头像
+  // Add 'c' for a custom avatar so the browser cannot reuse a cached no-avatar 302 cover as the avatar.
   const avatarFlagBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, !!a.hasAvatar])), [artists])
 
@@ -86,7 +86,7 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
       g.toLowerCase() === genre.toLowerCase())) setGenre('')
   }, [genre, genres])
 
-  // 搜索干草堆只随艺人集合重建；关键词击键只做廉价 includes。
+  // Rebuild the search haystack only with the artist collection; query keystrokes perform a cheap includes check.
   const searchHay = useMemo(() => {
     const m = new Map()
     for (const e of data) {

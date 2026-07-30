@@ -8,14 +8,15 @@ import { kvFromSqlite } from "../src/compat.js";
 test("kv list pages every key while the caller deletes returned pages", async () => {
   const db = new Database(":memory:");
   const kv = kvFromSqlite(db);
-  const total = 2500; // 超过单页 1000，跨 3 页
+  const total = 2500; // Exceeds the 1,000-item page size and spans three pages.
   for (let i = 0; i < total; i++) {
     await kv.put(`dl:test:${String(i).padStart(5, "0")}`, "v");
   }
   await kv.put("other:key", "v");
 
-  // graph.js/gdrive.js 的缓存清理模式：取一页 → 删掉这一页 → 用 cursor 取下一页。
-  // OFFSET 型游标在这种用法下会跳过存活键；键集游标必须一个不漏。
+  // graph.js/gdrive.js cache cleanup fetches a page, deletes it, then fetches the
+  // next page by cursor. An OFFSET cursor skips surviving keys in this pattern;
+  // keyset pagination must retain every one.
   let cursor = "";
   let seen = 0;
   for (let guard = 0; guard < 10; guard++) {

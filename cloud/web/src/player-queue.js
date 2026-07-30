@@ -1,6 +1,6 @@
 /**
- * 返回相邻曲目的队列位置；null 表示到达队尾且不循环。
- * 队首按上一首：列表循环时回到队尾，非循环时留在队首并重播。
+ * Return the adjacent queue position; null means the boundary was reached without looping.
+ * Previous at the first item wraps to the end in list-repeat mode, otherwise it stays and replays the first item.
  */
 export function adjacentQueuePosition(pos, length, delta, repeat) {
   if (!Number.isInteger(pos) || length <= 0) return null

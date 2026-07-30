@@ -332,9 +332,9 @@ function RymDialog({ album, onClose, onSaved }) {
   )
 }
 
-/* Discogs 导入：自动匹配（服务器调官方 API）或手动拖入保存的发行页 HTML。
- * 只取风格数据：Discogs Style（细）→ 主风格，Genre（粗）→ 次风格，
- * 与现有值大小写不敏感去重后合并。 */
+/* Discogs import supports automatic matching through the official API or a manually saved release-page HTML file.
+ * Import taxonomy only: specific Discogs Styles become primary genres, broad Genres become secondary genres,
+ * then merge with existing values using case-insensitive deduplication. */
 function DiscogsReleaseThumb({ albumId, candidate }) {
   const initial = candidate.thumb || ''
   const [src, setSrc] = useState(initial)
@@ -389,16 +389,16 @@ function DiscogsReleaseThumb({ albumId, candidate }) {
 
 function DiscogsDialog({ album, onClose, onSaved }) {
   const { t } = useI18n()
-  const [cands, setCands] = useState(null)  // null = 匹配中
+  const [cands, setCands] = useState(null)  // null = matching
   const [err, setErr] = useState('')
   const [picked, setPicked] = useState(null)
-  const [selS, setSelS] = useState(new Set()) // 勾选的 styles → 主风格
-  const [selG, setSelG] = useState(new Set()) // 勾选的 genres → 次风格
+  const [selS, setSelS] = useState(new Set()) // Selected styles → primary genres
+  const [selG, setSelG] = useState(new Set()) // Selected genres → secondary genres
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState('')
   const [urlBusy, setUrlBusy] = useState(false)
-  // 图片导入（可选）：拉取该发行的图片列表，勾选后一并导入
-  const [imgs, setImgs] = useState(null)      // null=未拉取 / []=无图 / [...]
+  // Optional image import: fetch the release image list and import the selected entries with the metadata.
+  const [imgs, setImgs] = useState(null)      // null=not fetched / []=no images / [...]
   const [imgSel, setImgSel] = useState(new Set())
   const [imgAsCover, setImgAsCover] = useState(false)
   const [imgBusy, setImgBusy] = useState(false)
@@ -449,7 +449,7 @@ function DiscogsDialog({ album, onClose, onSaved }) {
     setImgs(null); setImgSel(new Set()); setImgAsCover(false)
   }
 
-  // 从 picked 里拿 Discogs 引用（候选有 id，链接/HTML 有 url）
+  // Extract the Discogs reference from the selection: candidates have an ID, while links/HTML provide a URL.
   const pickedRef = () => (picked?.id ? String(picked.id) : picked?.url || '')
 
   const loadImages = async () => {
@@ -492,7 +492,7 @@ function DiscogsDialog({ album, onClose, onSaved }) {
     }
   }
 
-  // 粘贴 release / master 链接 → 服务器走官方 API 取详情
+  // A pasted release/master link asks the server to fetch details through the official API.
   const fetchUrl = async () => {
     const value = url.trim()
     if (!value || urlInFlight.current || applyInFlight.current) return
@@ -541,7 +541,7 @@ function DiscogsDialog({ album, onClose, onSaved }) {
       }
       const hasGenres = (picked.styles || []).length || (picked.genres || []).length
       if (hasGenres) await api.patchAlbum(album.id, { genres, secondaryGenres: sec })
-      // 顺带导入勾选的图片
+      // Import selected images in the same operation.
       let imgMsg = ''
       if (selected.length) {
         const r = await api.discogsImportImages(
@@ -684,7 +684,7 @@ function DiscogsDialog({ album, onClose, onSaved }) {
               {t('discogsAlbum.pickHint')}
             </div>
 
-            {/* 图片导入（可选）：拉取该发行的图片，勾选后随「并入」一起导入 */}
+            {/* Optional image import: fetch release images and import selected entries with Merge. */}
             <div className="dg-imgblock">
               <div className="dg-group" style={{ marginBottom: 8 }}>{t('discogsAlbum.imagesOptional')}</div>
               {imgs === null && (
@@ -742,12 +742,12 @@ function DiscogsDialog({ album, onClose, onSaved }) {
   )
 }
 
-/* 内页/写真画廊：有图才对所有人展示；管理员多一个「添加」入口、删除、拖动排序。 */
+/* Booklet/photo gallery: visible to everyone only when populated; administrators can add, delete, and reorder. */
 function Gallery({ album, isAdmin, onChanged }) {
   const { t } = useI18n()
-  const [lightbox, setLightbox] = useState(-1) // 打开的图片下标
-  const [uploading, setUploading] = useState(0) // 剩余上传数
-  const [order, setOrder] = useState(null)      // 拖动中的临时 id 序
+  const [lightbox, setLightbox] = useState(-1) // Index of the open image
+  const [uploading, setUploading] = useState(0) // Number of uploads remaining
+  const [order, setOrder] = useState(null)      // Temporary ID order during drag
   const [swipeX, setSwipeX] = useState(0)
   const [swipeAnimating, setSwipeAnimating] = useState(false)
   const [settledImage, setSettledImage] = useState(null)
@@ -760,11 +760,11 @@ function Gallery({ album, isAdmin, onChanged }) {
   const suppressClick = useRef(false)
   const toast = useToast()
   const baseImages = album.images || []
-  // 拖动时用临时序，否则用服务端序
+  // Use the temporary order during a drag; otherwise use server order.
   const images = order || baseImages
   const currentImageId = lightbox >= 0 ? images[lightbox] : null
   const imageLoadState = galleryImageLoadState(currentImageId, settledImage)
-  // 服务端序变了（刷新/增删）→ 清临时序，跟随服务端
+  // When server order changes after refresh/add/delete, clear the temporary order and follow the server.
   useEffect(() => { setOrder(null) }, [album.images])
 
   const canDrag = isAdmin && images.length > 1
@@ -893,7 +893,7 @@ function Gallery({ album, isAdmin, onChanged }) {
     const picked = [...files]
     const list = picked.filter((f) => imageExt(f))
     if (!list.length) {
-      // 选了文件但都不是支持的图片类型（HEIC/BMP/SVG…）：给反馈而不是静默
+      // If every selected file is unsupported (HEIC, BMP, SVG, etc.), report it instead of failing silently.
       if (picked.length) toast(t('gallery.noImage'), 'err')
       return
     }
@@ -1097,14 +1097,14 @@ function TrackArtistsDialog({ album, track, artistOptions, onClose, onSaved }) {
   )
 }
 
-/* 曲目管理：拖拽排序 / 改名 / 艺人署名 / 删除 / 补传音频（管理员） */
+/* Administrator track management: drag ordering, rename, artist credits, deletion, and replacement audio uploads. */
 function TracksDialog({ album, artistOptions, onClose, onChanged }) {
   const { t } = useI18n()
   const [rows, setRows] = useState(album.tracks)
   const [orderDirty, setOrderDirty] = useState(false)
   const [savingOrder, setSavingOrder] = useState(false)
   const [delFiles, setDelFiles] = useState(false)
-  const [armed, setArmed] = useState('')   // 待二次确认删除的曲目 id
+  const [armed, setArmed] = useState('')   // Track ID awaiting delete confirmation
   const [adding, setAdding] = useState([]) // [{name, pct}]
   const [rescanning, setRescanning] = useState(false)
   const [creditTrack, setCreditTrack] = useState(null)
@@ -1216,8 +1216,8 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
     }
   }
 
-  // 曲库自愈：按 OneDrive 目录里的真实文件重建曲目表（找回误删的歌、
-  // 收编手动丢进网盘的文件）。艺人/专辑名/年份沿用当前值不被覆盖。
+  // Library self-repair: rebuild tracks from the actual OneDrive directory, recovering deleted rows and adopting files
+  // placed there manually. Preserve the current artist, album title, and year.
   const rescan = async () => {
     if (rescanInFlight.current) return
     rescanInFlight.current = true
@@ -1344,7 +1344,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
   const [al, setAl] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [dlg, setDlg] = useState('') // '' | 'edit' | 'rym' | 'tracks' | 'del'
-  const [noteReader, setNoteReader] = useState(false) // 简介全文弹层
+  const [noteReader, setNoteReader] = useState(false) // Full-description reader dialog
   const [genresExpanded, setGenresExpanded] = useState(false)
   const compactTaxonomy = useMediaQuery('(max-width: 720px)')
   const loadSeq = useRef(0)
@@ -1361,8 +1361,8 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       setLoadError('')
     } catch (e) {
       if (seq !== loadSeq.current) return
-      // 会话过期走整站统一的登录流程；本地「重试」按钮重放同一个
-      // 未认证请求，永远不可能成功。
+      // An expired session must enter the site's shared login flow. A local Retry button would simply replay
+      // the same unauthenticated request and could never succeed.
       if (e instanceof api.AuthError && onAuthError) { onAuthError(); return }
       setLoadError(e.message || 'load failed')
     }
@@ -1411,8 +1411,8 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
   }
 
   const del = async (files) => {
-    // 页面唯一不可逆操作：双击/连点两个删除按钮会发两次 DELETE，
-    // 第二次 404 又弹「删除失败」盖住成功提示。加在途守卫。
+    // This is the page's only irreversible action. A double click can send two DELETE requests, and the second 404
+    // would cover the success message with a failure toast, so guard the in-flight operation.
     if (delInFlight.current) return
     delInFlight.current = true
     setDeleting(true)
@@ -1435,7 +1435,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       toast(next ? t('albumPage.hiddenOk') : t('albumPage.shownOk'), 'ok')
       setAl({ ...al, hidden: next })
       onChanged()
-      // 隐藏后回曲库，避免访客态误入；管理员仍可从「显示隐藏」进
+      // Return to the library after hiding to avoid a stale listener view; administrators can reopen it through Show Hidden.
       if (next) navigate('/')
     } catch (e) { toast(t('albumPage.hideFail', e.message), 'err') }
   }

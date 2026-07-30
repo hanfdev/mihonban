@@ -1,21 +1,22 @@
-// 会话认证（双角色）：
-//   user  —— 普通口令，给朋友用，只能浏览和播放
-//   admin —— 管理员口令，后台 + 一切写操作
-// 密码优先读 DB 里的 PBKDF2 哈希（后台可改），没有则回退到部署时的
-// 环境变量明文（首次引导）。cookie 携带角色并整体签名。
+// Session authentication with two roles:
+//   user  - regular passphrase for friends; browse and play only
+//   admin - admin passphrase; Admin plus all write operations
+// Passwords prefer PBKDF2 hashes stored in the database and editable in Admin,
+// falling back to plaintext deployment environment variables for initial setup.
+// The cookie carries the role and is signed as a whole.
 
 const COOKIE = "mihonban_session";
 const DAY = 86400_000;
 const MIN_SESSION_SECRET_LENGTH = 32;
-const PBKDF2_ITERS = 210_000; // OWASP 2023 推荐（PBKDF2-HMAC-SHA256）
-const MAX_FAILURES = 6;       // 每 IP 失败上限（原 8，收紧）
-const LOCKOUT_TTL = 900;      // 锁定窗口秒（15 分钟）
+const PBKDF2_ITERS = 210_000; // OWASP 2023 recommendation for PBKDF2-HMAC-SHA256
+const MAX_FAILURES = 6;       // Failure limit per IP, tightened from 8
+const LOCKOUT_TTL = 900;      // Lockout window in seconds (15 minutes)
 
 const te = (s) => new TextEncoder().encode(s);
 const hex = (buf) => [...new Uint8Array(buf)]
   .map((b) => b.toString(16).padStart(2, "0")).join("");
 
-// 常量时间字符串比较（等长 hex 字符串），杜绝按位提前返回的时序侧信道
+// Constant-time comparison for equal-length hex strings prevents early-return timing leaks.
 function timingSafeEqual(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) {
     return false;
@@ -37,11 +38,11 @@ function sessionSecret(env) {
     ? secret : null;
 }
 
-// 小的随机延迟：拖慢暴力破解，同时抹平「用户存在与否」的响应时间差
+// A small random delay slows brute force and masks timing differences for account existence.
 const jitterDelay = () =>
   new Promise((r) => setTimeout(r, 120 + Math.floor(Math.random() * 130)));
 
-/* ---------- 密码哈希（跨运行时：CF Workers / Node 均有 WebCrypto） ---------- */
+/* ---------- Password hashing (WebCrypto is available in both Workers and Node) ---------- */
 
 export async function hashPassword(password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -79,7 +80,7 @@ export async function verifyPassword(password, stored) {
   }
 }
 
-/* ---------- 设置存取 ---------- */
+/* ---------- Settings access ---------- */
 
 export async function getSetting(env, k) {
   const row = await env.DB.prepare("SELECT v FROM settings WHERE k = ?")
@@ -92,7 +93,7 @@ export async function setSetting(env, k, v) {
     ON CONFLICT(k) DO UPDATE SET v = excluded.v`).bind(k, String(v)).run();
 }
 
-/* ---------- 登录检查：返回 'admin' | 'user' | null ---------- */
+/* ---------- Login check: returns 'admin' | 'user' | null ---------- */
 
 export async function checkPassword(env, password) {
   if (!password) return null;
@@ -108,15 +109,16 @@ export async function checkPassword(env, password) {
   return user ? "user" : null;
 }
 
-/* ---------- 会话 cookie ----------
-   签名内容含「会话纪元」(session_epoch)：改密/踢出全部登录时递增该值，
-   旧 cookie 立即失效。纪元存 settings，随密钥一起进 HMAC。 */
+/* ---------- Session cookie ----------
+   The signed payload includes a session epoch (session_epoch). Incrementing it
+   after a password change or global sign-out immediately invalidates old cookies.
+   The epoch lives in settings and joins the secret in the HMAC. */
 
 async function sessionEpoch(env) {
   return (await getSetting(env, "session_epoch")) || "0";
 }
 
-/** 递增会话纪元 = 让所有已签发 cookie 失效（改密后调用）。 */
+/** Increment the session epoch to invalidate every issued cookie after a password change. */
 export function bumpSessionEpochStatement(env) {
   // Let SQLite/D1 perform the increment in one write so simultaneous password
   // changes cannot read the same epoch and accidentally lose an invalidation.
@@ -138,13 +140,14 @@ export async function sessionCookie(env, role, days = 30) {
   const exp = Date.now() + days * DAY;
   const epoch = await sessionEpoch(env);
   const sig = await hmac(secret, `${exp}.${role}.${epoch}`);
-  // 与全项目开关约定一致：只有显式 "1" 才关闭 Secure（"0"/"false" 不算开启）
+  // Match project-wide flag semantics: only explicit "1" disables Secure;
+  // "0" and "false" do not enable the override.
   const secure = env.DEV_INSECURE_COOKIE === "1" ? "" : " Secure;";
   return `${COOKIE}=${exp}.${role}.${sig}; Path=/; HttpOnly;${secure} ` +
     `SameSite=Lax; Max-Age=${days * 86400}`;
 }
 
-/** 返回 'admin' | 'user' | null */
+/** Return 'admin' | 'user' | null. */
 export async function sessionRole(env, req) {
   const secret = sessionSecret(env);
   if (!secret) return null;
@@ -155,7 +158,7 @@ export async function sessionRole(env, req) {
   if (Number(exp) < Date.now()) return null;
   const epoch = await sessionEpoch(env);
   const expect = await hmac(secret, `${exp}.${role}.${epoch}`);
-  return timingSafeEqual(expect, sig) ? role : null; // 常量时间校验
+  return timingSafeEqual(expect, sig) ? role : null; // Constant-time verification
 }
 
 const isCompanion = (c) => {
@@ -165,7 +168,8 @@ const isCompanion = (c) => {
     && expected.length > 0 && timingSafeEqual(key, expected);
 };
 
-/** 任意已登录角色，或伴侣 key。开启「访客免密」时未登录访客自动获 user（只读）。 */
+/** Allow either authenticated role or the companion key. With passwordless guest
+ *  access enabled, unauthenticated visitors receive the read-only user role. */
 export function requireAuth() {
   return async (c, next) => {
     if (isCompanion(c)) { c.set("role", "companion"); return next(); }
@@ -178,7 +182,7 @@ export function requireAuth() {
   };
 }
 
-/** 仅管理员或伴侣 key（一切写操作）。 */
+/** Allow only admins or the companion key for all write operations. */
 export function requireAdmin() {
   return async (c, next) => {
     const role = c.get("role");
@@ -187,10 +191,10 @@ export function requireAdmin() {
   };
 }
 
-/* ---------- 登录限速（只数失败，成功清零）+ 均衡延迟 ----------
-   - 每 IP 失败达 MAX_FAILURES 即锁定 LOCKOUT_TTL 秒
-   - 每次登录尝试都加 120–250ms 随机延迟：既拖慢暴破，又抹平
-     「口令是否命中已存在用户」的时间差 */
+/* ---------- Login throttling (failures only; success resets) plus balanced delay ----------
+   - Lock an IP for LOCKOUT_TTL seconds after MAX_FAILURES failures.
+   - Add 120-250ms of random delay to every attempt, both slowing brute force and
+     masking timing differences between matching and nonexistent credentials. */
 
 export async function isThrottled(env, ip) {
   return Number((await env.KV.get(`lt:${ip}`)) || 0) >= MAX_FAILURES;
@@ -199,7 +203,8 @@ export async function isThrottled(env, ip) {
 export async function noteLoginFailure(env, ip) {
   const key = `lt:${ip}`;
   const n = Number((await env.KV.get(key)) || 0);
-  // 每次失败刷新 TTL：持续攻击 = 持续锁定，直到停手满 LOCKOUT_TTL 秒
+  // Refresh the TTL on every failure: a sustained attack stays locked until it
+  // stops for a full LOCKOUT_TTL interval.
   await env.KV.put(key, String(n + 1), { expirationTtl: LOCKOUT_TTL });
 }
 
@@ -207,5 +212,5 @@ export async function clearLoginFailures(env, ip) {
   await env.KV.delete(`lt:${ip}`);
 }
 
-/** 登录尝试的均衡延迟（在校验前后调用，抹平响应时间差、拖慢暴破）。 */
+/** Balanced delay around credential checks to flatten response time and slow brute force. */
 export const loginDelay = jitterDelay;

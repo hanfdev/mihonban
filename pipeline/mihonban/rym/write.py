@@ -78,9 +78,10 @@ def _write_id3(path: Path, vals: dict[str, str], comment: str,
 
 def _write_id3_container(path: Path, vals: dict[str, str], comment: str,
                          apply: bool, genres: list[str]) -> bool:
-    """WAV/AIFF/DSF：ID3 藏在容器 chunk 里，须经 mutagen.File 读写。
-    直接 ID3(path) 找不到 chunk，而 Vorbis 路径的纯字符串赋值会被
-    ID3Tags 以 TypeError 拒绝（帧对象才合法）——两头都走不通，只能分派。"""
+    """WAV/AIFF/DSF store ID3 inside a container chunk and require mutagen.File.
+    Direct ``ID3(path)`` cannot find the chunk, while plain-string assignment on
+    the Vorbis path is rejected by ID3Tags because it requires Frame objects.
+    Neither generic path works, so dispatch by container."""
     audio = mutagen.File(path)
     if audio is None:
         return False
@@ -220,8 +221,9 @@ def write_album(album_path: Path, row, apply: bool) -> tuple[int, int]:
             else:
                 did = _write_vorbis(f, vals, comment, apply, genres)
             changed += bool(did)
-        # TypeError 兜底：任何标签容器与写法不匹配的个例只跳过该文件，
-        # 绝不让一个坏文件中断整轮写入（半写状态很难人工恢复）。
+        # A TypeError from an incompatible tag container or write method skips
+        # only that file. Never let one bad file interrupt the complete write,
+        # because a partially written state is difficult to recover manually.
         except (mutagen.MutagenError, OSError, ValueError, UnicodeError,
                 TypeError) as e:
             log.error("rym write failed on %s: %s", f, e)

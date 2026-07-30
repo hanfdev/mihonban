@@ -116,8 +116,9 @@ def synthesize_tags(album_dir: Path, apply: bool = True) -> list[str]:
                     file_notes.append(f"{f.name}: albumartist <- {aa!r}")
                     changed = True
         except (mutagen.MutagenError, ValueError, TypeError, KeyError) as e:
-            # 单个文件的标签容器不配合，跳过它即可——绝不能让 TypeError 逃出
-            # 本函数：那会把整个收件项打进隔离区（WAV 专辑曾因此永远无法入库）
+            # Skip a file whose tag container rejects the operation. Never let a
+            # TypeError escape this function or the entire inbox item enters
+            # quarantine; this once prevented WAV albums from ever importing.
             log.warning("cannot synthesize tags for %s: %s", f, e)
             continue
         if changed and apply:
@@ -131,9 +132,10 @@ def synthesize_tags(album_dir: Path, apply: bool = True) -> list[str]:
     return notes
 
 
-# WAV/AIFF/DSF 的 easy=True 不存在 Easy 包装器：mutagen.File 返回裸容器，
-# .tags 是 ID3 家族对象，只收 Frame 实例、纯字符串赋值直接 TypeError。
-# 读写都在这里按容器分派，easy 键语义在两个世界保持一致。
+# WAV/AIFF/DSF have no Easy wrapper for easy=True: mutagen.File returns the raw
+# container, whose .tags is an ID3-family object accepting Frame instances rather
+# than plain string assignment. Dispatch reads and writes by container here while
+# preserving Easy-key semantics in both worlds.
 _ID3_FRAME = {"album": TALB, "date": TDRC, "albumartist": TPE2, "artist": TPE1}
 
 

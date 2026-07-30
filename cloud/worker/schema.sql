@@ -1,21 +1,21 @@
--- mihonban cloud D1 schema（幂等，可重复执行）
+-- mihonban cloud D1 schema (idempotent and safe to run repeatedly)
 CREATE TABLE IF NOT EXISTS albums (
-  id          TEXT PRIMARY KEY,          -- sha1(folder NFC)[:16]，本地伴侣与 Worker 算法一致
+  id          TEXT PRIMARY KEY,          -- sha1(folder NFC)[:16], matching the companion and Worker algorithm
   artist      TEXT NOT NULL,
   artist_sort TEXT NOT NULL DEFAULT '',
   title       TEXT NOT NULL,
   year        INTEGER,
-  folder      TEXT NOT NULL UNIQUE,      -- 存储相对路径（正斜杠，NFC）
-  cover_path  TEXT NOT NULL DEFAULT '',  -- 封面文件路径（懒解析）
+  folder      TEXT NOT NULL UNIQUE,      -- storage-relative path (forward slashes, NFC)
+  cover_path  TEXT NOT NULL DEFAULT '',  -- cover path (resolved lazily)
   rym_rating  REAL,
   rym_votes   INTEGER,
   rym_rank    TEXT NOT NULL DEFAULT '',
   rym_url     TEXT NOT NULL DEFAULT '',
-  genres      TEXT NOT NULL DEFAULT '[]',  -- JSON 数组，primary 在前
+  genres      TEXT NOT NULL DEFAULT '[]',  -- JSON array, primary genres first
   sec_genres  TEXT NOT NULL DEFAULT '[]',
   descriptors TEXT NOT NULL DEFAULT '[]',
-  storage_id  TEXT NOT NULL,             -- 所属命名存储后端
-  hidden      INTEGER NOT NULL DEFAULT 0, -- 1 = 曲库列表隐藏（管理员仍可 includeHidden）
+  storage_id  TEXT NOT NULL,             -- owning named storage backend
+  hidden      INTEGER NOT NULL DEFAULT 0, -- 1 = hidden from library lists (admins may still includeHidden)
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
@@ -30,24 +30,26 @@ CREATE TABLE IF NOT EXISTS tracks (
   format   TEXT NOT NULL DEFAULT '',
   bitrate  INTEGER,
   size     INTEGER,
-  path     TEXT NOT NULL UNIQUE          -- 存储相对路径
+  path     TEXT NOT NULL UNIQUE          -- storage-relative path
 );
 
 CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album_id, disc, track);
 CREATE INDEX IF NOT EXISTS idx_albums_hidden ON albums(hidden);
 CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist);
 
--- genre 归一化副表（小写）：同 genre 推荐的索引点查来源。
--- 同步触发器由 ensureMigrations 在运行时安装（wrangler d1 execute --file
--- 对 BEGIN..END 触发器体有切分缺陷，故不写在本文件）；首次升级时回填。
+-- Normalized lowercase genre side table: indexed lookup source for same-genre recommendations.
+-- ensureMigrations installs synchronization triggers at runtime because
+-- wrangler d1 execute --file incorrectly splits BEGIN..END trigger bodies;
+-- the first upgrade backfills existing rows.
 CREATE TABLE IF NOT EXISTS album_genres (
   album_id TEXT NOT NULL,
   genre    TEXT NOT NULL,
   PRIMARY KEY (genre, album_id)
 );
 
--- 大型专辑登记的临时写入区。曲目先分批落到这里，最后用一个 D1 batch
--- 原子替换正式目录，避免中途失败留下半张专辑。
+-- Staging area for registering large albums. Tracks arrive here in chunks, then
+-- one D1 batch atomically replaces the live catalog so a mid-import failure
+-- cannot leave a partially registered album.
 CREATE TABLE IF NOT EXISTS track_imports (
   import_id  TEXT NOT NULL,
   id         TEXT NOT NULL,
@@ -69,13 +71,14 @@ CREATE TABLE IF NOT EXISTS track_imports (
 CREATE INDEX IF NOT EXISTS idx_track_imports_created
   ON track_imports(created_at);
 
--- 运行时设置（密码哈希、资源站配置、伴侣心跳等），后台可改、无需重新部署
+-- Runtime settings (password hashes, source configuration, companion heartbeat, etc.);
+-- editable in Admin without redeployment
 CREATE TABLE IF NOT EXISTS settings (
   k TEXT PRIMARY KEY,
   v TEXT NOT NULL
 );
 
--- 资源站新帖（扫描器只记录标题和链接，不下载任何文件）
+-- New source posts (the scanner records titles and links only; it downloads no files)
 CREATE TABLE IF NOT EXISTS source_posts (
   id         TEXT PRIMARY KEY,          -- sha1(url)[:16]
   title      TEXT NOT NULL,
@@ -87,24 +90,25 @@ CREATE TABLE IF NOT EXISTS source_posts (
 
 CREATE INDEX IF NOT EXISTS idx_posts_status ON source_posts(status, published DESC);
 
--- 收藏（管理员标记；普通用户只读）
+-- Favorites (marked by admins; read-only for regular users)
 CREATE TABLE IF NOT EXISTS favorites (
   kind       TEXT NOT NULL,             -- 'album' | 'track'
   item_id    TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  sort_order INTEGER,                   -- 手动拖动的自定义顺序（NULL = 用 -created_at 兜底，最近在前）
+  sort_order INTEGER,                   -- custom drag order (NULL falls back to -created_at, newest first)
   PRIMARY KEY (kind, item_id)
 );
 
--- 艺术家附加信息（头像等；name 是稳定的展示名称）
+-- Supplemental artist information (avatar, etc.; name is the stable display name)
 CREATE TABLE IF NOT EXISTS artists (
   name        TEXT PRIMARY KEY,
-  avatar_path TEXT NOT NULL DEFAULT '', -- 存储相对路径
-  storage_id  TEXT                      -- 有头像时记录其命名存储后端
+  avatar_path TEXT NOT NULL DEFAULT '', -- storage-relative path
+  storage_id  TEXT                      -- named storage backend when an avatar exists
 );
 
--- 专辑与艺人的有序多对多关系。albums.artist / artist_sort 继续保留为
--- 兼容旧客户端的显示字段；所有艺人维度的业务逻辑以本表为准。
+-- Ordered many-to-many relationship between albums and artists. albums.artist
+-- and artist_sort remain display fields for older clients; all artist-scoped
+-- business logic treats this table as authoritative.
 CREATE TABLE IF NOT EXISTS album_artists (
   album_id   TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
   artist     TEXT NOT NULL,
@@ -154,11 +158,12 @@ CREATE VIEW IF NOT EXISTS artist_album_links AS
   )
   GROUP BY t.album_id, ta.artist;
 
--- 专辑内页/写真等附加图片（管理员上传，存 OneDrive，专辑删除时级联）
+-- Supplemental album images such as booklet pages and photos (uploaded by admins,
+-- stored in OneDrive, and deleted with the album)
 CREATE TABLE IF NOT EXISTS album_images (
   id         TEXT PRIMARY KEY,          -- sha1(path)[:16]
   album_id   TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
-  path       TEXT NOT NULL UNIQUE,      -- 存储相对路径
+  path       TEXT NOT NULL UNIQUE,      -- storage-relative path
   source_key TEXT,                      -- stable provider identity for idempotent imports
   sort       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
@@ -169,27 +174,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_images_album_source
   ON album_images(album_id, source_key)
   WHERE source_key IS NOT NULL AND source_key != '';
 
--- R2 图床镜像索引：cache_key（如 art:<albumId>:480）→ 已上传的 R2 对象 key。
--- 命中即 302 到公开 CDN，图片字节不过 Worker、不打 OneDrive Graph API。
+-- R2 image-mirror index: cache_key (for example art:<albumId>:480) maps to an
+-- uploaded R2 object key. A hit redirects to the public CDN, keeping image bytes
+-- out of the Worker and avoiding OneDrive Graph API traffic.
 CREATE TABLE IF NOT EXISTS r2_cache (
-  cache_key  TEXT PRIMARY KEY,   -- 逻辑键：art:<id>:<size> / img:<id>:<size> / artist:<name>:<size>
-  r2_key     TEXT NOT NULL,      -- R2 对象 key
+  cache_key  TEXT PRIMARY KEY,   -- logical key: art:<id>:<size> / img:<id>:<size> / artist:<name>:<size>
+  r2_key     TEXT NOT NULL,      -- R2 object key
   created_at INTEGER NOT NULL,
   cache_policy INTEGER NOT NULL DEFAULT 0 -- 1 = immutable browser cache metadata applied
 );
 
--- 存储后端（可多个共存：OneDrive / WebDAV / Google Drive / 本地文件夹）。
--- config 是各后端的 JSON 凭据。albums.storage_id 必须引用一个命名后端。
+-- Storage backends (multiple OneDrive, WebDAV, Google Drive, and local-folder
+-- backends may coexist). config holds backend-specific JSON credentials;
+-- albums.storage_id must reference a named backend.
 CREATE TABLE IF NOT EXISTS storages (
-  id         TEXT PRIMARY KEY,          -- 短 id
-  name       TEXT NOT NULL,             -- 展示名
+  id         TEXT PRIMARY KEY,          -- short ID
+  name       TEXT NOT NULL,             -- display name
   kind       TEXT NOT NULL,             -- 'onedrive' | 'webdav' | 'gdrive' | 'local'
-  config     TEXT NOT NULL DEFAULT '{}',-- JSON 凭据
-  is_write   INTEGER NOT NULL DEFAULT 0,-- 是否为当前主写入目标（新上传落此后端；仅一个为 1）
+  config     TEXT NOT NULL DEFAULT '{}',-- JSON credentials
+  is_write   INTEGER NOT NULL DEFAULT 0,-- current primary write target for new uploads; only one may be 1
   created_at INTEGER NOT NULL
 );
 
--- 简介与艺人排序名（artistsort 的 id 为艺人名；其他 kind 见 API）
+-- Descriptions and artist sort names (artistsort uses the artist name as id;
+-- see the API for other kinds)
 CREATE TABLE IF NOT EXISTS notes (
   kind       TEXT NOT NULL,
   id         TEXT NOT NULL,

@@ -28,24 +28,24 @@ const parseHash = () => {
   return { view: view || 'library', arg }
 }
 
-// 设备解码能力判定用：format → MIME（如 iPhone 的 Safari 没有 Vorbis 解码器）
+// Used to determine device decoding support: format → MIME (for example, iPhone Safari lacks Vorbis decoding).
 const AUDIO_MIME = {
   mp3: 'audio/mpeg', flac: 'audio/flac', ogg: 'audio/ogg', oga: 'audio/ogg',
   opus: 'audio/ogg; codecs="opus"', m4a: 'audio/mp4', aac: 'audio/aac',
   wav: 'audio/wav', aiff: 'audio/aiff', aif: 'audio/aiff',
 }
 
-// 导航链接的点击处理：普通左键走应用内路由（保留自定义历史深度跟踪），
-// 修饰键点击交还浏览器——Ctrl/Cmd 新标签页、Shift 新窗口、Alt 下载。
-// 无条件 preventDefault 会让刚加上的真实 href 形同虚设。
+// Navigation links use the in-app router for an ordinary left click while preserving custom history depth.
+// Modified clicks stay with the browser: Ctrl/Cmd opens a tab, Shift opens a window, and Alt downloads.
+// Calling preventDefault unconditionally would make the real href we added effectively useless.
 const navClick = (hash) => (e) => {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0) return
   e.preventDefault()
   navigate(hash)
 }
 
-// 初始数据加载失败（非 401）时的兜底视图：与专辑页错误态同一套视觉。
-// 骨架屏永远转圈 + 只能整页刷新，是比错误提示更糟的 UI。
+// Fallback view for initial data failures other than 401, using the same visual language as the album error state.
+// An endlessly spinning skeleton that can only be cleared by a full refresh is worse than an error message.
 function LoadFailed({ message, onRetry }) {
   const { t } = useI18n()
   return (
@@ -56,7 +56,7 @@ function LoadFailed({ message, onRetry }) {
   )
 }
 
-// 播放顺序：非随机 = 自然顺序从 startIdx 起；随机 = 当前曲优先 + 其余洗牌
+// Playback order: sequential mode starts at startIdx; shuffle mode keeps the current track first and shuffles the rest.
 const buildOrder = (n, startIdx, shuffled) => {
   if (!shuffled) return { order: [...Array(n).keys()], pos: startIdx }
   const rest = [...Array(n).keys()].filter((i) => i !== startIdx)
@@ -70,28 +70,28 @@ const buildOrder = (n, startIdx, shuffled) => {
 export default function App() {
   const toast = useToast()
   const { t } = useI18n()
-  const [authed, setAuthed] = useState(null) // null = 检查中
+  const [authed, setAuthed] = useState(null) // null = checking
   const [role, setRole] = useState(null)     // 'user' | 'admin'
-  const [guest, setGuest] = useState(false)  // 访客免密进入（可再登录成管理员）
-  // loginMode: null | 'admin'（升管理员）| 'switch'（换号/登出后再登）
+  const [guest, setGuest] = useState(false)  // Passwordless guest access; the user can still sign in as admin.
+  // loginMode: null | 'admin' (elevate to admin) | 'switch' (switch account or sign in after logout)
   const [loginMode, setLoginMode] = useState(null)
-  const [sessOpen, setSessOpen] = useState(false)  // 顶栏会话菜单
+  const [sessOpen, setSessOpen] = useState(false)  // Header session menu
   const sessRef = useRef(null)
   const [route, setRoute] = useState(parseHash())
   const [albums, setAlbums] = useState(null)
-  const [tracksAll, setTracksAll] = useState(null) // 懒加载的全曲目
+  const [tracksAll, setTracksAll] = useState(null) // Lazily loaded complete track list
   const [artists, setArtists] = useState([])       // [{name, hasAvatar}]
-  // 初始数据加载失败（非 401）时的错误文案；不设置则视图渲染骨架屏。
-  // 没有它，一次网络抖动会让曲库/歌曲页永远停在骨架屏且无从重试。
+  // Error copy for an initial data failure other than 401; without it the view renders a skeleton.
+  // Otherwise a brief network wobble would leave the library or tracks page stuck with no retry path.
   const [loadErrors, setLoadErrors] = useState({})
   const noteLoadError = useCallback((key, message) =>
     setLoadErrors((prev) => ({ ...prev, [key]: message || 'load failed' })), [])
   const clearLoadError = useCallback((key) =>
     setLoadErrors((prev) => (prev[key] ? { ...prev, [key]: '' } : prev)), [])
-  const [avatarVer, setAvatarVer] = useState(0)    // 头像换过后破缓存
+  const [avatarVer, setAvatarVer] = useState(0)    // Cache-busting revision after an avatar changes
   const [favs, setFavs] = useState({ albums: [], tracks: [] })
   const favsRef = useRef(favs)
-  // 只允许最新的数据请求回写，避免身份切换时旧响应覆盖当前状态。
+  // Allow only the latest data request to commit, so a stale response cannot overwrite a switched identity.
   const roleRef = useRef(role)
   const authedRef = useRef(authed)
   roleRef.current = role
@@ -101,20 +101,20 @@ export default function App() {
   const artistsRequestRef = useRef(0)
   const favoritesRequestRef = useRef(0)
   const [q, setQ] = useState('')
-  // 管理员在专辑页/歌曲页共用同一个「显示已隐藏」状态，默认关闭。
+  // The album and tracks pages share one "show hidden" state for administrators; it is off by default.
   const [showHidden, setShowHidden] = useState(false)
-  const [mSearch, setMSearch] = useState(false)    // 移动端搜索行开关
-  const [scrolled, setScrolled] = useState(false)  // 内容滚动后给顶栏加投影
+  const [mSearch, setMSearch] = useState(false)    // Mobile search row toggle
+  const [scrolled, setScrolled] = useState(false)  // Add a header shadow after content scrolls
   const mainRef = useRef(null)
 
-  // ---- 播放器状态 ----
+  // ---- Player state ----
   const audioRef = useRef(null)
-  // list: 归一化曲目 {id,title,duration,artist,albumId,albumTitle}
+  // list: normalized tracks {id, title, duration, artist, albumId, albumTitle}
   const [queue, setQueue] = useState({ list: [], order: [], pos: -1 })
   const [playing, setPlaying] = useState(false)
   const [shuffle, setShuffle] = useState(false)
   const [repeat, setRepeat] = useState('off') // off | all | one
-  const [npOpen, setNpOpen] = useState(false) // 移动端全屏播放页
+  const [npOpen, setNpOpen] = useState(false) // Full-screen mobile player
   const current = queue.pos >= 0 ? queue.list[queue.order[queue.pos]] : null
   const currentRef = useRef(current)
   const queueRef = useRef(queue)
@@ -124,7 +124,7 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       setRoute(parseHash())
-      mainRef.current?.scrollTo(0, 0)   // 滚动在内容容器里，不在 window
+      mainRef.current?.scrollTo(0, 0)   // Scrolling lives in the content container, not window.
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
@@ -134,14 +134,14 @@ export default function App() {
     const requestId = ++libraryRequestRef.current
     const requestedRole = role
     try {
-      // 管理员带 hidden=1：可在曲库管理隐藏音盤；访客/听众永不看见
+      // Administrators request hidden=1 to manage hidden albums; guests and listeners never receive them.
       const next = await api.library({ hidden: requestedRole === 'admin' })
       if (requestId !== libraryRequestRef.current
           || roleRef.current !== requestedRole || !authedRef.current) return
       setAlbums(next)
       clearLoadError('library')
-      // 初次登录/切换身份时已经在请求前失效，不能在较慢的 library 请求完成后
-      // 再把刚加载好的歌曲覆盖成 null。编辑/隐藏专辑等普通刷新仍默认失效。
+      // Initial sign-in or identity switches already invalidate this before the request starts.
+      // Do not let a slow library response replace newly loaded tracks with null; ordinary edits still invalidate normally.
       if (options?.invalidateTracks !== false) setTracksAll(null)
     } catch (e) {
       if (requestId !== libraryRequestRef.current) return
@@ -233,8 +233,8 @@ export default function App() {
   const favAlbums = useMemo(() => new Set(favs.albums.map((f) => f.id)), [favs])
   const favTracks = useMemo(() => new Set(favs.tracks.map((f) => f.id)), [favs])
 
-  // 稳定引用（navigate 是模块级常量）：否则每次 App 重渲染（切歌/暂停都触发）
-  // 都新建这些闭包，会让 TrackRow 的 React.memo 比较器整表失效、白白 reconcile。
+  // Keep stable references (navigate is a module constant). Otherwise every App render, including track changes or pauses,
+  // would create new closures, defeat TrackRow's React.memo comparison, and force a needless full-list reconciliation.
   const openAlbum = useCallback((id) => navigate(`/album/${id}`), [])
   const openArtist = useCallback(
     (name) => navigate(`/artist/${encodeURIComponent(name)}`), [])
@@ -253,10 +253,10 @@ export default function App() {
         : currentFavs[key].filter((x) => x.id !== id),
     })
     try { await (adding ? api.addFavorite(kind, id) : api.removeFavorite(kind, id)) }
-    catch { refreshFavorites() } // 失败回滚到服务端真相
+    catch { refreshFavorites() } // Roll back to the server's source of truth on failure.
   }, [applyFavs, refreshFavorites])
 
-  // 收藏手动拖动重排：乐观更新本地顺序，再持久化到服务端
+  // Reorder favorites by drag: update the local order optimistically, then persist it on the server.
   const reorderFavs = useCallback(async (kind, orderedIds) => {
     if (roleRef.current !== 'admin') return
     favoritesRequestRef.current++
@@ -269,12 +269,12 @@ export default function App() {
     catch { refreshFavorites() }
   }, [applyFavs, refreshFavorites])
 
-  // ---- 播放控制 ----
-  const skipRun = useRef(0) // 连续自动跳过计数：整条队列都不支持时防死循环
+  // ---- Playback controls ----
+  const skipRun = useRef(0) // Consecutive auto-skip count; prevents a loop when no track in the queue is playable.
   const sourceRef = useRef({ id: null, proxy: false })
   const playAttemptRef = useRef(0)
-  // 锁屏系统按钮切歌不能先调 play()：iOS 会立即自行推进系统进度。
-  // 这里仅记住该次切歌，等 canplay 后再启动新的 <audio> source。
+  // A lock-screen track change must not call play() immediately: iOS advances system progress at once.
+  // Record the requested change here and start the new <audio> source only after canplay.
   const deferSystemStartRef = useRef(false)
   const pendingStartRef = useRef(null)
   const playAudio = useCallback((audio, sourceId = sourceRef.current.id) => {
@@ -315,8 +315,8 @@ export default function App() {
     setPlaying(false)
   }, [])
 
-  // index 省略 =「播放全部」：继承播放器当前模式，随机开着时起点也随机；
-  // opts.shuffle = 强制随机（歌曲页的随机按钮），顺带把播放器切到随机模式
+  // An omitted index means "play all": inherit the player's current mode, including a random start when shuffle is on.
+  // opts.shuffle forces shuffle (the tracks-page random button) and switches the player into that mode.
   const playTracks = useCallback((list, index, opts) => {
     if (!list?.length) return
     const useShuffle = opts?.shuffle ?? shuffle
@@ -324,8 +324,8 @@ export default function App() {
     const start = index ?? (useShuffle ? Math.floor(Math.random() * list.length) : 0)
     const { order, pos } = buildOrder(list.length, start, useShuffle)
     setQueue({ list, order, pos })
-    // Android Chrome 对首次有声播放严格要求调用仍处在点击手势内。
-    // 先在本次事件栈里装载并播放；current 变化后的 effect 只负责兜底和切歌。
+    // Android Chrome requires the first audible play call to remain inside the click gesture.
+    // Load and play on this event stack; the effect after current changes is only a fallback and track-switch path.
     const first = list[order[pos]]
     const audio = audioRef.current
     if (audio && first?.id) {
@@ -338,7 +338,7 @@ export default function App() {
     }
   }, [playAudio, shuffle])
 
-  // 专辑上下文播放（归一化补上艺人/专辑信息）
+  // Play an album context, filling in normalized artist and album metadata.
   const playFrom = useCallback((album, tracks, index) => {
     playTracks(tracks.map((t) => ({
       id: t.id, title: t.title, duration: t.duration, format: t.format,
@@ -351,7 +351,7 @@ export default function App() {
   useEffect(() => {
     const a = audioRef.current
     if (!a || !current) return
-    // 播前先问浏览器能不能解码（iPhone 没有 Vorbis 解码器等），不行就跳过
+    // Ask the browser whether it can decode the source first (some iPhones lack Vorbis support); skip it if not.
     const mime = AUDIO_MIME[(current.format || '').toLowerCase()]
     if (mime && a.canPlayType(mime) === '') {
       playAttemptRef.current++
@@ -370,7 +370,7 @@ export default function App() {
       return
     }
     skipRun.current = 0
-    // 不再整首预取下一曲：它会制造并发大文件请求并触发 OneDrive 503 限流。
+    // Do not prefetch the entire next track: concurrent large requests can trigger OneDrive 503 throttling.
     const alreadyStarted = sourceRef.current.id === current.id
     const sourceId = current.id
     let cancelWarmStart = null
@@ -432,8 +432,8 @@ export default function App() {
     setQueue((s) => {
       if (!s.list.length) return s
       const np = adjacentQueuePosition(s.pos, s.order.length, d, repeat)
-      if (np === null) return s // 播完即停
-      if (np === s.pos) { // 同曲重播（repeat all 单曲队列 / 到头按上一首）
+      if (np === null) return s // Stop after playback.
+      if (np === s.pos) { // Replay the same track (repeat-all single-track queue or previous at the boundary).
         const a = audioRef.current
         if (a) { a.currentTime = 0; playAudio(a, sourceRef.current.id) }
         return s
@@ -507,9 +507,9 @@ export default function App() {
     })
   }, [current?.id, current?.duration, pauseAudio, playAudio, repeat, step])
 
-  // iOS 不一定采用 <audio> 自己推断的 OGG 时长；主动提供曲库时长和当前位置。
-  // `play` 只代表播放意图，远端音源真正出声要等 `playing`。缓冲期间若把
-  // Media Session 标成 playing，锁屏进度会提前走且后台 timeupdate 无法及时纠偏。
+  // iOS may not trust the duration inferred by <audio> for OGG; provide the catalog duration and current position explicitly.
+  // `play` represents intent only; remote audio is audible at `playing`. Marking Media Session as playing while buffering
+  // makes lock-screen progress run ahead and prevents timely correction from background timeupdate events.
   useEffect(() => {
     if (!('mediaSession' in navigator) || !current) return
     const a = audioRef.current
@@ -523,7 +523,7 @@ export default function App() {
         )
         ms.playbackState = playbackState
         updateMediaPosition(ms, a, current.duration)
-      } catch { /* 老 Safari 只支持部分 Media Session API */ }
+      } catch { /* Older Safari supports only part of the Media Session API. */ }
     }
     const events = ['loadstart', 'loadedmetadata', 'durationchange', 'play',
       'playing', 'waiting', 'stalled', 'timeupdate', 'seeking', 'seeked',
@@ -539,7 +539,7 @@ export default function App() {
     }
   }, [current?.id, current?.duration])
 
-  // 会话菜单：点外侧 / Esc 关闭
+  // Session menu: close on outside click or Escape.
   useEffect(() => {
     if (!sessOpen) return
     const onDoc = (e) => {
@@ -554,7 +554,7 @@ export default function App() {
     }
   }, [sessOpen])
 
-  // 退出：清 cookie + 本地状态，回到登录页
+  // Sign out: clear the cookie and local state, then return to the login page.
   const doLogout = useCallback(async () => {
     libraryRequestRef.current++
     tracksRequestRef.current++
@@ -569,8 +569,8 @@ export default function App() {
       audio.load()
     }
     sourceRef.current = { id: null, proxy: false }
-    // 注销管理员 Cookie 后重新读取服务端访问策略：开放访客时直接降级为
-    // 只读访客，不应短暂或永久落到口令登录页。
+    // Re-read the server access policy after clearing the admin cookie. With guests enabled, downgrade directly
+    // to a read-only guest instead of briefly or permanently landing on the password login page.
     const nextSession = await sessionAfterLogout(api)
     setAuthed(nextSession.ok)
     setRole(nextSession.role)
@@ -589,7 +589,7 @@ export default function App() {
 
   if (authed === null) return null
   if (!authed) return <Login onOk={(r) => { setRole(r); setAuthed(true); setGuest(false) }} />
-  // 仅「升管理员」叠层登录；退出后走完整 Login 页
+  // Use the overlay only to elevate to admin; logout uses the full Login page.
   if (loginMode === 'admin') {
     return (
       <Login
@@ -611,7 +611,7 @@ export default function App() {
   const nav = navigate
 
   const searchable = ['library', 'tracks', 'genre', 'favs', 'artists'].includes(route.view)
-  // 主导航（所有人）与管理员入口分离，避免长文案语言下搜索框盖住选项
+  // Separate the primary navigation from the admin entry so long translations cannot cover the search field.
   const NAV_MAIN = [
     { key: 'library', hash: '/', label: t('nav.library'), icon: I.disc,
       on: ['library', 'genre', 'album'].includes(route.view) },
@@ -628,7 +628,7 @@ export default function App() {
     { key: 'admin', hash: '/admin', label: t('nav.admin'), icon: I.gear,
       on: route.view === 'admin' },
   ] : []
-  // 移动端底栏仍合并为一组
+  // Keep the mobile bottom bar as one group.
   const NAV = [...NAV_MAIN, ...NAV_ADMIN]
 
   const shared = {
@@ -659,7 +659,7 @@ export default function App() {
           </nav>
         </div>
 
-        {/* 中间栏始终占位，保证搜索在整条顶栏几何中心（左/右 1fr 对称） */}
+         {/* Keep the middle column occupied so search stays geometrically centered (symmetric left/right 1fr). */}
         <div className="hdr-center">
           {searchable && (
             <div className="search">
@@ -694,8 +694,8 @@ export default function App() {
             {headerAlbumCount !== null ? t('count.albums', headerAlbumCount) : ''}
           </span>
           <LangSelect className="hdr-lang" />
-          {/* 会话入口：产品只分两档——管理员 / 访客（只读）。
-              后端的 user 口令与 guest 免密对用户都是「访客」。 */}
+          {/* Session entry: the product has two roles, administrator and read-only guest.
+              The backend user password and passwordless guest mode are both guest access to users. */}
           <div className={`sess ${sessOpen ? 'open' : ''}`} ref={sessRef}>
             <button type="button" className="sess-btn"
                     title={t('login.menuTitle')}
@@ -719,7 +719,7 @@ export default function App() {
                     <I.gear size={14} /> {t('login.adminLogin')}
                   </button>
                 )}
-                {/* 有会话 cookie 时才显示退出（访客免密无 cookie，退出无意义） */}
+                {/* Show sign out only when a session cookie exists; passwordless guests have nothing to sign out from. */}
                 {!guest && (
                   <button type="button" role="menuitem" className="danger"
                           onClick={doLogout}>
@@ -844,7 +844,7 @@ export default function App() {
                const a = audioRef.current
                const source = sourceRef.current
                if (!current || source.id !== current.id) return
-                // 微软直链/CDN 失败时，同一首自动切到本站 Range 代理一次。
+                 // If the Microsoft direct/CDN link fails, retry this track once through the local Range proxy.
                 if (a && !source.proxy) {
                   const keepWarming = pendingStartRef.current === current.id
                   sourceRef.current = { id: current.id, proxy: true }

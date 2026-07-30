@@ -1,6 +1,7 @@
 // mihonban cloud — API Worker
-// 浏览/元数据: D1 · 音频: OneDrive Graph 直链 302（字节不经过 Worker）
-// 认证: 密码登录 → HMAC cookie；本地伴侣用 X-Api-Key。
+// Browsing and metadata: D1. Audio: direct OneDrive Graph redirects, with bytes
+// bypassing the Worker. Authentication: password login to an HMAC cookie; the
+// local companion uses X-Api-Key.
 
 import { Hono } from "hono";
 import * as graph from "./graph.js";
@@ -21,7 +22,7 @@ const app = new Hono();
 
 const norm = (p) => String(p || "").normalize("NFC").replaceAll("\\", "/")
   .replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
-const MAX_STORAGE_PATH = 400; // OneDrive/Graph 的完整路径上限
+const MAX_STORAGE_PATH = 400; // Full-path limit for OneDrive/Graph
 const settingStatement = (env, key, value) => env.DB.prepare(`
   INSERT INTO settings (k, v) VALUES (?, ?)
   ON CONFLICT(k) DO UPDATE SET v = excluded.v`).bind(key, String(value));
@@ -376,8 +377,9 @@ async function runD1Batches(db, statements, size = D1_BATCH_SIZE) {
 }
 
 function albumOut(row) {
-  // 每列只 JSON.parse 一次（原来 genres/sec_genres 在 rym 与顶层各解析一遍，
-  // /api/library 对每张专辑要多付 2-3 次解析；输出字节不变）
+  // Parse each column only once. genres/sec_genres previously parsed separately
+  // under rym and at the top level, costing /api/library another 2-3 parses per
+  // album without changing the output bytes.
   const genres = J(row.genres);
   const secondaryGenres = J(row.sec_genres);
   const artists = Array.isArray(row.albumArtists) && row.albumArtists.length
@@ -403,9 +405,10 @@ function albumOut(row) {
 
 const canSeeHidden = (c) => ["admin", "companion"].includes(c.get("role"));
 
-// 目录版本戳：专辑/曲目的一切写入要么改变行数、要么回写 albums.updated_at
-// （各写入端点均已保证），所以 (COUNT, MAX(updated_at)) 可作为弱 ETag。
-// 命中 If-None-Match 时以 304 免去大 JOIN、序列化与全量传输。
+// Catalog version stamp: every album or track write either changes the row count
+// or updates albums.updated_at, as enforced by each write endpoint. Therefore
+// (COUNT, MAX(updated_at)) is a valid weak ETag. An If-None-Match hit returns 304,
+// avoiding a large JOIN, serialization, and full transfer.
 async function catalogEtag(c, variant) {
   const stamp = await c.env.DB.prepare(
     "SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), 0) AS m FROM albums")
@@ -418,7 +421,8 @@ const notModified = (etag) => new Response(null, {
   headers: { "ETag": etag, "Cache-Control": "private, no-cache" },
 });
 
-// 一次往返读多个设置键（getSetting 每键一次 D1 查询，热路径上累积成本高）
+// Read multiple settings in one round trip; one D1 query per getSetting key adds
+// substantial cost on hot paths.
 async function getSettingsMap(env, keys) {
   const marks = keys.map(() => "?").join(",");
   const { results } = await env.DB.prepare(
@@ -443,7 +447,7 @@ app.post("/api/login", async (c) => {
     return c.json({ error: "密码格式无效" }, 400);
   }
   const role = await checkPassword(c.env, password);
-  await loginDelay(); // 均衡延迟：拖慢暴破 + 抹平响应时间差
+  await loginDelay(); // Balanced delay slows brute force and evens out response timing.
   if (!role) {
     await noteLoginFailure(c.env, ip);
     return c.json({ error: "密码不对" }, 401);
@@ -465,7 +469,8 @@ app.post("/api/logout", (c) => {
 app.get("/api/me", async (c) => {
   const role = await sessionRole(c.env, c.req);
   if (role) return c.json({ ok: true, role, guest: false });
-  // 未登录：开启访客免密时以只读 user 身份放行（前端据此跳过登录页）
+  // When passwordless guest access is enabled, admit unauthenticated visitors as
+  // read-only users; the frontend uses this to skip the login page.
   if ((await getSetting(c.env, "guest_open")) === "1") {
     return c.json({ ok: true, role: "user", guest: true });
   }
@@ -474,8 +479,9 @@ app.get("/api/me", async (c) => {
 
 app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
 
-// 轻量启动迁移：给旧库补上后加的列（列已存在时 ALTER 报错，吞掉即可）。
-// 每个隔离实例只跑一次；D1 无 IF NOT EXISTS COLUMN，靠 try/catch 幂等。
+// Lightweight startup migration adds newer columns to older databases. ALTER
+// errors when a column already exists, so ignore that case. Run once per isolate;
+// D1 lacks IF NOT EXISTS COLUMN, making try/catch the idempotency mechanism.
 const migratedDbs = new WeakSet();
 const migrationPromises = new WeakMap();
 async function ensureMigrations(env) {
@@ -723,17 +729,19 @@ async function ensureMigrations(env) {
     } catch (e) {
       if (!/already exists/i.test(String(e?.message || e))) throw e;
     }
-    // 艺人维度查询（头像解析/删除清理/隐藏判定等 8 处 WHERE artist = ?）走索引
+    // Index artist-scoped queries used by avatar resolution, deletion cleanup,
+    // visibility checks, and the other WHERE artist = ? paths.
     try {
       await env.DB.prepare(
         "CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist)").run();
     } catch (e) {
       if (!/already exists/i.test(String(e?.message || e))) throw e;
     }
-    // genre 归一化副表：同 genre 推荐从「全表 json_each 扫描」变成索引点查。
-    // 同步交给触发器：任何写入者（API / 直接 SQL / 恢复的数据库）都保持一致。
-    // 触发器只在这里装（wrangler d1 execute --file 对 BEGIN..END 有切分缺陷，
-    // 不能放进 schema.sql；运行时单条 prepare 无此问题）。
+    // The normalized genre side table turns same-genre recommendations from a
+    // full-table json_each scan into an indexed lookup. Triggers keep every writer
+    // (API, direct SQL, or a restored database) consistent. Install them only
+    // here because wrangler d1 execute --file incorrectly splits BEGIN..END
+    // bodies in schema.sql, while one runtime prepare call works correctly.
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS album_genres (
       album_id TEXT NOT NULL,
       genre TEXT NOT NULL,
@@ -767,7 +775,7 @@ async function ensureMigrations(env) {
       BEGIN
         DELETE FROM album_genres WHERE album_id = old.id;
       END`).run();
-    // 触发器安装前已有的专辑（既存部署首次升级）：回填一次
+    // Backfill albums that predate trigger installation on the first upgrade.
     const seeded = await env.DB.prepare(
       "SELECT 1 FROM album_genres LIMIT 1").first();
     if (!seeded) {
@@ -790,7 +798,8 @@ async function ensureMigrations(env) {
 app.use("/api/*", requireAuth());
 app.use("/api/*", async (c, next) => { await ensureMigrations(c.env); await next(); });
 
-// 普通用户只读：一切写操作（上传/编辑/删除/登记/扫描/后台）要管理员或伴侣 key
+// Regular users are read-only. Uploads, edits, deletes, registration, scanning,
+// and Admin require an admin session or companion key.
 const adminGate = requireAdmin();
 app.use("/api/albums", adminGate);
 app.use("/api/album/*", (c, next) =>
@@ -813,7 +822,8 @@ app.use("/api/artists", (c, next) =>
 /* ---------- library ---------- */
 
 app.get("/api/library", async (c) => {
-  // includeHidden=1：管理员看隐藏音盤（精选/后台用）；默认对所有人隐藏
+  // includeHidden=1 lets admins see hidden albums in Favorites and Admin;
+  // otherwise they remain hidden from everyone.
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
   const etag = await catalogEtag(c, `lib${showHidden ? "h" : ""}`);
   if (c.req.header("If-None-Match") === etag) return notModified(etag);
@@ -844,11 +854,12 @@ app.get("/api/album/:id", async (c) => {
     FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
     WHERE a.id = ? GROUP BY a.id`).bind(id).first();
   if (!album || !album.id) return c.json({ error: "not found" }, 404);
-  // 隐藏音盤：仅管理员可读详情（直接 hash 打开也不给访客）
+  // Only admins may read hidden album details, even when a guest opens its hash directly.
   if (album.hidden && !canSeeHidden(c)) {
     return c.json({ error: "not found" }, 404);
   }
-  // 四个子查询互不依赖：并行发出，省 3 次 D1 往返（专辑页是最热读路径之一）
+  // These four independent subqueries run concurrently, saving three D1 round
+  // trips on the album page, one of the hottest read paths.
   const main = J(album.genres)[0];
   const [{ results: tracks }, noteRow, { results: images }, sim,
     { results: artistRows }, { results: trackArtistRows }] =
@@ -863,8 +874,9 @@ app.get("/api/album/:id", async (c) => {
       c.env.DB.prepare(`
         SELECT id FROM album_images WHERE album_id = ?
         ORDER BY sort, created_at`).bind(id).all(),
-      // 同 genre 推荐：主 genre 重合的其他专辑，按评分降序（不含隐藏）。
-      // album_genres 副表点查代替全表 json_each 扫描。
+      // Same-genre recommendations: other visible albums sharing a primary genre,
+      // sorted by rating descending. The album_genres side table replaces a
+      // full-table json_each scan with indexed lookups.
       main
         ? c.env.DB.prepare(`
             SELECT a.id, a.artist, a.title, a.year, a.rym_rating
@@ -898,7 +910,8 @@ app.get("/api/album/:id", async (c) => {
   return c.json(out);
 });
 
-/* ---------- 曲库全曲目（「歌曲」视图；个人库规模一次拉全，客户端排序） ---------- */
+/* ---------- All library tracks (Tracks view; fetch the personal library once
+   and sort on the client) ---------- */
 
 app.get("/api/tracks", async (c) => {
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
@@ -937,10 +950,11 @@ app.get("/api/tracks", async (c) => {
     { "ETag": etag, "Cache-Control": "private, no-cache" });
 });
 
-/* ---------- 收藏（管理员标记，所有人可看） ---------- */
+/* ---------- Favorites (marked by admins, visible to everyone) ---------- */
 
 app.get("/api/favorites", async (c) => {
-  // sort_order 有值就按它升序（手动拖动的顺序）；NULL 兜底用 created_at 倒序（最近在前）
+  // Use ascending sort_order for manual drag order; NULL falls back to created_at
+  // descending, with the newest first.
   const visible = canSeeHidden(c) ? "1=1" : `(
     (kind = 'album' AND EXISTS (
       SELECT 1 FROM albums a WHERE a.id = item_id AND COALESCE(a.hidden,0)=0
@@ -958,7 +972,8 @@ app.get("/api/favorites", async (c) => {
   return c.json({ albums: pick("album"), tracks: pick("track") });
 });
 
-// 手动拖动重排：前端传该 kind 的完整有序 id 列表，落成 sort_order = 0..n-1
+// Manual drag reorder: the frontend sends the complete ordered ID list for a
+// kind, which becomes sort_order 0 through n-1.
 app.put("/api/favorites/:kind/reorder", async (c) => {
   const kind = c.req.param("kind");
   if (!["album", "track"].includes(kind)) {
@@ -1017,10 +1032,11 @@ app.delete("/api/favorites/:kind/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/* ---------- 艺术家（头像+简介；专辑列表由客户端按 artist 过滤） ---------- */
+/* ---------- Artists (avatar and bio; the client filters albums by artist) ---------- */
 
 app.get("/api/artists", async (c) => {
-  // 仅出现在「至少有一张未隐藏音盤」的艺人；附加信息表里的孤儿行不展示
+  // Show only artists with at least one visible album; omit orphaned rows from
+  // the supplemental information table.
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
   const vis = showHidden ? "1=1" : "COALESCE(a.hidden,0)=0";
   const { results } = await c.env.DB.prepare(`
@@ -1095,7 +1111,7 @@ app.get("/api/artists/:name/tracks", async (c) => {
   }));
 });
 
-// 完整简介单独拉取：可能很长（Markdown），不塞进列表接口
+// Fetch full Markdown bios separately because they may be too large for the list endpoint.
 app.get("/api/artist-bio/:name", async (c) => {
   const name = artistNameParam(c);
   if (!canSeeHidden(c)) {
@@ -1126,7 +1142,7 @@ app.put("/api/artists", async (c) => {
     return c.json({ error: "艺人信息格式无效" }, 400);
   }
   let avatarChange = null;
-  if (b.avatarPath !== undefined) {   // 只在明确传入时更新，避免改简介误清头像
+  if (b.avatarPath !== undefined) {   // Update only when explicit, so editing a bio cannot clear the avatar.
     if ((typeof b.avatarPath !== "string" && b.avatarPath !== null)
         || (b.avatarStorageId !== undefined && b.avatarStorageId !== null
           && (typeof b.avatarStorageId !== "string"
@@ -1174,7 +1190,8 @@ app.put("/api/artists", async (c) => {
     await c.env.DB.prepare(
       "UPDATE artists SET avatar_path = ?, storage_id = ? WHERE name = ?")
       .bind(p || "", sid, name).run();
-    // 换头像清 R2 镜像（同名文件覆盖时 key 不变，必须显式失效）
+    // Clear the R2 mirror when the avatar changes. Overwriting the same filename
+    // preserves the key, so it must be invalidated explicitly.
     if (p) await invalidateR2(c.env, `artist:${await sha16(p)}:`);
   }
   if (b.note !== undefined) {
@@ -1190,7 +1207,7 @@ app.put("/api/artists", async (c) => {
         "DELETE FROM notes WHERE kind = 'artist' AND id = ?").bind(name).run();
     }
   }
-  if (b.bio !== undefined) {   // 完整简介（Markdown 长文），与短简介分开存
+  if (b.bio !== undefined) {   // Store the full Markdown bio separately from its excerpt.
     const text = b.bio.trim();
     if (text) {
       await c.env.DB.prepare(`
@@ -1257,14 +1274,16 @@ app.get("/api/artist-art/:name", async (c) => {
       publiclyVisible ? "public, max-age=604800" : "private, no-store",
       sid, !!publiclyVisible);
     if (res) return res;
-    // 有自定义头像却读失败：502，绝不 302 到专辑封面（会掩盖故障 + 毒缓存）
+    // A failed custom-avatar read is a 502. Never redirect to an album cover,
+    // which would mask the failure and poison the cache.
     return c.json({ error: "avatar unavailable" }, 502, {
       "Cache-Control": "no-store",
     });
   }
   const ch = [...name][0]?.toUpperCase() || "♪";
-  // 无自定义头像时复用最早可见专辑的原始封面镜像。公开回退必须始终
-  // 选择可见专辑；否则管理员可能把隐藏专辑封面写入公共 R2 缓存。
+  // Without a custom avatar, reuse the original-cover mirror from the earliest
+  // visible album. Public fallback must always choose a visible album or an
+  // admin could write a hidden cover into the public R2 cache.
   const albumVisibility = publiclyVisible
     ? "COALESCE(hidden,0)=0" : "1=1";
   const alb = await c.env.DB.prepare(`
@@ -1291,7 +1310,8 @@ app.get("/api/artist-art/:name", async (c) => {
     { "Content-Type": "image/svg+xml", "Cache-Control": "no-store" });
 });
 
-/* ---------- Discogs 自动匹配（服务器端调官方 API，浏览器侧无 CORS 问题） ---------- */
+/* ---------- Automatic Discogs matching via the official server-side API,
+   avoiding browser CORS restrictions ---------- */
 
 const DISCOGS_USER_AGENT = "mihonban/1.0 (+https://github.com/hanfdev/mihonban)";
 const DISCOGS_DAY = 24 * 60 * 60;
@@ -1381,8 +1401,9 @@ app.post("/api/album/:id/discogs-search", async (c) => {
   };
 
   try {
-    // 每位合作艺人的原名与罗马字自然词序依次尝试，最后才只按碟名。
-    // 不使用兼容显示字段（如「A × B」）作为 Discogs 的 artist 查询。
+    // Try each collaborator's original name and natural-order romanization in
+    // sequence, then fall back to the release title alone. Do not use compatibility
+    // display fields such as "A x B" as the Discogs artist query.
     const source = credits.length ? credits
       : [{ name: al.artist, sort: al.artist_sort || al.artist }];
     const terms = [];
@@ -1421,8 +1442,8 @@ app.post("/api/album/:id/discogs-search", async (c) => {
   }
 });
 
-/* 直接粘贴 Discogs 链接（release / master 页均可）→ 官方 API 取详情。
-   只走 api.discogs.com，不抓取网页。 */
+/* Paste a Discogs release or master URL directly and retrieve details from the
+   official API. Use api.discogs.com only; do not scrape web pages. */
 app.post("/api/discogs-lookup", async (c) => {
   const token = await getSetting(c.env, "discogs_token");
   if (!token) {
@@ -1435,7 +1456,7 @@ app.post("/api/discogs-lookup", async (c) => {
   }
   try {
     const d = await discogsApiJson(c.env, token, `${ref.kind}/${ref.id}`);
-    // "Artist (2)" 的消歧编号去掉
+    // Remove disambiguation suffixes such as "Artist (2)".
     const artist = (d.artists || [])
       .map((a) => (a.name || "").replace(/ \(\d+\)$/, "")).join(", ");
     return c.json({
@@ -1449,10 +1470,11 @@ app.post("/api/discogs-lookup", async (c) => {
   }
 });
 
-/* ---------- Discogs 图片导入（专辑图 / 歌手头像+简介） ----------
-   服务器直接从 Discogs 拉图上传到云盘，浏览器不经手。只走官方 API。 */
+/* ---------- Discogs image import (album images / artist avatar and bio) ----------
+   The server fetches images from Discogs and uploads them directly to storage;
+   the browser never handles the bytes. Official API only. */
 
-// 拉一个 Discogs release/master 的图片清单（primary 在前）
+// Fetch the image list for a Discogs release/master, with primary images first.
 async function discogsImages(env, token, kind, id) {
   const d = await discogsApiJson(env, token, `${kind}/${id}`);
   const imgs = (d.images || []).map((im, i) => ({
@@ -1466,7 +1488,7 @@ async function discogsImages(env, token, kind, id) {
   return { images: imgs, profile: d.profile || "" };
 }
 
-// Discogs 图片受防盗链保护，必须带 Referer/User-Agent 才能取到字节
+// Discogs image hotlink protection requires Referer and User-Agent to retrieve bytes.
 async function fetchDiscogsBytes(uri) {
   if (!isDiscogsImageUrl(uri)) {
     throw new Error("Discogs 图片地址无效");
@@ -1562,7 +1584,7 @@ function isDiscogsImageUrl(value) {
   }
 }
 
-// 列出某 Discogs release/master 的可选图片（前端预览勾选）
+// List selectable images for a Discogs release/master for frontend preview.
 app.post("/api/album/:id/discogs-image-list", async (c) => {
   const token = await getSetting(c.env, "discogs_token");
   if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
@@ -1602,8 +1624,8 @@ app.post("/api/album/:id/discogs-image-source", async (c) => {
   }
 });
 
-// 导入选中的专辑图片：下载 → 传到 <folder>/artwork/ → 登记 album_images；
-// asCover=true 时把第一张设为封面
+// Import selected album images: download, upload to <folder>/artwork/, and
+// register album_images. With asCover=true, make the first image the cover.
 app.post("/api/album/:id/discogs-import-images", async (c) => {
   const id = c.req.param("id");
   const album = await c.env.DB.prepare(
@@ -1669,14 +1691,14 @@ app.post("/api/album/:id/discogs-import-images", async (c) => {
       const path = `${album.folder}/artwork/discogs-${await sha16(sourceKey)}.${ext}`;
       const ok = await storage.putSmallFile(c.env, path, bytes, ct, sid);
       if (!ok) { failed++; continue; }
-      // asCover：第一张顶替封面
+      // With asCover, the first image replaces the cover.
       if (asCover && !coverSet) {
         const coverPath = `${album.folder}/cover.${ext}`;
         const coverOk = await storage.putSmallFile(c.env, coverPath, bytes, ct, sid);
         if (coverOk) {
           await c.env.DB.prepare("UPDATE albums SET cover_path = ? WHERE id = ?")
             .bind(coverPath, id).run();
-          await invalidateR2(c.env, `art:${id}:`); // 封面变了，清 R2 镜像
+          await invalidateR2(c.env, `art:${id}:`); // Clear R2 mirrors after the cover changes.
           coverSet = true;
         }
       }
@@ -1703,7 +1725,7 @@ app.post("/api/album/:id/discogs-import-images", async (c) => {
   }
 });
 
-// 歌手：从 Discogs 搜同名艺人，取头像+简介预览（前端确认后再导入）
+// Artist: search Discogs by name and preview avatar and bio before confirmation.
 app.post("/api/artist-discogs-search", async (c) => {
   const token = await getSetting(c.env, "discogs_token");
   if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
@@ -1726,7 +1748,7 @@ app.post("/api/artist-discogs-search", async (c) => {
   }
 });
 
-// 取某 Discogs 艺人的头像+简介（预览用）
+// Fetch a Discogs artist's avatar and bio for preview.
 app.post("/api/artist-discogs-detail", async (c) => {
   const token = await getSetting(c.env, "discogs_token");
   if (!token) return c.json({ error: "未配置 Discogs token" }, 400);
@@ -1740,7 +1762,8 @@ app.post("/api/artist-discogs-detail", async (c) => {
       type: im.type || "secondary",
     })).filter((im) => im.uri);
     imgs.sort((a, b) => (a.type === "primary" ? -1 : 0) - (b.type === "primary" ? -1 : 0));
-    // Discogs profile 用 [b]…[/b] BBCode + [a=名] 艺人链接，简单清洗成纯文本
+    // Discogs profiles use [b]...[/b] BBCode and [a=name] artist links; reduce
+    // them to plain text with a lightweight cleanup.
     const profile = (d.profile || "")
       .replace(/\[\/?[abiu](=[^\]]+)?\]/gi, "")
       .replace(/\[url=[^\]]+\]|\[\/url\]/gi, "")
@@ -1751,7 +1774,8 @@ app.post("/api/artist-discogs-detail", async (c) => {
   }
 });
 
-// 导入歌手头像/简介：下载头像传到艺人目录（唯一文件名）+ 写简介
+// Import an artist avatar and bio: upload the avatar under a unique filename in
+// the artist directory, then write the bio.
 app.post("/api/artists/:name/discogs-import", async (c) => {
   const name = artistNameParam(c);
   const body = await requestObject(c);
@@ -1765,7 +1789,8 @@ app.post("/api/artists/:name/discogs-import", async (c) => {
       || (setBio !== undefined && typeof setBio !== "boolean")) {
     return c.json({ error: "Discogs 导入参数无效" }, 400);
   }
-  // 找该艺人任一专辑目录，头像放其上一级（与专辑同 storage）
+  // Find any album directory for the artist and store the avatar one level above
+  // it on the same storage backend.
   const alb = await c.env.DB.prepare(
     `SELECT a.folder, a.storage_id FROM artist_album_links aa
      JOIN albums a ON a.id = aa.album_id WHERE aa.artist = ?
@@ -1786,7 +1811,8 @@ app.post("/api/artists/:name/discogs-import", async (c) => {
           if (bytes.byteLength > 12 * 1024 * 1024) {
             avatarError = "图片超过 12MB";
           } else {
-            // 唯一文件名：每次导入新路径 → R2 key 变，彻底避开「同路径覆盖」缓存
+            // A unique filename gives every import a new path and R2 key, fully
+            // avoiding stale caches from overwriting the same path.
             const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
             const stamp = `${Date.now().toString(36)}-${(await sha16(
               String.fromCharCode(...new Uint8Array(bytes.slice(0, 64))))).slice(0, 8)}`;
@@ -1852,7 +1878,7 @@ app.post("/api/artists/:name/discogs-import", async (c) => {
   }
 });
 
-/* ---------- 播放与封面 ---------- */
+/* ---------- Playback and covers ---------- */
 
 const AUDIO_MIME = {
   mp3: "audio/mpeg", flac: "audio/flac", ogg: "audio/ogg", oga: "audio/ogg",
@@ -1912,17 +1938,19 @@ app.get("/api/stream/:trackId", async (c) => {
 
   let url = await storage.downloadUrl(c.env, t.path, t.storage_id)
     .catch(() => null);
-  // stream_proxy=1：开启音源代理
-  // stream_proxy_url：可选自定义代理（其它 Worker / 中转）；空则本站 /api/stream 自代理
-  // ?proxy=1：单次强制本站代理（前端预取用，避 CORS）
+  // stream_proxy=1 enables audio proxying.
+  // stream_proxy_url optionally selects another Worker or relay; blank uses this
+  // site's /api/stream proxy. ?proxy=1 forces this site's proxy for one request,
+  // used by frontend prefetch to avoid CORS.
   const proxySettings = await getSettingsMap(c.env,
     ["stream_proxy_url", "stream_proxy"]);
   const proxyTpl = (proxySettings.stream_proxy_url || "").trim();
   const onceProxy = c.req.query("proxy") === "1";
   const proxyOn = proxySettings.stream_proxy === "1";
   if (url) {
-    // 自定义外部代理：把 OneDrive 直链交给代理地址（仅音频）
-    // 模板：https://proxy.example.com/?url={url}  或  https://proxy.example.com/  （自动拼 ?url=）
+    // Custom external audio proxy: pass it the direct OneDrive URL. Supported
+    // forms are https://proxy.example.com/?url={url} and
+    // https://proxy.example.com/, where ?url= is appended automatically.
     if (proxyOn && proxyTpl && !onceProxy) {
       let target;
       if (proxyTpl.includes("{url}")) {
@@ -1945,7 +1973,8 @@ app.get("/api/stream/:trackId", async (c) => {
       }
       return temporaryRedirect(target);
     }
-    // 本站代理：mp3 默认 302 直链；开启代理或 ?proxy=1 时经本 Worker 转发
+    // Local proxy: MP3 normally redirects directly; proxy settings or ?proxy=1
+    // forward it through this Worker.
     const selfProxy = onceProxy || (proxyOn && !proxyTpl);
     if (ext === "mp3" && !selfProxy) return temporaryRedirect(url);
     const fwd = {};
@@ -1953,8 +1982,9 @@ app.get("/api/stream/:trackId", async (c) => {
     let r = null;
     try {
       r = await fetchAudioSource(url, fwd);
-    } catch { /* 清直链并重取后再决定是否失败 */ }
-    // OneDrive 临时 URL/边缘节点失效：清缓存向 Graph 取新 URL，再快速试一轮。
+    } catch { /* Clear and reacquire the direct URL before deciding that it failed. */ }
+    // When a temporary OneDrive URL or edge node expires, clear the cache, ask
+    // Graph for a new URL, and retry once quickly.
     if (!r || AUDIO_RETRYABLE.has(r.status) || [401, 403, 404].includes(r.status)) {
       if (r) await discardResponse(r);
       await storage.invalidateDownloadUrl(c.env, t.path, t.storage_id)
@@ -1976,13 +2006,14 @@ app.get("/api/stream/:trackId", async (c) => {
         if (direct) await discardResponse(direct);
       } catch { /* handled below */ }
       if (r?.status === 416) return audioResponse(r, ext);
-      // 默认模式下最后退回微软直链，让用户网络直接尝试；显式代理模式保持 502。
+      // In default mode, finally fall back to Microsoft's direct URL so the user
+      // network can try it. Explicit proxy mode retains the 502.
       if (!selfProxy && url) return temporaryRedirect(url);
       return c.json({ error: r ? `源站 ${r.status}` : "源站连接失败" }, 502);
     }
     return audioResponse(r, ext);
   }
-  // 无直链的后端（WebDAV / Local）：只能本站代理字节
+  // Backends without direct URLs, such as WebDAV and local storage, must proxy bytes here.
   try {
     const r = await storage.getFile(c.env, t.path, t.storage_id, range);
     if (r?.status === 416) return audioResponse(r, ext);
@@ -1996,7 +2027,7 @@ app.get("/api/stream/:trackId", async (c) => {
   }
 });
 
-// 统一的音频响应头（正确 MIME + inline + Range 透传）
+// Shared audio response headers: correct MIME, inline disposition, and Range passthrough.
 function audioResponse(r, ext) {
   const h = new Headers();
   h.set("Content-Type", AUDIO_MIME[ext] || "application/octet-stream");
@@ -2025,9 +2056,10 @@ async function resolveCover(env, album) {
   return path;
 }
 
-/* ---------- R2 图床：命中即 302 到 CDN，未命中从 OneDrive 取并懒同步 ----------
-   cacheKey 是逻辑键（art:<id>:<size> 等）；srcPath 是 OneDrive 路径；
-   dim 是缩略图规格。图片字节走 CDN，不打 Graph API、不过 Worker。 */
+/* ---------- R2 image host: hits redirect to the CDN; misses fetch from OneDrive
+   and synchronize lazily. cacheKey is a logical key such as art:<id>:<size>,
+   srcPath is the OneDrive path, and dim is the thumbnail specification. Image
+   bytes travel through the CDN, not Graph API or the Worker. ---------- */
 async function ctxOf(c) {
   try { return c.executionCtx; } catch { return null; }
 }
@@ -2077,8 +2109,9 @@ async function mirrorImageBytes(c, conf, cacheKey, bytes, contentType) {
 }
 
 async function validImageResponse(response) {
-  // 放弃的响应体要显式取消：Workers 每个隔离实例的并发子请求连接有限，
-  // 未读的 body 会一直占着连接直到 GC。
+  // Explicitly cancel abandoned response bodies. Each Worker isolate has a
+  // limited number of concurrent subrequest connections, and an unread body
+  // retains one until garbage collection.
   if (!response?.ok) { await discardResponse(response); return null; }
   let bytes;
   try { bytes = await readResponseLimited(response, MAX_BUFFERED_IMAGE_BYTES); }
@@ -2140,7 +2173,8 @@ async function claimExistingR2Image(env, conf, cacheKey, srcPath) {
 async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   storageId = null, allowPublicMirror = true) {
   const conf = await r2.r2Conf(c.env);
-  // 1) R2 已镜像 → 直接 302 到公开 CDN（优先于边缘缓存，避免旧的 200 字节挡路）
+  // 1) Existing R2 mirror: redirect to the public CDN before checking the edge
+  // cache, so stale cached 200-byte responses cannot block it.
   if (conf.ready && allowPublicMirror) {
     const row = await c.env.DB.prepare(
       "SELECT r2_key, created_at, cache_policy FROM r2_cache WHERE cache_key = ?")
@@ -2169,7 +2203,7 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
         r2.r2PublicUrl(conf, row.r2_key, version));
     }
   }
-  // 2) 未镜像：查边缘缓存（R2 未启用时这是唯一的加速层）
+  // 2) No mirror: check the edge cache, the only acceleration layer when R2 is disabled.
   const edge = globalThis.caches?.default;
   const allowEdgeCache = !!edge && !conf.ready && allowPublicMirror;
   const edgeKey = new Request(c.req.url);
@@ -2177,11 +2211,12 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
     const hit = await edge.match(edgeKey);
     if (hit) return hit;
   }
-  // 3) 从所属存储取字节（有缩略图直链的用直链；WebDAV 等直接代理读原图）
+  // 3) Read bytes from the owning storage. Use a direct thumbnail URL when
+  // available; proxy the original for WebDAV and similar backends.
   const source = await readStoredImage(c.env, srcPath, dim, storageId);
   if (!source) return null;
   const { bytes, contentType: ct } = source;
-  // 4) 懒同步到 R2（后台，不阻塞响应）
+  // 4) Mirror to R2 lazily in the background without blocking the response.
   if (conf.ready && allowPublicMirror) {
     // Return source bytes immediately. The next request will use the R2
     // redirect after this best-effort mirror finishes.
@@ -2198,7 +2233,8 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
       "X-Content-Type-Options": "nosniff",
     },
   });
-  // R2 未启用时才落边缘缓存（启用时靠 R2 CDN，避免陈旧字节挡住 302）
+  // Populate the edge cache only when R2 is disabled. With R2 enabled, rely on
+  // its CDN so stale bytes cannot block a redirect.
   if (allowEdgeCache) {
     const ctx = await ctxOf(c);
     const cacheWrite = edge.put(edgeKey, res.clone()).catch(() => null);
@@ -2295,7 +2331,8 @@ app.get("/api/art/:albumId", async (c) => {
   // that exact user-approved composition on every surface.
   const dim = null;
   const logicalKey = `art:${album.id}:original`;
-  // proxy=1：始终回源字节（不 302 到 R2/Graph），供前端 canvas/裁剪用，避免跨域 Failed to fetch
+  // proxy=1 always returns origin bytes without redirecting to R2 or Graph. The
+  // frontend uses this for canvas/cropping to avoid cross-origin Failed to fetch.
   const wantProxy = c.req.query("proxy") === "1" || c.req.query("inline") === "1";
   if (wantProxy) {
     const source = await readStoredImage(
@@ -2332,7 +2369,7 @@ const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40
 <circle cx="200" cy="200" r="80" fill="none" stroke="#2e2a22" stroke-width="1.5"/>
 <circle cx="200" cy="200" r="14" fill="#2e2a22"/></svg>`;
 
-/* ---------- 专辑登记 / 编辑（伴侣同步 + 网页上传共用） ---------- */
+/* ---------- Album registration and editing, shared by companion sync and web upload ---------- */
 
 app.post("/api/albums", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -2391,7 +2428,8 @@ app.post("/api/albums", async (c) => {
   albumArtists = await applyArtistSortOverrides(c.env.DB, albumArtists);
   const artist = artistCredit(albumArtists);
   const artistSort = albumArtists[0]?.sort || albumArtists[0]?.name || artist;
-  // 新专辑落到当前写入目标；已存在的专辑保持原 storage_id（ON CONFLICT 不覆盖）
+  // New albums use the current write target. Existing albums retain storage_id
+  // because ON CONFLICT does not overwrite it.
   const wt = await writeTarget(c.env);
   if (!wt) return c.json({ error: "请先设置一个命名存储写入目标" }, 400);
   const albumStmt = c.env.DB.prepare(`
@@ -2668,9 +2706,11 @@ app.patch("/api/album/:id", async (c) => {
     }
     put("descriptors", JSON.stringify(descriptors));
   }
-  // 主/副 Genre：无论 RYM 先还是 Discogs 先写入，落库前统一去重——
-  // ①各自列表大小写去重 ②同一个 genre 不同时出现在主+副（主优先，副剔除重复）。
-  // 本次只改了一侧时，用数据库现值补齐另一侧，保证交叉去重完整。
+  // Primary and secondary genres are normalized before storage regardless of
+  // whether RYM or Discogs writes first: deduplicate each list case-insensitively,
+  // then prevent a genre from appearing in both, with primary taking precedence.
+  // If this request changes only one side, use the stored value for the other so
+  // cross-list deduplication remains complete.
   if ("genres" in b || "secondaryGenres" in b) {
     const parse = (s) => J(s, []);
     const primary = "genres" in b
@@ -2722,7 +2762,7 @@ app.patch("/api/album/:id", async (c) => {
   }
   if (statements.length) await c.env.DB.batch(statements);
   if (sets.length && "coverPath" in b) {
-    await invalidateR2(c.env, `art:${id}:`); // 换封面清 R2
+    await invalidateR2(c.env, `art:${id}:`); // Clear R2 mirrors after a cover change.
   }
   if (nextArtists) {
     const kept = new Set(nextArtists.map((artist) => artist.name));
@@ -2754,8 +2794,9 @@ app.delete("/api/album/:id", async (c) => {
   if (!album) return c.json({ error: "not found" }, 404);
   const albumArtists = relatedArtists.length ? relatedArtists
     : [{ name: album.artist, sort: album.artist_sort || album.artist }];
-  // 删除会使旧的公开 CDN URL 失去其数据库引用；在真正删除目录前，
-  // 必须确认已登记的 R2 镜像也被移除，避免已删除/私有音源仍可被已知 URL 访问。
+  // Deletion removes database references for old public CDN URLs. Before deleting
+  // the directory, confirm registered R2 mirrors are also removed so deleted or
+  // private media cannot remain accessible through a known URL.
   if (!(await purgeAlbumR2(c.env, id, true))) {
     return c.json({ error: "公开 R2 镜像删除失败，数据库未修改" }, 502);
   }
@@ -2808,7 +2849,7 @@ app.delete("/api/album/:id", async (c) => {
   return c.json({ ok: true, filesDeleted });
 });
 
-// 隐藏 / 恢复显示音盤（曲库列表默认不出现；管理员可 includeHidden 查看）
+// Hide or restore an album. Library lists omit it by default; admins may includeHidden.
 app.post("/api/album/:id/hide", async (c) => {
   const id = c.req.param("id");
   const body = await requestObject(c);
@@ -2850,7 +2891,8 @@ app.post("/api/album/:id/hide", async (c) => {
   return c.json({ ok: true, hidden: on });
 });
 
-/* ---------- 专辑内页/写真图片（管理员上传，空则前端隐藏入口） ---------- */
+/* ---------- Album booklet and photo images, uploaded by admins; the frontend
+   hides the entry point when none exist ---------- */
 
 app.post("/api/album/:id/images", async (c) => {
   const id = c.req.param("id");
@@ -2886,7 +2928,8 @@ app.post("/api/album/:id/images", async (c) => {
   return c.json({ ok: true, id: imgId });
 });
 
-// 内页图手动重排：前端传该专辑的完整有序 imgId 列表，落成 sort = 0..n-1
+// Manual gallery reorder: the frontend sends the album's complete ordered imgId
+// list, which becomes sort 0 through n-1.
 app.put("/api/album/:id/images/reorder", async (c) => {
   const id = c.req.param("id");
   const { ids } = await c.req.json().catch(() => ({}));
@@ -2959,7 +3002,7 @@ app.get("/api/image/:imgId", async (c) => {
   if (size === INVALID_INPUT) {
     return c.json({ error: "s 参数必须是 0 到 10000 的整数" }, 400);
   }
-  if (!size) {  // 原图：能直链就 302；无直链的后端走代理
+  if (!size) {  // Original image: redirect when possible; proxy backends without direct URLs.
     const url = await storage.downloadUrl(c.env, row.path, row.storage_id);
     if (url) return temporaryRedirect(url);
     const r = await storage.getFile(c.env, row.path, row.storage_id);
@@ -2980,7 +3023,7 @@ app.get("/api/image/:imgId", async (c) => {
   return res;
 });
 
-/* ---------- 专辑内曲目管理（管理员：加曲/删曲/改名/重排） ---------- */
+/* ---------- Album-track management for admins: add, delete, rename, and reorder ---------- */
 
 app.post("/api/album/:id/tracks", async (c) => {
   const id = c.req.param("id");
@@ -3130,7 +3173,8 @@ app.delete("/api/album/:id/tracks/:tid", async (c) => {
   return c.json({ ok: true, fileDeleted });
 });
 
-// 重排：按给定 id 顺序重编号 track = 1..n（disc 归 1，作为唯一权威顺序）
+// Reorder by assigning track 1 through n in the supplied ID order. Normalize disc
+// to 1 so this becomes the sole authoritative sequence.
 app.put("/api/album/:id/tracks/order", async (c) => {
   const id = c.req.param("id");
   const b = await requestObject(c);
@@ -3162,7 +3206,7 @@ app.put("/api/album/:id/tracks/order", async (c) => {
   return c.json({ ok: true });
 });
 
-/* ---------- RYM 导入（浏览器解析 HTML 后提交） ---------- */
+/* ---------- RYM import: the browser parses HTML before submission ---------- */
 
 app.post("/api/album/:id/rym", async (c) => {
   const b = await requestObject(c);
@@ -3196,9 +3240,10 @@ app.post("/api/album/:id/rym", async (c) => {
   return c.json({ ok: true });
 });
 
-/* ---------- 上传（浏览器直传 OneDrive；WebDAV 目标走 Worker 代理端点） ---------- */
+/* ---------- Uploads: browser-to-OneDrive direct transfer; WebDAV targets use a
+   Worker proxy endpoint ---------- */
 
-// 当前写入目标：所有新上传都必须落到一个命名存储后端。
+// Current write target: every new upload must land on a named storage backend.
 async function writeTarget(env) {
   const row = await env.DB.prepare(
     "SELECT id, kind FROM storages WHERE is_write = 1").first();
@@ -3259,7 +3304,8 @@ app.post("/api/upload/session", async (c) => {
       return c.json({ uploadUrl, path: p, storageId: wt.id,
         provider: wt.kind });
     }
-    // WebDAV / Local 无浏览器直传会话：走 Worker 流式代理 PUT。
+    // WebDAV and local storage have no browser direct-upload session; stream the
+    // PUT through the Worker.
     if (wt.kind === "webdav" || wt.kind === "local") {
       return c.json({ proxy: true, path: p, storageId: wt.id });
     }
@@ -3272,7 +3318,7 @@ app.post("/api/upload/session", async (c) => {
   }
 });
 
-// 代理型存储的流式上传（浏览器 → Worker → WebDAV/Local）
+// Streaming upload for proxied storage: browser -> Worker -> WebDAV/local.
 app.put("/api/upload/proxy", async (c) => {
   const path = safePath(c.env, c.req.query("path") || "");
   if (!path) return c.json({ error: "path 非法" }, 400);
@@ -3328,8 +3374,8 @@ app.post("/api/upload/cover", async (c) => {
     const ok = await storage.putSmallFile(c.env, path, bytes, ct, sid);
     if (!ok) return c.json({ error: "上传失败" }, 502);
 
-    // R2 优先：上传成功后立刻镜像（有自定义头像 key 时）
-    // 头像路径含 avatar-；封面 cover. 也一并预热
+    // Prefer R2: mirror immediately after a successful upload when a custom
+    // avatar key exists. Paths containing avatar- and cover files are prewarmed too.
     const conf = await r2.r2Conf(c.env);
     if (conf.ready) {
       const isAvatar = /\/avatar-[^/]+\.(jpe?g|png|webp)$/i.test(path)
@@ -3337,7 +3383,7 @@ app.post("/api/upload/cover", async (c) => {
       if (isAvatar) {
         const cacheKey = `artist:${await sha16(path)}:480`;
         await invalidateR2(c.env, `artist:${await sha16(path)}:`);
-        // 后台镜像；失败不影响上传成功
+        // Mirror in the background; failure does not invalidate the upload.
         const ctx = await ctxOf(c);
         const job = mirrorImageToR2(c.env, conf, cacheKey, path, "c480x480", sid);
         const safeJob = job.catch(() => "fail");
@@ -3354,7 +3400,7 @@ app.post("/api/upload/cover", async (c) => {
   }
 });
 
-/* ---------- 云端扫描（直接扔进 OneDrive 的文件夹也能入库） ---------- */
+/* ---------- Cloud scan: folders placed directly in OneDrive can enter the library ---------- */
 
 app.post("/api/scan", async (c) => {
   const b = await requestObject(c);
@@ -3395,13 +3441,15 @@ app.post("/api/scan", async (c) => {
   if (!audio.length) return c.json({ error: "该目录没有音频文件" }, 400);
   const dirName = f.split("/").pop();
   const m = dirName.match(/^\[(\d{4})\]\s*(.+)$/);
-  // 已登记的曲目信息（曲名/时长/码率/序号是宝贵数据）优先保留：
-  // Graph 的 audio 元数据经常缺（尤其 FLAC），重扫不能把它们冲掉
+  // Preserve registered track information such as title, duration, bitrate, and
+  // sequence. Graph audio metadata is often incomplete, especially for FLAC, so
+  // rescanning must not overwrite these valuable values.
   const albumId = await sha16(f);
   const { results: prevRows } = await c.env.DB.prepare(
     "SELECT * FROM tracks WHERE album_id = ?").bind(albumId).all();
   const prev = new Map(prevRows.map((t) => [t.path, t]));
-  // 文件名兜底和浏览器端 tags.js 同一条规则："01. 曲名" → track=1, title=曲名
+  // Filename fallback follows the same rule as browser tags.js:
+  // "01. Track title" -> track=1, title="Track title".
   const fromFilename = (name) => {
     const stem = name.replace(/\.[^.]+$/, "");
     const fm = stem.match(/^(\d{1,3})[\s._-]+(.+)$/);
@@ -3450,7 +3498,7 @@ app.post("/api/scan", async (c) => {
   return c.json(result, r.status);
 });
 
-/* ---------- 管理后台 ---------- */
+/* ---------- Admin ---------- */
 
 app.get("/api/admin/overview", async (c) => {
   const [a, t, posts, s] = await Promise.all([
@@ -3483,8 +3531,9 @@ app.post("/api/admin/password", async (c) => {
     return c.json({ error: "当前管理员口令不对" }, 403);
   }
   const hash = await hashPassword(next);
-  // 密码与会话纪元必须一起提交。否则第二次写入失败时接口虽然报错，
-  // 新密码却已经生效，旧 cookie 也仍能继续使用。
+  // Commit the password and session epoch together. If a separate second write
+  // failed, the endpoint would report an error even though the new password was
+  // active and old cookies still worked.
   await c.env.DB.batch([
     settingStatement(c.env, `${target}_pass_hash`, hash),
     bumpSessionEpochStatement(c.env),
@@ -3501,15 +3550,18 @@ app.get("/api/admin/settings", async (c) => {
   return c.json({
     sourceUrl: s.source_url || "",
     archivePasswords: settingStringList(s.archive_passwords || "[]"),
-    // token 只回掩码（••••+末4位），置空表示未配置
+    // Return only a masked token (bullets plus the final four characters); blank means unset.
     discogsToken: tok ? `••••${tok.slice(-4)}` : "",
     guestOpen: s.guest_open === "1",
-    // 可插拔模块（默认关：这些是重度私人工作流，多数用户用不上）
+    // Optional modules default off because they support specialized personal
+    // workflows that most users do not need.
     moduleSource: s.module_source === "1",
-    // 音源代理：强制所有有直链的音轨经 Worker 转发（大陆访问 OneDrive 慢时开）
+    // Audio proxy: force every directly addressable track through the Worker,
+    // useful when OneDrive is slow from mainland China.
     streamProxy: s.stream_proxy === "1",
-    // 自定义代理地址（空 = 用本站 /api/stream 代理；可填其他 Worker）
-    // 支持 {url} 占位：https://my-proxy.example.com/?u={url}
+    // Custom proxy address: blank uses this site's /api/stream; another Worker is
+    // also accepted. Supports a {url} placeholder, for example
+    // https://my-proxy.example.com/?u={url}.
     streamProxyUrl: s.stream_proxy_url || "",
   });
 });
@@ -3543,7 +3595,8 @@ app.put("/api/admin/settings", async (c) => {
   if (Array.isArray(b.archivePasswords)) {
     put("archive_passwords", JSON.stringify(strictStringList(b.archivePasswords)));
   }
-  // 非空才更新（表单留空 = 保持现值，与云盘凭据同一套约定）
+  // Update nonempty fields only. A blank form value preserves the current one,
+  // matching storage-credential behavior.
   if (typeof b.discogsToken === "string" && b.discogsToken.trim()
       && !b.discogsToken.includes("••")) {
     put("discogs_token", b.discogsToken.trim());
@@ -3564,7 +3617,7 @@ app.put("/api/admin/settings", async (c) => {
   return c.json({ ok: true });
 });
 
-// 资源站模块开关闸门（关闭时扫描类端点直接 404，定时任务也跳过）
+// Source-module gate: when disabled, scan endpoints return 404 and scheduled jobs skip it.
 const sourceModuleGate = async (c, next) => {
   if ((await getSetting(c.env, "module_source")) !== "1") {
     return c.json({ error: "资源站模块未启用" }, 404);
@@ -3621,11 +3674,12 @@ app.post("/api/admin/source/posts/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/* ---------- 管理后台：云盘凭据（过期/换号时在线更新，不用重新部署） ---------- */
+/* ---------- Admin: storage credentials, updated online after expiry or account
+   changes without redeployment ---------- */
 
 const mask = (v) => (v ? `••••${String(v).slice(-4)}` : "");
 
-/* ---------- R2 图床凭据（后台可改，不写死） ---------- */
+/* ---------- R2 image-host credentials, editable in Admin rather than hardcoded ---------- */
 
 app.get("/api/admin/r2", async (c) => {
   const conf = await r2.r2Conf(c.env);
@@ -3639,7 +3693,7 @@ app.get("/api/admin/r2", async (c) => {
     bucket: conf.bucket || "",
     publicUrl: conf.publicUrl || "",
     ready: conf.ready,
-    mirrored: cached?.n || 0,   // 已镜像的图片变体数
+    mirrored: cached?.n || 0,   // Number of mirrored image variants
   });
 });
 
@@ -3661,7 +3715,7 @@ app.put("/api/admin/r2", async (c) => {
   }
   const statements = [];
   const put = (key, value) => statements.push(settingStatement(c.env, key, value));
-  // 掩码值（含 ••）跳过 = 保持不变；明文才写入
+  // Skip masked values containing bullets to preserve them; write plaintext only.
   const secret = { accessKey: "r2_access_key", secretKey: "r2_secret_key" };
   for (const [k, sk] of Object.entries(secret)) {
     if (typeof b[k] === "string" && b[k].trim() && !b[k].includes("••")) {
@@ -3694,7 +3748,8 @@ app.post("/api/admin/r2/purge-hidden", async (c) => {
       || limit === INVALID_INPUT || limit === null) {
     return c.json({ error: "offset / limit 参数无效" }, 400);
   }
-  // 每步只取本批行：轮询推进时不再反复重建全量任务清单（原为 O(total²/limit) 行读）
+  // Fetch only this batch on each step instead of rebuilding the complete task
+  // list on every poll, which previously cost O(total^2 / limit) row reads.
   const [{ n: nAlbums = 0 } = {}, { n: nArtists = 0 } = {}] = await Promise.all([
     c.env.DB.prepare(
       "SELECT COUNT(*) AS n FROM albums WHERE COALESCE(hidden,0)=1").first(),
@@ -3741,13 +3796,14 @@ app.post("/api/admin/r2/purge-hidden", async (c) => {
   });
 });
 
-// 把一张图镜像到 R2；已存在则跳过。storageId 可空（默认后端）。返回 'done'|'skip'|'fail'
+// Mirror one image to R2, skipping existing objects. storageId may be empty for
+// the default backend. Return 'done', 'skip', or 'fail'.
 async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim, storageId = null) {
   if (typeof cacheKey !== "string" || !cacheKey
       || typeof srcPath !== "string" || !srcPath) return "fail";
   const exists = await env.DB.prepare(
     "SELECT 1 FROM r2_cache WHERE cache_key = ?").bind(cacheKey).first();
-  if (exists) return "skip"; // R2 里已有，不重复上传
+  if (exists) return "skip"; // Already in R2; do not upload again.
   if (await claimExistingR2Image(env, conf, cacheKey, srcPath)) return "skip";
   let bytes, ct;
   const url = (dim ? await storage.thumbnailUrl(env, srcPath, dim, storageId) : null)
@@ -3773,8 +3829,9 @@ async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim, storageId = nu
   return "done";
 }
 
-// 预热：把所有图片（专辑封面原图 + 内页图 480/1000 + 歌手头像 480）
-// 批量镜像到 R2。已在 R2 的跳过。分批返回进度，前端轮询推进。
+// Prewarm all images into R2 in batches: original album covers, gallery images
+// at 480/1000, and artist avatars at 480. Skip existing objects and return
+// progress for frontend polling.
 app.post("/api/admin/r2/prewarm", async (c) => {
   const conf = await r2.r2Conf(c.env);
   if (!conf.ready) return c.json({ error: "R2 未就绪，先在上方配置并测试连接" }, 400);
@@ -3789,9 +3846,11 @@ app.post("/api/admin/r2/prewarm", async (c) => {
     return c.json({ error: "offset / limit 参数无效" }, 400);
   }
 
-  // 每步只读本批的源行（原实现每次轮询都重建全量任务数组，O(total²/limit) 行读）。
-  // 任务粒度 = 数据库行：封面 1 行 1 任务；内页图 1 行 1 任务（内含 480/1000 两次镜像）；
-  // 头像 1 行 1 任务。offset/processed/total 均按行计。
+  // Read only this batch of source rows per step. The old implementation rebuilt
+  // the entire task array on every poll, costing O(total^2 / limit) row reads.
+  // One database row is one task: a cover row is one task, a gallery row is one
+  // task containing both 480 and 1000 mirrors, and an avatar row is one task.
+  // offset, processed, and total are all measured in rows.
   const [{ n: nAlbums = 0 } = {}, { n: nImages = 0 } = {},
     { n: nAvatars = 0 } = {}] = await Promise.all([
     c.env.DB.prepare(
@@ -3832,7 +3891,8 @@ app.post("/api/admin/r2/prewarm", async (c) => {
     }
   }
   if (tasks.length < limit && offset + tasks.length >= nAlbums + nImages) {
-    // 头像有独立的存储绑定；跨盘艺人不能再从任一专辑推断。
+    // Avatars have an explicit storage binding; for artists spanning multiple
+    // backends, it can no longer be inferred from an arbitrary album.
     const { results } = await c.env.DB.prepare(`
       SELECT ar.avatar_path, ar.storage_id FROM artists ar
       WHERE ar.avatar_path != '' AND EXISTS (
@@ -3866,8 +3926,8 @@ app.post("/api/admin/r2/prewarm", async (c) => {
         r === "done" ? done++ : r === "skip" ? skipped++ : failed++;
       }
     } else if (t.kind === "image") {
-      // 每行计一次：done/skipped/failed 与 total（按行数）保持同一量纲，
-      // 完成 toast 的合计不会超过进度条显示的 total
+      // Count each row once so done/skipped/failed and row-based total share the
+      // same unit; the completion toast cannot exceed the progress-bar total.
       const sizeResults = [];
       for (const [size, dim] of [[480, "c480x480"], [1000, "c1000x1000"]]) {
         sizeResults.push(
@@ -3891,7 +3951,7 @@ app.post("/api/admin/r2/prewarm", async (c) => {
   return c.json({ total, processed: next, done, skipped, failed, finished: next >= total });
 });
 
-/* ---------- 多存储后端（多 OneDrive 账号容量池 / WebDAV / 迁移） ---------- */
+/* ---------- Multiple storage backends: OneDrive account pools, WebDAV, and migration ---------- */
 
 const STORAGE_KINDS = ["onedrive", "webdav", "gdrive", "local"];
 const STORAGE_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
@@ -3981,8 +4041,9 @@ app.post("/api/admin/storages", async (c) => {
     return c.json({ error: "存储配置过大" }, 400);
   }
   const id = await sha16(`${name}:${Date.now()}:${crypto.randomUUID()}`);
-  // 先以非写入状态登记，再由同一套选择逻辑确保只有一个写入目标。
-  // 这样并发添加首个存储时不会同时留下两个 is_write=1。
+  // Register in non-write mode first, then use the shared selection logic to
+  // guarantee one write target. Concurrent creation of the first storage cannot
+  // leave two rows with is_write=1.
   await c.env.DB.prepare(
     "INSERT INTO storages (id, name, kind, config, is_write, created_at) " +
     "VALUES (?,?,?,?,?,?)")
@@ -3992,8 +4053,8 @@ app.post("/api/admin/storages", async (c) => {
   return c.json({ ok: true, id, isWrite: writeId === id });
 });
 
-// 设定写入目标（新上传落到哪个命名存储）。
-// 注意：必须注册在 PUT /storages/:sid 之前，否则 "write-target" 会被吃进 :sid
+// Select the named storage that receives new uploads. Register this before
+// PUT /storages/:sid or "write-target" is consumed as :sid.
 app.put("/api/admin/storages/write-target", async (c) => {
   const b = await requestObject(c);
   const id = b?.id;
@@ -4033,7 +4094,8 @@ app.put("/api/admin/storages/:sid", async (c) => {
   if (b.name) statements.push(c.env.DB.prepare(
     "UPDATE storages SET name = ? WHERE id = ?").bind(b.name.trim(), sid));
   if (b.config) {
-    // 掩码值（含••）跳过，保持原值；明文才覆盖
+    // Skip masked values containing bullets and preserve the original; overwrite
+    // only with plaintext.
     const patch = normalizeStorageConfig(row.kind, b.config);
     if (patch === INVALID_INPUT) {
       return c.json({ error: "存储配置字段无效" }, 400);
@@ -4092,7 +4154,7 @@ app.delete("/api/admin/storages/:sid", async (c) => {
   return c.json({ ok: true });
 });
 
-// 测试连通性（已存的按 id 测；未存的直接传 kind+config 测）
+// Test connectivity by ID for saved backends, or directly with kind+config for unsaved ones.
 app.post("/api/admin/storages/test", async (c) => {
   const b = await requestObject(c);
   if (!b) return c.json({ ok: false, error: "请求 JSON 无效" }, 400);
@@ -4126,9 +4188,10 @@ app.post("/api/admin/storages/test", async (c) => {
   }
 });
 
-/* 迁移一步：搬一张音盤的第 fileIndex 个文件；搬完返回 finished:true。
-   源文件保留（冷备）。返回 {ok,error?,finished,total,fileIndex,file,bytes} */
-const MIGRATION_CHUNK = 10 * 1024 * 1024; // Graph/Google 都接受；也是 320KiB 的整数倍
+/* One migration step moves fileIndex from one album and returns finished:true
+   when complete. Source files remain as a cold backup. Returns
+   {ok,error?,finished,total,fileIndex,file,bytes}. */
+const MIGRATION_CHUNK = 10 * 1024 * 1024; // Accepted by Graph and Google; also a multiple of 320KiB
 const UNKNOWN_SIZE_BUFFER_LIMIT = 32 * 1024 * 1024;
 
 async function* fixedStreamChunks(stream, chunkSize = MIGRATION_CHUNK) {
@@ -4387,8 +4450,9 @@ async function migrateAlbumStep(env, albumId, targetId, fileIndex = 0) {
     return { ok: false, error: "fileIndex 超出迁移清单范围" };
   }
   if (fileIndex === files.length) {
-    // storageId 出现在 /api/library 载荷里：必须同时回写 updated_at，
-    // 否则目录 ETag 不变，浏览器 304 会继续提供迁移前的旧 storageId。
+    // storageId appears in /api/library, so update updated_at at the same time.
+    // Otherwise the catalog ETag remains unchanged and a browser 304 keeps
+    // serving the pre-migration storageId.
     const updates = [env.DB.prepare(
       "UPDATE albums SET storage_id = ?, updated_at = ? WHERE id = ?")
       .bind(targetId || null, Date.now(), albumId)];
@@ -4478,8 +4542,9 @@ app.post("/api/admin/storages/migrate", async (c) => {
   return c.json(r);
 });
 
-/* 整库一键迁移：推进到下一张「还没在目标上」的音盤，再从 fileIndex 搬文件。
-   前端循环调用直到 finished。targetId 必须是另一个命名存储后端。 */
+/* One-click library migration advances to the next album not yet on the target,
+   then moves files beginning at fileIndex. The frontend repeats calls until
+   finished. targetId must name a different storage backend. */
 app.post("/api/admin/storages/migrate-all", async (c) => {
   const b = await requestObject(c) || {};
   const { targetId = null, albumOffset = 0, fileIndex = 0 } = b;
@@ -4493,10 +4558,11 @@ app.post("/api/admin/storages/migrate-all", async (c) => {
       .bind(targetId).first();
     if (!t) return c.json({ error: "target not found" }, 404);
   }
-  // 只数一遍 + 取第一张待迁移专辑：不再每个文件步骤都全表加载过滤。
-  // targetId 经上方校验必为非空字符串，COALESCE('') 只用于兜底 NULL storage_id。
-  // ``need`` 随迁移完成而缩减。albumOffset 是累计完成数，不是下标；
-  // 永远处理「第一张还不在目标上」的专辑。
+  // Count once and select the first pending album instead of loading and filtering
+  // the whole table for every file step. Validation above guarantees a nonempty
+  // targetId; COALESCE('') only handles a NULL storage_id. ``need`` shrinks as
+  // migration completes. albumOffset is a cumulative completion count, not an
+  // array index; always process the first album not yet on the target.
   const [{ n: needCount = 0 } = {}, album] = await Promise.all([
     c.env.DB.prepare(`SELECT COUNT(*) AS n FROM albums
       WHERE COALESCE(storage_id, '') != ?`).bind(targetId).first(),
@@ -4518,7 +4584,7 @@ app.post("/api/admin/storages/migrate-all", async (c) => {
     }, 502);
   }
   if (step.finished) {
-    // 这张完成 → 推进到下一张（fileIndex 归零）
+    // This album is complete; advance to the next and reset fileIndex.
     const nextOffset = offset + 1;
     return c.json({
       finished: needCount === 1,
@@ -4549,7 +4615,7 @@ app.post("/api/admin/storages/migrate-all", async (c) => {
   });
 });
 
-/* Google Drive OAuth：生成授权链接 / 用 code 换 refresh_token */
+/* Google Drive OAuth: generate an authorization URL and exchange code for refresh_token */
 app.post("/api/admin/storages/gdrive-auth-url", async (c) => {
   const b = await requestObject(c) || {};
   const { clientId, redirectUri } = b;
@@ -4578,15 +4644,17 @@ app.post("/api/admin/storages/gdrive-exchange", async (c) => {
     }
     return c.json({
       refreshToken: tok.refresh_token,
-      // access_token 短命，不返回
+      // access_token is short-lived and is not returned.
     });
   } catch (e) {
     return c.json({ error: String(e.message || e) }, 502);
   }
 });
 
-/* ---------- 配置导出 / 导入（重新部署后一键还原命名存储 + R2 等） ----------
-   导出不含口令哈希与 session 纪元；敏感字段原样导出（请妥善保管 JSON）。 */
+/* ---------- Configuration export/import for one-click restoration of named
+   storage, R2, and related settings after redeployment. Exports exclude password
+   hashes and the session epoch, but include sensitive fields verbatim; protect
+   the JSON accordingly. ---------- */
 
 app.get("/api/admin/config/export", async (c) => {
   const settings = {};
@@ -4594,7 +4662,8 @@ app.get("/api/admin/config/export", async (c) => {
     const v = await getSetting(c.env, k);
     if (v != null && v !== "") settings[k] = v;
   }
-  // R2：同样导出实际生效配置（DB 优先，缺省时已是 conf 解析结果）
+  // Export the effective R2 configuration too. Database values take priority;
+  // missing values have already been resolved by conf.
   try {
     const r2c = await r2.r2Conf(c.env);
     if (r2c.accessKey) settings.r2_access_key = r2c.accessKey;
@@ -4790,7 +4859,7 @@ app.post("/api/admin/config/import", async (c) => {
   });
 });
 
-/* ---------- 伴侣端点（拉设置 + 心跳） ---------- */
+/* ---------- Companion endpoints for settings and heartbeat ---------- */
 
 app.get("/api/companion/settings", async (c) => {
   await setSetting(c.env, "companion_last_seen", String(Date.now()));
@@ -4803,8 +4872,9 @@ app.get("/api/companion/settings", async (c) => {
 
 export default {
   fetch: app.fetch,
-  // Cloudflare Cron Trigger（wrangler.jsonc triggers.crons）：定时扫资源站新帖。
-  // 资源站模块关闭时（默认）跳过，不浪费调用也不碰外部站点。
+  // Cloudflare Cron Trigger from wrangler.jsonc triggers.crons periodically scans
+  // new source posts. When the source module is disabled by default, skip the job
+  // to avoid wasted invocations and external requests.
   scheduled: (event, env, ctx) => ctx.waitUntil((async () => {
     if ((await getSetting(env, "module_source")) === "1") await scanSource(env);
   })()),

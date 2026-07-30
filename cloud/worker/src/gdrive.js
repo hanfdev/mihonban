@@ -1,8 +1,10 @@
-// Google Drive 存储后端（Drive API v3）。
+// Google Drive storage backend using Drive API v3.
 // config: { clientId, clientSecret, refreshToken, rootId }
-//   rootId = 库根文件夹 ID（My Drive 根用 "root"；推荐单独建「mihonban」文件夹）
-// 路径模型：相对库根的路径（Music/Library/艺人/专辑/曲.mp3），按文件夹名逐级解析，
-// 文件夹 ID 缓存在 KV（gdF:driveRoot:path）。
+//   rootId = library root folder ID (use "root" for My Drive; a dedicated
+//            "mihonban" folder is recommended)
+// Paths are relative to the library root (Music/Library/Artist/Album/track.mp3)
+// and resolved one folder name at a time. Folder IDs are cached in KV under
+// gdF:driveRoot:path.
 
 import { discardResponse, fetchWithTimeout } from "./net.js";
 
@@ -163,7 +165,7 @@ async function invalidatePathLineage(env, conf, path) {
   await Promise.all(prefixes.map((key) => env.KV.delete(key)));
 }
 
-/** 在 parentId 下按精确文件名找条目；找不到返回 null。 */
+/** Find an item by exact filename under parentId; return null when absent. */
 async function findChild(env, conf, parentId, name) {
   const escaped = String(name).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const q = `'${parentId}' in parents and name = '${escaped}' and trashed = false`;
@@ -181,7 +183,7 @@ async function findChild(env, conf, parentId, name) {
   return page.files.map(driveNode).find(Boolean) || null;
 }
 
-/** 解析相对路径 → { id, mimeType, size? }；中途缺文件夹返回 null。 */
+/** Resolve a relative path to { id, mimeType, size? }; return null if any folder is missing. */
 async function resolvePath(env, conf, path) {
   const clean = (path || "").replace(/^\/+|\/+$/g, "");
   if (!clean) return { id: rootId(conf), mimeType: FOLDER_MIME };
@@ -220,7 +222,7 @@ async function resolvePath(env, conf, path) {
   return node;
 }
 
-/** 确保路径上的文件夹都存在，返回最后一级文件夹 ID。 */
+/** Ensure every folder in a path exists and return the final folder ID. */
 async function ensureFolderPath(env, conf, folderPath) {
   const clean = (folderPath || "").replace(/^\/+|\/+$/g, "");
   if (!clean) return rootId(conf);
@@ -263,12 +265,12 @@ async function ensureFolderPath(env, conf, folderPath) {
   return parent;
 }
 
-/** 无预签名直链：一律 Worker 代理（与 WebDAV 同策略）。 */
+/** No presigned direct URLs; always proxy through the Worker, as with WebDAV. */
 export async function downloadUrl() {
   return null;
 }
 
-/** 读文件字节（支持 Range）。 */
+/** Read file bytes with Range support. */
 export async function getFile(env, conf, path, range) {
   let node = await resolvePath(env, conf, path);
   if (!node || node.mimeType === FOLDER_MIME) return null;
@@ -288,12 +290,12 @@ export async function getFile(env, conf, path, range) {
   return r.ok || r.status === 206 || r.status === 416 ? r : null;
 }
 
-/** Drive 无通用缩略图直链（需额外 permissions）；返回 null 走原图。 */
+/** Drive has no general thumbnail URL without extra permissions; return null to use the original. */
 export async function thumbnailUrl() {
   return null;
 }
 
-/** 列目录。 */
+/** List a directory. */
 export async function listChildren(env, conf, folder, strict = false) {
   const node = await resolvePath(env, conf, folder);
   if (!node) {
@@ -354,14 +356,15 @@ export async function listChildren(env, conf, folder, strict = false) {
   return out;
 }
 
-/** 小/中文件上传（multipart，适合 < 20MB 封面/曲目；大文件也可用但占 Worker 内存）。 */
+/** Upload small and medium files using multipart, suitable for covers and tracks
+ *  under 20MB. Larger files work but consume Worker memory. */
 export async function putSmallFile(env, conf, path, bytes, contentType) {
   const parts = path.replace(/^\/+|\/+$/g, "").split("/");
   const fileName = parts.pop();
   const parentPath = parts.join("/");
   const parentId = await ensureFolderPath(env, conf, parentPath);
 
-  // 同名文件 → 更新内容；否则新建
+  // Update an existing same-name file; otherwise create one.
   const existing = await findChild(env, conf, parentId, fileName);
   const tok = await accessToken(env, conf);
   const meta = existing
@@ -403,7 +406,7 @@ export async function putSmallFile(env, conf, path, bytes, contentType) {
   if (!r.ok) return false;
   const file = driveNode(await r.json());
   if (!file) return false;
-  // 刷新路径缓存
+  // Refresh the path cache.
   await env.KV.put(await cacheKey(conf, path.replace(/^\/+|\/+$/g, "")),
     JSON.stringify({ id: file.id, mimeType: file.mimeType || contentType, size: file.size }),
     { expirationTtl: 3600 });
@@ -441,10 +444,10 @@ export async function createUploadSession(env, conf, path, contentType) {
   return uploadUrl;
 }
 
-/** 删除文件/文件夹。 */
+/** Delete a file or folder. */
 export async function deleteItem(env, conf, path) {
   let node = await resolvePath(env, conf, path);
-  if (!node) return true; // 已不存在
+  if (!node) return true; // Already absent
   let r = await gfetch(env, conf, `${DRIVE}/files/${node.id}`, { method: "DELETE" });
   if (r.status === 404) {
     await discardResponse(r);
@@ -460,7 +463,7 @@ export async function deleteItem(env, conf, path) {
   return r.ok || r.status === 204 || r.status === 404;
 }
 
-/** 连通性测试。 */
+/** Test connectivity. */
 export async function test(env, conf) {
   try {
     const tok = await accessToken(env, conf, true);
@@ -473,7 +476,7 @@ export async function test(env, conf) {
       return { ok: false, error: `Drive HTTP ${r.status}` };
     }
     const d = await r.json();
-    // about 配额
+    // Read quota information from about.
     const about = await fetchWithTimeout(`${DRIVE}/about?fields=user,storageQuota`,
       { headers: { Authorization: `Bearer ${tok}` } });
     let used = 0, total = 0, owner = d.name || "";
@@ -489,7 +492,7 @@ export async function test(env, conf) {
   }
 }
 
-/** 生成 OAuth 授权 URL（用户在浏览器打开，拿 code 换 refresh_token）。 */
+/** Generate an OAuth authorization URL for the user to obtain a code in the browser. */
 export function authUrl(clientId, redirectUri = "http://localhost") {
   const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   u.searchParams.set("client_id", clientId);
@@ -501,7 +504,7 @@ export function authUrl(clientId, redirectUri = "http://localhost") {
   return u.toString();
 }
 
-/** 用授权码换 refresh_token。 */
+/** Exchange an authorization code for a refresh_token. */
 export async function exchangeCode(clientId, clientSecret, code,
   redirectUri = "http://localhost") {
   const body = new URLSearchParams({

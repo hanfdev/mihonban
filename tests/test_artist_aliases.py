@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""艺人别名库（cloud/web/src/artist-aliases.json）+ resolve_original 分层查找。"""
+"""Artist alias library plus layered ``resolve_original`` lookup."""
 
 from __future__ import annotations
 
@@ -339,7 +339,7 @@ def test_resolve_prefers_alias_and_skips_resolver(tmp_path: Path):
     cache = ArtistCache(tmp_path / "cache.json")
     entry = resolve_original("Miki Matsubara", cache, resolver)
     assert entry["name"] == "松原みき"
-    assert calls == []            # 别名命中，绝不联网
+    assert calls == []            # An alias hit must never access the network.
 
 
 def test_explicit_null_keeps_latin_without_network(tmp_path: Path):
@@ -348,9 +348,9 @@ def test_explicit_null_keeps_latin_without_network(tmp_path: Path):
         calls.append(name)
         return {"name": "偽物", "sort": "x"}
     cache = ArtistCache(tmp_path / "cache.json")
-    # zard 在库里显式 null = 官方拉丁名
+    # Explicit null for ZARD means its official name is Latin.
     assert resolve_original("ZARD", cache, resolver) is None
-    assert calls == []            # 不问 MB，也不落缓存
+    assert calls == []            # Do not query MusicBrainz or write the cache.
 
 
 def test_miss_falls_through_to_resolver(tmp_path: Path):

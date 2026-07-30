@@ -1,9 +1,11 @@
-// 本地磁盘存储后端（仅 Node 部署可用：node src/node.js）。
-// Cloudflare Worker 无文件系统，storage.js 在缺少 env.LOCAL_FS 时会明确报错。
+// Local-disk storage backend, available only in Node deployments via node src/node.js.
+// Cloudflare Workers have no filesystem; storage.js reports a clear error when
+// env.LOCAL_FS is unavailable.
 //
 // config: { root: absolute-or-relative-dir, odRoot?: "Music/Library" }
-// root 对应曲库根（与 OD_ROOT 对齐），DB 路径若以 odRoot 开头会剥掉再拼到 root 下。
-// 例：root=/data/mihonban，path=Music/Library/Artist/A/track.flac
+// root corresponds to the library root, matching OD_ROOT. If a database path
+// begins with odRoot, strip that prefix before joining it under root.
+// Example: root=/data/mihonban, path=Music/Library/Artist/A/track.flac
 //   → /data/mihonban/Artist/A/track.flac
 
 import { createReadStream, createWriteStream, existsSync, mkdirSync,
@@ -18,7 +20,7 @@ function odRootOf(conf) {
     .replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
 }
 
-/** DB 相对路径 → root 下的相对段（正斜杠） */
+/** Convert a database-relative path into forward-slash segments beneath root. */
 export function mapPath(conf, path) {
   let p = String(path || "").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
   const od = odRootOf(conf);
@@ -36,7 +38,7 @@ function absPath(conf, path) {
   const full = rel
     ? resolve(root, ...rel.split("/").filter(Boolean))
     : root;
-  // 防止 .. 逃出 root
+  // Prevent .. from escaping root.
   const rootWithSep = root.endsWith(sep) ? root : root + sep;
   if (full !== root && !full.startsWith(rootWithSep)) {
     throw new Error("local path 越界");
@@ -64,7 +66,7 @@ function absPath(conf, path) {
 }
 
 export function downloadUrl() {
-  return null; // 始终 Worker 代理读
+  return null; // Always proxy reads through the Worker.
 }
 
 export async function getFile(conf, path, range) {
@@ -207,7 +209,7 @@ export async function test(conf) {
     if (!statSync(abs).isDirectory()) {
       return { ok: false, error: "root 不是目录" };
     }
-    // 写探活文件再删
+    // Write and remove a probe file.
     const probe = join(abs, `.mihonban-write-test-${process.pid}-` +
       `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     try {
@@ -221,7 +223,7 @@ export async function test(conf) {
   }
 }
 
-/** 供 node.js 注入到 env.LOCAL_FS */
+/** Inject into env.LOCAL_FS from node.js. */
 export const api = {
   downloadUrl, getFile, thumbnailUrl, listChildren, putSmallFile, putFile,
   deleteItem, test, mapPath,

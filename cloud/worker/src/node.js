@@ -1,11 +1,11 @@
-// VPS / 免费 Node 托管（Render、Railway、Fly…）入口：
+// Entry point for VPS or free Node hosting such as Render, Railway, and Fly:
 //   node src/node.js
-// 同一套业务代码（index.js），D1/KV 换成本地 SQLite 文件。
-// 环境变量（或同目录 .env）：
+// It runs the same business logic in index.js, replacing D1/KV with local SQLite files.
+// Environment variables, or a sibling .env file:
 //   APP_PASSWORD ADMIN_PASSWORD SESSION_SECRET COMPANION_KEY
 //   OD_ROOT=Music/Library  DATA_DIR=./data  PORT=8788  HOST=0.0.0.0
-//   SOURCE_SCAN_HOURS=6（0 关闭定时扫描）
-//   TRUST_PROXY=1（仅在受信任反向代理后启用，使用 X-Forwarded-For）
+//   SOURCE_SCAN_HOURS=6 (0 disables scheduled scanning)
+//   TRUST_PROXY=1 (enable only behind a trusted reverse proxy; uses X-Forwarded-For)
 
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -52,7 +52,7 @@ const env = {
   OD_ROOT: process.env.OD_ROOT || "Music/Library",
   DB: d1FromSqlite(db),
   KV: kvFromSqlite(db),
-  // 本地磁盘后端（管理后台「本地存储」）；Worker 运行时无此字段
+  // Local-disk backend exposed as Local Storage in Admin; Workers do not have this field.
   LOCAL_FS: localfs.api,
 };
 
@@ -60,7 +60,8 @@ if (typeof env.SESSION_SECRET !== "string" || env.SESSION_SECRET.length < 32) {
   console.error("SESSION_SECRET must contain at least 32 characters");
   process.exit(1);
 }
-// 外层：/api 走业务 app，其余静态托管 SPA（history fallback）
+// Outer router: /api uses the application; everything else serves the static SPA
+// with history fallback.
 const root = new Hono();
 root.all("/api/*", (c) => {
   const socketIp = c.env.incoming?.socket?.remoteAddress || "local";
@@ -89,27 +90,29 @@ root.get("*", (c) => {
 });
 
 const port = Number(process.env.PORT || 8788);
-// HOST=127.0.0.1 可在反向代理后收紧监听面；默认保持 0.0.0.0（VPS 直连场景）
+// HOST=127.0.0.1 narrows the listening surface behind a reverse proxy. The
+// default remains 0.0.0.0 for direct VPS access.
 const hostname = process.env.HOST || "0.0.0.0";
 const server = serve({ fetch: root.fetch, port, hostname }, () =>
   console.log(`mihonban cloud (node) on http://${hostname}:${port}`));
 
 const hours = Number(process.env.SOURCE_SCAN_HOURS ?? 6);
 if (hours > 0) {
-  // unref：定时任务不阻止进程自然退出
+  // unref keeps scheduled work from preventing natural process exit.
   setInterval(() => scanSource(env).catch(() => {}), hours * 3600_000).unref();
   setTimeout(() => scanSource(env).catch(() => {}), 30_000).unref();
 }
 
-// 优雅停机：托管平台（Render/Railway/Fly/Docker/systemd）停止或重新部署时
-// 先发 SIGTERM（本地控制台 Ctrl+C 是 SIGINT）。停止接收新连接、关闭 SQLite
-// （写清 WAL，避免下次启动走恢复流程），以 0 退出。既有连接 5 秒兜底强退。
-// 注：Windows 无法投递 SIGTERM，taskkill /F 硬杀仍会报非零退出码——那是
-// 平台限制，不代表应用出错。
+// Graceful shutdown: hosting platforms such as Render, Railway, Fly, Docker, and
+// systemd send SIGTERM before stopping or redeploying; local Ctrl+C sends SIGINT.
+// Stop accepting connections, close SQLite so its WAL is flushed, and exit 0.
+// Force exit after five seconds if existing connections linger. Windows cannot
+// deliver SIGTERM, so taskkill /F still reports a nonzero exit code; that is a
+// platform limitation, not an application failure.
 let closing = false;
 let shutdownTimer = null;
 function closeDatabase() {
-  try { db.close(); } catch { /* 已关闭 */ }
+  try { db.close(); } catch { /* Already closed */ }
 }
 function finishShutdown() {
   if (shutdownTimer) clearTimeout(shutdownTimer);
@@ -120,8 +123,9 @@ function shutdown(signal) {
   if (closing) return;
   closing = true;
   console.log(`${signal} received — shutting down`);
-  // 即使长连接让 server.close() 五秒内没有回调，也先关闭 SQLite、清算 WAL
-  // 再退出；否则“兜底”路径恰好绕过了优雅停机最重要的数据清理。
+  // Even if long-lived connections keep server.close() from calling back within
+  // five seconds, close SQLite and settle the WAL before exiting. Otherwise the
+  // fallback path would skip the most important cleanup in graceful shutdown.
   shutdownTimer = setTimeout(finishShutdown, 5000);
   shutdownTimer.unref();
   server.close(finishShutdown);

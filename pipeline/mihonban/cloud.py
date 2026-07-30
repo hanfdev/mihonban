@@ -1,11 +1,13 @@
-"""mihonban cloud —— 本地曲库与 Cloudflare Worker 同步。
+"""Synchronize the local mihonban library with the Cloudflare Worker.
 
-`mihonban cloud sync`：
-  1. rclone copy 把 MUSIC_ROOT 增量上传到 OneDrive（只传新增/变化）；
-  2. 逐专辑读文件 tag（含 RYM 自定义 tag）→ POST /api/albums 幂等登记。
+``mihonban cloud sync``:
+  1. ``rclone copy`` incrementally uploads MUSIC_ROOT to OneDrive, transferring
+     only new or changed files.
+  2. Read each album's file tags, including custom RYM tags, and register it
+     idempotently through ``POST /api/albums``.
 
-album id 与 Worker 端一致：sha1(NFC(folder))[:16]，folder 形如
-"Music/Library/山下達郎/[1978] GO AHEAD!"。
+Album IDs match the Worker: ``sha1(NFC(folder))[:16]``. A folder resembles
+``Music/Library/Artist/[1978] GO AHEAD!``.
 """
 
 from __future__ import annotations
@@ -230,8 +232,9 @@ def cloud_ready(cfg: Config) -> bool:
 
 
 def fetch_cloud_settings(cfg: Config) -> dict:
-    """拉取后台可改的设置（解压密码、资源站网址）；顺带向后台报心跳。
-    离线/未部署时返回空 dict，调用方按本地配置继续。"""
+    """Fetch Admin-editable settings such as archive passwords and source URLs,
+    while reporting a heartbeat. Return an empty dict when offline or undeployed
+    so callers continue with local configuration."""
     if not cloud_ready(cfg):
         return {}
     try:
@@ -247,7 +250,7 @@ def fetch_cloud_settings(cfg: Config) -> dict:
 
 
 def merge_cloud_passwords(cfg: Config) -> None:
-    """后台配置的解压密码优先，本地 toml 的兜底（就地更新 cfg.passwords）。"""
+    """Prefer archive passwords from Admin and fall back to local TOML, updating ``cfg.passwords`` in place."""
     remote = fetch_cloud_settings(cfg).get("archivePasswords") or []
     if not isinstance(remote, list):
         log.warning("cloud archivePasswords is not a list; keeping local values")
@@ -329,7 +332,7 @@ def _audio_files(album_dir: Path) -> list[Path]:
 
 
 def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
-    """从文件 tag 构造 /api/albums 的登记 payload。"""
+    """Build an ``/api/albums`` registration payload from file tags."""
     try:
         folder = od_folder(cfg, album_dir)
     except (OSError, ValueError) as exc:
@@ -410,7 +413,7 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         years.append(_tag_year(t))
         if not rym:
             try:
-                raw = mutagen.File(f)  # 自定义 tag 要走非 easy 接口
+                raw = mutagen.File(f)  # Custom tags require the non-Easy interface.
                 candidate = _rym_from_tags(raw)
                 if any(candidate.get(key) not in (None, "", []) for key in (
                         "rating", "votes", "rank", "url", "descriptors",
@@ -491,7 +494,7 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
 
 
 def _rym_from_tags(audio) -> dict:
-    """从 TXXX/Vorbis 自定义 tag 读回 RYM 数据。"""
+    """Read RYM data from custom TXXX/Vorbis tags."""
     def get(key: str) -> str:
         if audio is None or audio.tags is None:
             return ""
@@ -536,7 +539,7 @@ def _rym_from_tags(audio) -> dict:
 
 
 def rclone_upload(cfg: Config, album_dir: Path | None, console) -> bool:
-    """rclone copy（增量）。album_dir=None 表示整库。"""
+    """Run incremental ``rclone copy``; ``album_dir=None`` means the full library."""
     if not cfg.rclone:
         console.print("[red]未找到 rclone，无法上传[/red]")
         return False
@@ -587,10 +590,11 @@ def register_album(cfg: Config, payload: dict) -> tuple[bool, str]:
 
 
 def album_dirs(cfg: Config) -> list[Path]:
-    # beets 把合辑放进 _compilations/（见 beets.yaml.tmpl 的 comp: 路径），
-    # watch 会按 library_path 单独登记它们；全量同步若跳过该目录，这些专辑
-    # 就永远无法被重新对账（D1 重建/改 tag 后失联）。除它以外的下划线目录
-    # 仍是内部用途（隔离区等），继续跳过。
+    # beets places compilations under _compilations/ (see the comp path in
+    # beets.yaml.tmpl), and watch registers them individually by library_path. If
+    # full sync skipped that directory, those albums could never be reconciled
+    # after a D1 rebuild or tag change. Other underscore directories remain
+    # internal, such as quarantine, and should still be skipped.
     included_underscore = {"_compilations"}
     out = []
     for artist in sorted(cfg.music_root.iterdir()):
@@ -605,11 +609,12 @@ def album_dirs(cfg: Config) -> list[Path]:
 
 
 # ------------------------------------------------------------------ pull
-# 网页导入的专辑只存在于云端；拉回本地库后可由本机播放器或其他工具使用。
+# Albums imported on the web initially exist only in the cloud; pulling them into
+# the local library makes them available to local players and other tools.
 
 
 def cloud_library(cfg: Config) -> list[dict]:
-    """云端登记的全部专辑（伴侣 key 走 /api/library）。"""
+    """Return every cloud-registered album through ``/api/library`` using the companion key."""
     r = requests.get(f"{cfg.cloud_url}/api/library?hidden=1",
                      headers={"X-Api-Key": cfg.cloud_key}, timeout=30)
     r.raise_for_status()
@@ -634,7 +639,7 @@ def cloud_album_detail(cfg: Config, album_id: str) -> dict | None:
 
 
 def _local_dir_for(cfg: Config, folder: str) -> Path | None:
-    """'Music/Library/Artist/[1980] Album' → 本地路径；前缀不符返回 None。"""
+    """Convert ``Music/Library/Artist/[1980] Album`` to a local path; return None for a mismatched prefix."""
     folder = unicodedata.normalize("NFC", str(folder or ""))
     if "\\" in folder or not folder.startswith(OD_PREFIX + "/"):
         return None
@@ -657,7 +662,7 @@ def _local_dir_for(cfg: Config, folder: str) -> Path | None:
 
 
 def rclone_download(cfg: Config, folder: str, dest: Path, console) -> bool:
-    """OneDrive 单张专辑 → 本地（增量）。folder 是 OneDrive 相对路径。"""
+    """Incrementally copy one OneDrive album locally; ``folder`` is relative to OneDrive."""
     if not cfg.rclone:
         console.print("[red]未找到 rclone，无法下载[/red]")
         return False
@@ -734,10 +739,11 @@ def _pull_needs_download(cfg: Config, folder: str, dest: Path) -> bool:
             or not _download_tree_complete(dest))
 
 
-# --- 把云端元数据写进文件 tag ---------------------------------------
-# 网页上传的文件往往没有（好）tag，元数据只在云端 DB 里。OneDrive 既是
-# 主源，文件就必须自描述：拉回后按云端数据补写标准 tag，再把改过的
-# 文件传回去，让两份副本都是"拿到任何播放器都能认"的状态。
+# --- Write cloud metadata into file tags ------------------------------------
+# Web uploads often lack good tags, leaving metadata only in the cloud database.
+# Because OneDrive is authoritative, files must be self-describing: after pulling
+# them down, add standard tags from cloud data and upload changed files again so
+# either copy remains recognizable by any player.
 
 
 def _desired_tags(album: dict, track: dict | None) -> dict[str, list[str]]:
@@ -794,14 +800,15 @@ def _desired_tags(album: dict, track: dict | None) -> dict[str, list[str]]:
 
 
 def _tag_satisfied(key: str, current: list[str], want: list[str]) -> bool:
-    """已有值是否等价于目标值 —— 等价就不动，保护精修 tag：
-    完整日期 1978-06-25 满足年份 1978；"3/10" 满足音轨 3；
-    per-track artist（feat 等）只在完全缺失时才补。"""
+    """Return whether an existing value is equivalent to the target, preserving
+    carefully edited tags when possible. A full date such as 1978-06-25 satisfies
+    year 1978; ``3/10`` satisfies track 3; per-track artists such as featured
+    performers are added only when entirely absent."""
     cur = [str(v) for v in current]
     if key == "artist":
-        return bool(cur)                      # 有就不动
+        return bool(cur)                      # Preserve any existing value.
     if key == "discnumber" and not cur:
-        return want[0].lstrip("0") in ("", "1")  # 单碟不强写 disc=1
+        return want[0].lstrip("0") in ("", "1")  # Do not force disc=1 for a single-disc album.
     if not cur:
         return False
     if key == "date":
@@ -813,7 +820,7 @@ def _tag_satisfied(key: str, current: list[str], want: list[str]) -> bool:
 
 def retag_album(cfg: Config, album_dir: Path, album: dict,
                 tracks: list[dict]) -> int:
-    """按云端元数据补写文件 tag；返回实际改动的文件数（0 = 本来就对）。"""
+    """Complete file tags from cloud metadata and return the number of changed files; zero means they already matched."""
     if not album_dir.exists():
         return 0
     track_paths = [
@@ -841,16 +848,17 @@ def retag_album(cfg: Config, album_dir: Path, album: dict,
             if dirty:
                 audio.save()
                 changed += 1
-        except Exception as e:  # noqa: BLE001 — 单文件失败不拖累整张
+        except Exception as e:  # noqa: BLE001 - one file failure must not sink the whole album
             log.warning("retag failed for %s: %s", f, e)
     return changed
 
 
 def run_pull(cfg: Config, console, quiet: bool = False,
              retag_existing: bool = False) -> int:
-    """把云端有、本地没有的专辑拉回 MUSIC_ROOT；拉回的文件按云端元数据
-    补写 tag 并回传（OneDrive 主源必须自描述）。retag_existing=True 时
-    对本地已有的云端专辑也做一遍补 tag（修存量）。"""
+    """Pull albums present in the cloud but missing locally into MUSIC_ROOT. Fill
+    their tags from cloud metadata and upload the changes because authoritative
+    OneDrive files must be self-describing. With ``retag_existing=True``, repair
+    tags for cloud albums that already exist locally as well."""
     if not cloud_ready(cfg):
         if not quiet:
             console.print("[yellow]未配置 [cloud] — 无法拉取。[/yellow]")
@@ -912,7 +920,8 @@ def run_pull(cfg: Config, console, quiet: bool = False,
         changed = retag_album(cfg, dest, a, detail.get("tracks") or [])
         if changed:
             retagged += 1
-            # tag 变了：回传 OneDrive 让主源同样自描述，并刷新云端登记
+            # Tags changed: upload to keep authoritative OneDrive self-describing,
+            # then refresh cloud registration.
             payload = payload_for_album(cfg, dest)
             if not payload:
                 fail += 1
@@ -933,7 +942,7 @@ def run_pull(cfg: Config, console, quiet: bool = False,
             continue
         if need_download or changed:
             ok += 1
-            mark = "↓" if need_download else "写"  # GBK 控制台放不下花哨符号
+            mark = "↓" if need_download else "写"  # The GBK console cannot render more decorative symbols.
             console.print(f"  [green]{mark}[/green] {a['artist']} — "
                           f"{a['title']}"
                           + (f"（补写 {changed} 个文件的 tag）" if changed else ""))
@@ -945,7 +954,7 @@ def run_pull(cfg: Config, console, quiet: bool = False,
 
 
 def pull_quietly(cfg: Config, console) -> None:
-    """watch 心跳用：失败只写日志，绝不打断守望。"""
+    """Heartbeat helper for watch: log failures without ever stopping the watcher."""
     try:
         run_pull(cfg, console, quiet=True)
     except Exception:  # noqa: BLE001

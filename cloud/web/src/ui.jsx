@@ -1,4 +1,4 @@
-// 共用 UI：SVG 图标、Toast、对话框、封面组件
+// Shared UI primitives: SVG icons, toasts, dialogs, and artwork components.
 import React, { createContext, useCallback, useContext, useEffect,
                 useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -102,19 +102,19 @@ export function ClearFilters({ count = 0, onClear, label }) {
   )
 }
 
-/* 超长文字跑马灯：溢出才循环滚动，不溢出就静态显示（省略号兜底）。
-   用于正在播放的歌名（列表行 / 迷你条 / 播放页）。
-   量宽必须量外层 block 容器（inline 元素 scrollWidth 恒为 0），
-   且先复位成单份内容再量，与 FilterSel 同一套路。 */
+/* Marquee for long text: scroll only on overflow; otherwise remain static with an ellipsis fallback.
+   Used for the playing title in list rows, the mini-player, and the full player.
+   Measure the outer block container because an inline element's scrollWidth is
+   always zero. Reset to one copy before measuring, following FilterSel's pattern. */
 export function Marquee({ text }) {
   const box = useRef(null)
   const [roll, setRoll] = useState(false)
-  useLayoutEffect(() => { setRoll(false) }, [text]) // 先按单份内容量宽
+  useLayoutEffect(() => { setRoll(false) }, [text]) // Measure one copy before enabling the loop.
   useLayoutEffect(() => {
     const b = box.current
     if (!roll && b && b.scrollWidth > b.clientWidth + 1) setRoll(true)
   }, [roll, text])
-  useEffect(() => { // 转屏/改窗后复位重量
+  useEffect(() => { // Recalculate after rotation or resizing.
     const onResize = () => {
       setRoll(false)
       requestAnimationFrame(() => {
@@ -136,11 +136,12 @@ export function Marquee({ text }) {
   )
 }
 
-/* 指针拖拽重排（手柄驱动，跨鼠标/触屏统一）。
-   只有从带 data-drag-handle 的元素按下才起拖——其余区域完全自由：可点击播放、
-   可竖向滚动、图片正常（不再长按误触系统图片菜单/桌面禁止光标）。
-   重排时 active 跟随被拖项移动，高亮始终落在正确的行/卡。
-   onMove(from,to) 实时重排，onCommit 落库。 */
+/* Handle-driven pointer reordering shared by mouse and touch input.
+   A drag starts only from an element carrying data-drag-handle. The remaining
+   area stays free for playback clicks, vertical scrolling, and normal image
+   behavior without long-press menus or the desktop no-drop cursor. During a
+   reorder, active follows the dragged item so highlighting stays on the correct
+   row or card. onMove(from,to) reorders live; onCommit persists it. */
 export function usePointerReorder({ itemSelector, onMove, onCommit, enabled }) {
   const [active, setActive] = useState(-1)
   const st = useRef(null)
@@ -176,7 +177,7 @@ export function usePointerReorder({ itemSelector, onMove, onCommit, enabled }) {
   const dragProps = (i) => enabled ? {
     onPointerDown: (e) => {
       if (e.button != null && e.button !== 0) return
-      if (!e.target.closest('[data-drag-handle]')) return // 只认手柄
+      if (!e.target.closest('[data-drag-handle]')) return // Start only from the handle.
       try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
       st.current = { i }
       setActive(i)
@@ -189,11 +190,11 @@ export function usePointerReorder({ itemSelector, onMove, onCommit, enabled }) {
       if (!s) return
       e.preventDefault()
       const j = idxAt(e.clientX, e.clientY)
-      if (j >= 0 && j !== s.i) { onMove(s.i, j); s.i = j; setActive(j) } // 高亮跟随
+      if (j >= 0 && j !== s.i) { onMove(s.i, j); s.i = j; setActive(j) } // Keep highlighting aligned with the moved item.
     },
     onPointerUp: end,
     onPointerCancel: end,
-    onDragStart: (e) => e.preventDefault(), // 阻断原生图片拖拽（桌面禁止光标根因）
+    onDragStart: (e) => e.preventDefault(), // Block native image dragging, which causes the desktop forbidden cursor.
   } : {}
 
   return { active, dragProps }
@@ -204,7 +205,7 @@ export const Logo = ({ size = 26 }) => (
     <rect width="96" height="96" rx="22" fill="#1a1611"/>
     <circle cx="48" cy="48" r="31" fill="#12100d" stroke="#4a4132" strokeWidth="2.5"/>
     <circle cx="48" cy="48" r="23" fill="none" stroke="#2b251d" strokeWidth="1.5"/>
-    {/* 見本盤 = 白标宣传盘：放大的米白唱标 + 一枚盖歪的橙红样本章。 */}
+    {/* A sample record: an enlarged off-white label with a slightly skewed orange-red sample stamp. */}
     <circle cx="48" cy="48" r="12" fill="#ece3d0"/>
     <circle cx="48" cy="48" r="3" fill="#0d0b09"/>
     <g transform="rotate(-13 55 39)">
@@ -230,8 +231,8 @@ export function ToastHost({ children }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      {/* aria-live：toast 是许多结果（播放失败/格式跳过/保存）的唯一反馈，
-          读屏用户否则完全无感。容器常驻，新增子节点会被朗读。 */}
+      {/* aria-live: toasts are the only feedback for many outcomes such as playback failure, format skips, and saves.
+          Screen-reader users would otherwise receive no feedback. The persistent container announces new children. */}
       <div className="toasts" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`}
@@ -244,23 +245,21 @@ export function ToastHost({ children }) {
 
 /* ---------- dialog ---------- */
 
-/* 所有全屏弹层都 portal 到 body：
- * 若渲染在 .main 滚动容器里，iOS 会把 position:fixed 降级成绝对定位
- * （被困在容器里、跟着内容滚、被壳的栏盖住）。挂到 body 一劳永逸。
- * 语义与键盘：role=dialog + aria-modal，打开时把焦点移进弹层（否则 Tab
- * 仍在背后的整页游走、读屏不知道弹层开了），Escape 关闭，关闭时还焦点。 */
+/* Portal every full-screen overlay to body. Rendering inside the .main scroll container makes iOS treat
+ * position:fixed like absolute positioning, trapping the overlay in the container, scrolling it with content,
+ * and placing shell bars above it. The body portal avoids all three.
+ * For semantics and keyboard access, use role=dialog with aria-modal, move focus inside on open,
+ * close with Escape, and restore focus afterward. */
 let dialogTitleSeq = 0
-// 弹层栈：裁剪弹层会嵌套在编辑弹层里（两层都是 Dialog、都 portal 到 body）。
-// 每层各自在 window 上挂 Escape 监听且互不知晓，一次按键会同时关掉两层——
-// 连带把父编辑表单里未保存的内容一并丢弃。改为共享一个栈，只有栈顶那层响应
-// Escape。onClose 用 ref 持有最新引用，监听只在挂载时注册一次。
+// Dialog stack: a crop dialog can nest inside an edit dialog, and both are portaled to body.
+// Independent window Escape listeners would close both at once and discard unsaved parent-form content.
+// A shared stack lets only the top dialog respond. onClose stays current through a ref while the listener mounts once.
 const dialogStack = []
 export function Dialog({ title, onClose, children, className = '' }) {
   const boxRef = useRef(null)
   const [titleId] = useState(() => `dlg-t-${++dialogTitleSeq}`)
-  // 在 render 阶段捕获打开者：子元素的 autoFocus 在 commit 阶段才生效，
-  // 若等到 effect 里再读 document.activeElement 会误捕到刚被聚焦的输入框，
-  // 导致关闭时无法把焦点还给真正的触发按钮。
+  // Capture the opener during render. Child autoFocus runs during commit, so reading document.activeElement in an effect
+  // would capture the newly focused input instead and prevent correct focus restoration to the trigger.
   const [opener] = useState(() => document.activeElement)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
@@ -268,13 +267,13 @@ export function Dialog({ title, onClose, children, className = '' }) {
   useEffect(() => {
     const token = {}
     dialogStack.push(token)
-    // 弹层内已有 autoFocus 元素（多数表单弹层）就尊重它；否则聚焦容器
+    // Respect an existing autoFocus target; otherwise focus the dialog container.
     if (!boxRef.current?.contains(document.activeElement)) {
       boxRef.current?.focus()
     }
     const h = (e) => {
       if (e.key !== 'Escape') return
-      if (dialogStack[dialogStack.length - 1] !== token) return // 只有栈顶响应
+      if (dialogStack[dialogStack.length - 1] !== token) return // Only the top dialog responds.
       onCloseRef.current()
     }
     window.addEventListener('keydown', h)
@@ -284,7 +283,7 @@ export function Dialog({ title, onClose, children, className = '' }) {
       if (i !== -1) dialogStack.splice(i, 1)
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
-    // 挂载/卸载各执行一次；onClose 走 ref、opener 已定格
+    // Run once on mount and unmount; onClose uses a ref and the opener is already fixed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -300,20 +299,20 @@ export function Dialog({ title, onClose, children, className = '' }) {
   )
 }
 
-/* ---------- 统一筛选药丸 ----------
- * 等宽药丸 + 透明的原生 select 盖在上面（保留系统选单交互）。
- * 选中项文字放不下时循环滚动展示。 */
+/* ---------- Unified filter pill ----------
+ * Equal-width pill with a transparent native select overlay, preserving system menu behavior.
+ * The selected label scrolls only when it does not fit. */
 export function FilterSel({ value, onChange, on, children }) {
   const tRef = useRef(null)
   const selRef = useRef(null)
   const [label, setLabel] = useState('')
   const [roll, setRoll] = useState(false)
 
-  useEffect(() => {   // 同步选中项文字（setState 同值时 React 自动跳过）
+  useEffect(() => {   // Synchronize the selected label; React skips an unchanged state value.
     const s = selRef.current
     if (s) setLabel(s.options[s.selectedIndex]?.text || '')
   })
-  useLayoutEffect(() => { setRoll(false) }, [label]) // 先按单份内容量宽
+  useLayoutEffect(() => { setRoll(false) }, [label]) // Measure one copy first.
   useLayoutEffect(() => {
     const el = tRef.current
     if (!roll && el && el.scrollWidth > el.clientWidth + 1) setRoll(true)
@@ -331,8 +330,9 @@ export function FilterSel({ value, onChange, on, children }) {
   )
 }
 
-/* 每次页面加载建立独立的站内历史链。用 history.state 记录真实深度，
-   前进/后退会自然恢复对应值，不会像单调计数器那样最终误判并退出站点。 */
+/* Build an independent in-app history chain for each page load and store the actual depth in history.state.
+   Back and forward navigation restore the corresponding value naturally, unlike
+   a monotonic counter that eventually misclassifies the state and exits the site. */
 const NAV_SESSION = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 const NAV_STATE = '__mihonbanNav'
 const initialHistoryState = history.state && typeof history.state === 'object'
@@ -357,11 +357,11 @@ export const navigate = (value, { replace = false } = {}) => {
     [NAV_STATE]: { session: NAV_SESSION, depth: replace ? depth : depth + 1 } }
   if (replace) history.replaceState(nextState, '', hash)
   else history.pushState(nextState, '', hash)
-  // pushState/replaceState 不触发 hashchange；App 只需要重新解析当前 hash。
+  // pushState/replaceState do not emit hashchange; App only needs to reparse the current hash.
   window.dispatchEvent(new Event('hashchange'))
 }
 
-/* 智能返回：深链直进时 depth=0，回首页而不是离开网站。 */
+/* Smart Back: a direct deep link has depth=0, so return home instead of leaving the site. */
 export const goBack = () => {
   const current = history.state?.[NAV_STATE]
   if (current?.session === NAV_SESSION && Number(current.depth) > 0) {
@@ -378,7 +378,7 @@ export function Rating({ value, na, unratedLabel }) {
   return <span className="rating-pill">{value.toFixed(2)}</span>
 }
 
-/** 收藏心形：管理员可点，普通用户只在已收藏时显示为标记。 */
+/** Favorite heart: administrators can toggle it; listeners see it only as a marker when active. */
 export function Heart({ on, canEdit, onToggle, size = 16, labels }) {
   const { t } = useI18n()
   if (!on && !canEdit) return null
@@ -395,10 +395,10 @@ export function Heart({ on, canEdit, onToggle, size = 16, labels }) {
   )
 }
 
-/* ---------- Markdown（零依赖迷你渲染器） ----------
- * 先整体 HTML 转义再做替换，产出的标签只可能是我们自己写的，天然防注入。
- * 支持：标题 #~####、**粗**、*斜*、`code`、代码块、[链接](http…)、
- * 引用、有序/无序列表、分隔线、简单表格。够用于 AI 生成的艺人简介。 */
+/* ---------- Markdown (zero-dependency compact renderer) ----------
+ * Escape all HTML before replacements, so every emitted tag is ours and injection is excluded by construction.
+ * Supports headings, bold, italics, inline/fenced code, HTTP links, quotes, ordered/unordered lists,
+ * horizontal rules, and simple tables, which is sufficient for generated artist biographies. */
 
 const escHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
   .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
@@ -453,7 +453,7 @@ export const mdToHtml = (src) => {
     const h = line.match(/^(#{1,4})\s+(.*)/)
     if (h) {
       flushAll()
-      const lv = h[1].length + 2 // # → h3，避免正文里出现巨大标题
+      const lv = h[1].length + 2 // Map # to h3 so body content cannot introduce oversized headings.
       out.push(`<h${lv}>${mdInline(h[2])}</h${lv}>`)
       continue
     }
@@ -463,7 +463,7 @@ export const mdToHtml = (src) => {
       flushP(); flushL(); flushQ()
       const cells = tb[1].split("|").map((s) => s.trim())
       if (cells.every((c) => /^:?-{2,}:?$/.test(c))) {
-        if (table) table.hasHead = true // 表头分隔行
+        if (table) table.hasHead = true // Table-header separator row
       } else {
         if (!table) table = { rows: [], hasHead: false }
         table.rows.push(cells)
@@ -471,7 +471,7 @@ export const mdToHtml = (src) => {
       continue
     }
     flushT()
-    const q = line.match(/^&gt;\s?(.*)/) // 转义后的 ">"
+    const q = line.match(/^&gt;\s?(.*)/) // Escaped ">"
     if (q) { flushP(); flushL(); quote.push(q[1]); continue }
     const ul = line.match(/^\s*[-*•]\s+(.*)/)
     if (ul) {
@@ -497,8 +497,8 @@ export const Md = ({ text, className = "" }) => (
        dangerouslySetInnerHTML={{ __html: mdToHtml(text) }} />
 )
 
-/* ---------- Reader：长文阅读弹层（艺人完整简介等） ----------
- * 桌面居中卡片、移动端全屏上滑；开合都是合成器动画。 */
+/* ---------- Reader for long-form content such as full artist biographies ----------
+ * Centered card on desktop, upward full-screen sheet on mobile, with compositor-only open/close animations. */
 
 export function Reader({ kicker, title, avatar, square, onClose, children }) {
   const { t } = useI18n()
@@ -507,7 +507,7 @@ export function Reader({ kicker, title, avatar, square, onClose, children }) {
 
   useEffect(() => {
     if (!closing) return
-    const t = setTimeout(onClose, 420) // 动画结束事件的兜底
+    const t = setTimeout(onClose, 420) // Fallback if the animation-end event is missed.
     return () => clearTimeout(t)
   }, [closing, onClose])
 
@@ -542,8 +542,8 @@ export function Reader({ kicker, title, avatar, square, onClose, children }) {
   )
 }
 
-/** 简介正文：Markdown 渲染，长文截断。
- *  传 onMore = 点「阅读全文」打开弹层（Reader）；不传 = 旧式原地展开。 */
+/** Biography body with Markdown rendering and long-text truncation.
+ *  With onMore, the full text opens in Reader; without it, use the legacy inline expansion. */
 export function NoteText({ text, clampLines = 5, onMore }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -564,19 +564,19 @@ export function NoteText({ text, clampLines = 5, onMore }) {
   )
 }
 
-/** 图片裁剪：拖动取景 + 滚轮/滑杆缩放，round=true 时圆形遮罩预览。
- *  输出 out×out 的 JPEG blob（onDone）。无第三方依赖。 */
+/** Image cropper with drag positioning and wheel/slider zoom; round=true previews a circular mask.
+ *  Emits an out×out JPEG blob through onDone with no third-party dependency. */
 export function CropDialog({ file, title, round = false,
                              out = 640, onClose, onDone }) {
   const { t } = useI18n()
   const [img, setImg] = useState(null)     // HTMLImageElement
-  const [zoom, setZoom] = useState(1)      // 相对 cover-fit 的倍数
+  const [zoom, setZoom] = useState(1)      // Multiplier relative to cover-fit
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const drag = useRef(null)
   const vpRef = useRef(null)
-  const VP = 300                           // 视口 CSS 像素（正方形）
+  const VP = 300                           // Square viewport size in CSS pixels
 
   useEffect(() => {
     let active = true
@@ -622,9 +622,8 @@ export function CropDialog({ file, title, round = false,
     }))
   }
   const onPointerUp = () => { drag.current = null }
-  // React 18 的 onWheel 走根委托、被注册为 passive，e.preventDefault() 无效，
-  // 滚轮缩放会连带滚动弹层/页面。改用非 passive 的原生监听让 preventDefault 生效。
-  // 处理器经 ref 取最新闭包，监听只在挂载时注册一次。
+  // React 18 delegates onWheel at the root with a passive listener, so preventDefault has no effect and wheel zoom
+  // also scrolls the dialog/page. Use a native non-passive listener; a ref keeps the handler current while mounting once.
   const wheelZoom = useRef(null)
   wheelZoom.current = (delta) => setZoomKeep(zoom * (1 - delta * 0.0012))
   useEffect(() => {

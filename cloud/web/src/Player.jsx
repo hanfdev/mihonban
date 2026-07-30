@@ -6,13 +6,13 @@ import { clampMediaTime, mediaDuration, seekAudio, storedVolume } from './media.
 import { playbackControlState } from './player-control.js'
 import { ArtistCredit } from './artist-credit.jsx'
 
-/* 进度条：支持点按 + 拖动洗擦（scrub）。拖动中只更新预览，
- * 松手 onSeek 立刻跳到目标位置（UI 同步更新，不等缓冲）。
- * big 版 = 播放页：满宽长条，时间挂在两端下方，右侧显示剩余时间（Spotify 式）。 */
+/* Progress bar with click and drag scrubbing. While dragging, update only the preview;
+ * on release, onSeek jumps immediately and the UI updates without waiting for buffering.
+ * The large Now Playing variant spans the width, with elapsed and remaining time below its ends. */
 function SeekBar({ t, dur, big, onSeek }) {
   const { t: __ } = useI18n()
   const barRef = useRef(null)
-  const [scrub, setScrub] = useState(null) // 拖动中的预览进度 0..1
+  const [scrub, setScrub] = useState(null) // Preview progress during a drag, from 0 to 1
   const shown = scrub ?? (dur ? Math.min(t / dur, 1) : 0)
 
   const frac = (e) => {
@@ -31,7 +31,7 @@ function SeekBar({ t, dur, big, onSeek }) {
   }
 
   const cur = scrub !== null && dur ? scrub * dur : t
-  // 键盘定位：左右方向键 ±5 秒，Home/End 跳首尾（与拖动共用 onSeek）
+  // Keyboard seeking: Left/Right move five seconds, Home/End jump to the boundaries, all through onSeek.
   const onKeyDown = (e) => {
     if (!dur) return
     const step = e.shiftKey ? 30 : 5
@@ -127,14 +127,13 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     try { saved = localStorage.getItem('mihonban_volume') } catch { /* storage unavailable */ }
     return storedVolume(saved)
   })
-  const [closing, setClosing] = useState(false) // 播放页滑出动画中
+  const [closing, setClosing] = useState(false) // Now Playing is running its slide-out animation.
   const npHistoryRef = useRef(null)
   const pendingSheetNav = useRef(null)
   const retryArtFromOrigin = (event, size) => {
     const image = event.currentTarget
-    // 一次性回源标记按专辑记：迷你播放器的 <img> 是常驻 DOM 节点，
-    // React 换曲只改 src；标记若不随专辑变化，第一次回源后所有后续
-    // 专辑的封面失败都会被跳过，永远显示裂图。
+    // Track the one-time origin fallback per album. The mini-player <img> is a persistent DOM node and React changes only src;
+    // without resetting this marker per album, every cover failure after the first fallback would be skipped and stay broken.
     const key = String(current.albumId)
     if (image.dataset.originRetry === key) return
     image.dataset.originRetry = key
@@ -149,9 +148,9 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
   useEffect(() => {
     const a = audioRef.current
     if (!a) return
-    // seeking 也在监听里：拖完进度条 UI 立刻跳到目标位置，不等缓冲追上
+    // Listen for seeking as well so the UI jumps to the target immediately instead of waiting for buffering.
     const onTime = () => {
-      // Safari/iOS 会把部分 OGG 的 duration 估成不断增长的值；曲库解析值优先。
+      // Safari/iOS can report an ever-growing duration for some OGG files; prefer the catalog's parsed value.
       const stableDuration = mediaDuration(current?.duration, a.duration)
       setT(clampMediaTime(a.currentTime, stableDuration))
       if (stableDuration) setDur(stableDuration)
@@ -171,13 +170,13 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     }
   }, [audioRef, current?.duration])
 
-  // 切歌：进度立刻归零、时长先用曲目元数据占位，metadata 到了再校正
+  // On track change, reset progress immediately and use track metadata as the provisional duration until media metadata arrives.
   useEffect(() => {
     setT(0)
     setDur(mediaDuration(current?.duration, 0))
   }, [current?.id])
 
-  // seek 统一入口：先把 UI 顶到目标位置再动 audio，绝无回跳
+  // Single seek entry point: move the UI to the target before touching audio so it never snaps backward.
   const doSeek = (sec) => {
     const a = audioRef.current
     if (!a) return
@@ -190,7 +189,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     return () => document.body.classList.remove('np-lock')
   }, [npOpen])
 
-  // 收起 = 先播滑出动画，动画结束再卸载（有 400ms 兜底）
+  // Dismiss by playing the slide-out animation first, then unmount; a 400 ms timer is the fallback.
   const closeSheet = () => setClosing(true)
   const finishClose = () => { setNpOpen(false); setClosing(false) }
   useEffect(() => {
@@ -206,9 +205,9 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     return () => window.removeEventListener('keydown', h)
   }, [npOpen])
 
-  /* 系统返回键/手势：播放页打开时压入一条历史记录（同 URL，不惊动 hash 路由），
-   * 第一次返回只收回播放页。手动收回（下滑/X/Esc）时把这条记录消费掉；
-   * 若期间跳去了别的页面（点歌名/艺人），当前记录已不是我们压的那条，就不动历史。 */
+  /* System back button/gesture: when Now Playing opens, push a same-URL history entry without disturbing hash routing.
+   * The first Back dismisses only Now Playing. A manual dismissal (swipe, X, or Escape) consumes that entry.
+   * If navigation occurred meanwhile, the current entry is no longer ours, so leave history untouched. */
   useEffect(() => {
     if (!npOpen) return
     const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
@@ -236,12 +235,12 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     }
   }, [npOpen])
 
-  /* 播放页下滑收回（Spotify 式）：任意区域按住下拉，页面跟手；
-   * 松手时拉得够远或够快就顺势滑出，否则弹回。只认触屏/笔，不劫持
-   * 按钮点按和进度条拖动。 */
+  /* Swipe down to dismiss Now Playing: dragging anywhere follows the pointer.
+   * Release far or fast enough to continue off-screen; otherwise snap back. Accept touch or pen only,
+   * and never steal button taps or progress-bar drags. */
   const sheetRef = useRef(null)
   const swipe = useRef(null)
-  const barSwipe = useRef(null) // 迷你条上滑手势（hook 必须在下面的 early return 之前）
+  const barSwipe = useRef(null) // Mini-player swipe-up state; the hook must precede the early return below.
   const suppressBarClick = useRef(false)
   const spDown = (e) => {
     if (e.pointerType === 'mouse' || !e.isPrimary || closing) return
@@ -254,15 +253,15 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     if (!s || !e.isPrimary) return
     const dy = e.clientY - s.y0, dx = e.clientX - s.x0
     if (!s.on) {
-      if (Math.abs(dy) < 10 && Math.abs(dx) < 10) return // 触发死区
-      if (dy <= 0 || Math.abs(dy) <= Math.abs(dx)) {     // 上滑/横滑不是收回
+      if (Math.abs(dy) < 10 && Math.abs(dx) < 10) return // Gesture dead zone
+      if (dy <= 0 || Math.abs(dy) <= Math.abs(dx)) {     // Upward or horizontal motion is not a dismissal.
         swipe.current = null
         return
       }
       s.on = true
     }
     const dt = e.timeStamp - s.lastT
-    if (dt > 0) s.vy = (e.clientY - s.lastY) / dt // px/ms，用于甩动判定
+    if (dt > 0) s.vy = (e.clientY - s.lastY) / dt // px/ms for flick detection
     s.lastY = e.clientY; s.lastT = e.timeStamp
     const el = sheetRef.current
     if (el) {
@@ -278,7 +277,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     const dy = e.clientY - s.y0
     const h = el?.offsetHeight || window.innerHeight
     if (dy > h * 0.25 || s.vy > 0.55) {
-      closeSheet() // .out 动画从当前位置继续滑出
+      closeSheet() // Continue the .out animation from the current drag position.
     } else if (el) {
       el.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1)'
       el.style.transform = ''
@@ -314,11 +313,11 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
   }
   const goAlbum = () => leaveSheetFor(onOpenAlbum)
 
-  /* 迷你条上滑 = 展开播放页（与播放页下滑收回互为镜像）。
-   * pointer + touch 双通道：iOS Safari 上 pointer 有时被 pan 手势吞掉，
-   * touch 作兜底。封面和文字既可短按导航，也可作为上滑起点；只有
-   * 进度和音量滑块不参与手势。播放按钮同样支持短按控制、上滑展开。 */
-  // 注意：barSwipe ref 已在 early return 前声明
+  /* Swipe up on the mini-player to open Now Playing, mirroring swipe-down dismissal.
+   * Use both pointer and touch paths because iOS Safari sometimes consumes pointer events as a pan gesture.
+   * The cover and text retain tap navigation while serving as swipe origins; progress and volume sliders opt out.
+   * The play button likewise supports a tap action and swipe-up expansion. */
+  // barSwipe is intentionally declared before the early return.
   const startBarSwipe = (x, y) => {
     if (npOpen || window.innerWidth > 900) return
     suppressBarClick.current = false
@@ -328,7 +327,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     const s = barSwipe.current
     if (!s) return false
     const dy = y - s.y0, dx = x - s.x0
-    // 明确向上拖动且纵向主导才展开，避免轻微手抖触发。
+    // Expand only for a clear, vertically dominant upward drag to ignore minor finger movement.
     if (dy < -18 && Math.abs(dy) >= Math.abs(dx) * 1.05) {
       barSwipe.current = null
       suppressBarClick.current = true
@@ -353,7 +352,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     if (!e.isPrimary) return
     if (moveBarSwipe(e.clientX, e.clientY)) e.preventDefault()
   }
-  // touch 兜底：短按不拦截 click，确认是上滑后才阻止浏览器默认手势。
+  // Touch fallback: preserve click for a short tap and prevent the browser gesture only after confirming a swipe up.
   const barTouchStart = (e) => {
     if (npOpen || !e.touches?.[0]) return
     suppressBarClick.current = false
@@ -366,7 +365,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     const t = e.touches[0]
     const dy = t.clientY - barSwipe.current.y0
     const dx = t.clientX - barSwipe.current.x0
-    // 确认是上滑手势后再 preventDefault，避免抢页面滚动
+    // Call preventDefault only after confirming a swipe up so ordinary page scrolling remains available.
     if (dy < -6 && Math.abs(dy) > Math.abs(dx)) {
       e.preventDefault()
     }
@@ -400,7 +399,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
               onTouchCancel={endBarSwipe}
               onClickCapture={barClickCapture}
               onClick={blankBarClick}>
-        {/* 移动端：迷你条顶上的细进度线 */}
+        {/* Mobile: thin progress line along the top of the mini-player. */}
         <div className="p-mini-rail"><i style={{ width: `${frac * 100}%` }} /></div>
         <button type="button" className="p-cover-hit"
                 aria-label={`${current.title} — ${current.artist}`}
@@ -413,8 +412,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
                   title={__('player.viewAlbum')} onClick={onOpenAlbum}>
             <Marquee text={current.title} />
           </button>
-          {/* 副行只显示歌手：专辑名会把长歌手名挤没，且封面/歌名都已能进
-              专辑页，这里再放专辑名信息冗余。 */}
+          {/* Show only the artist on the secondary line: an album title can crowd out long artist names,
+              while the cover and track title already link to the album, making another album label redundant. */}
           <div className="p-sub">
             <ArtistCredit value={current} onOpen={onOpenArtist}
                           className="p-artist-credit"
@@ -424,7 +423,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
         {isAdmin && <span className="p-heart">
           <Heart on={fav} canEdit onToggle={onFav} size={17} /></span>}
         <Controls {...ctrl} />
-        {/* 移动端迷你控制：上一首 / 当前动作 / 下一首完整保留。 */}
+        {/* Mobile mini controls preserve previous, current action, and next in full. */}
         <div className="p-mini-ctrl">
           <button className="icon-btn" title={__('player.prev')}
                   aria-label={__('player.prev')} onClick={() => onStep(-1)}>

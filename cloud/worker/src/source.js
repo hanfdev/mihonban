@@ -1,6 +1,7 @@
-// 资源站更新扫描器 —— 只读公开的文章列表（Blogger Atom/RSS feed），
-// 把新帖的标题+链接记进 source_posts 表供后台展示。
-// 明确不做的事：不下载任何音频/压缩包文件（GOAL 红线 #1 + 版权边界）。
+// Source-site update scanner. It reads only public post listings from Blogger
+// Atom/RSS feeds and records new titles and links in source_posts for Admin.
+// It explicitly never downloads audio or archive files, respecting GOAL boundary
+// #1 and copyright constraints.
 
 import { getSetting, setSetting } from "./auth.js";
 import { discardResponse } from "./net.js";
@@ -78,7 +79,8 @@ async function sha16(s) {
     .join("").slice(0, 16);
 }
 
-/** Blogger JSON feed 一页（start-index 从 1 开始）。返回 {entries, total} 或 null。 */
+/** Fetch one Blogger JSON feed page with a 1-based start-index.
+ *  Return {entries, total} or null. */
 async function fetchBloggerPage(base, startIndex, pageSize) {
   const r = await fetchWithTimeout(
     `${base}/feeds/posts/default?alt=json&max-results=${pageSize}` +
@@ -95,14 +97,15 @@ async function fetchBloggerPage(base, startIndex, pageSize) {
   return { entries, total };
 }
 
-/** Blogger JSON feed 优先，退化到通用 RSS/Atom 正则解析。
- *  deep=true 时按 start-index 分页把全部历史帖翻完（仅 Blogger 支持）。 */
+/** Prefer the Blogger JSON feed and fall back to generic RSS/Atom regex parsing.
+ *  With deep=true, paginate all historical posts by start-index; only Blogger
+ *  supports this mode. */
 async function fetchEntries(sourceUrl, deep = false) {
   const base = sourceUrl.replace(/\/+$/, "");
-  // 1) Blogger JSON（唯一支持分页回溯的通道）
+  // 1) Blogger JSON, the only source that supports historical pagination.
   try {
     const PAGE = deep ? 150 : 40;
-    const MAX_PAGES = deep ? 45 : 1;   // 45×150 = 最多回溯 6750 帖
+    const MAX_PAGES = deep ? 45 : 1;   // 45 x 150 reaches at most 6,750 historical posts.
     const all = [];
     let total = null;
     let start = 1;
@@ -110,16 +113,17 @@ async function fetchEntries(sourceUrl, deep = false) {
       const page = await fetchBloggerPage(base, start, PAGE);
       if (!page) break;
       total = page.total ?? total;
-      if (!page.entries.length) break;             // 翻到底了
+      if (!page.entries.length) break;             // Reached the end.
       all.push(...page.entries);
-      // 注意：Blogger 第一页可能返回少于 max-results 的条数（观察到的真实行为），
-      // 所以按「实际收到多少就前进多少」翻页，不能用「不满一页」判断结尾。
+      // Blogger may return fewer than max-results on the first page in practice.
+      // Advance by the number actually received rather than treating a short page
+      // as the end of the feed.
       start += page.entries.length;
       if (total && all.length >= total) break;
     }
     if (all.length) return { entries: all, total };
   } catch { /* fall through */ }
-  // 2) 通用 RSS/Atom（无分页，只有最近若干条）
+  // 2) Generic RSS/Atom: no pagination, only a recent subset.
   for (const path of ["/feeds/posts/default", "/rss.xml", "/feed", "/atom.xml"]) {
     try {
       const r = await fetchWithTimeout(base + path,
@@ -141,8 +145,9 @@ async function fetchEntries(sourceUrl, deep = false) {
   throw new Error("拿不到文章列表：确认网址正确且站点提供 RSS/Atom feed");
 }
 
-/** 扫一次；deep=true 时分页翻完全部历史（手动触发用，定时扫只看最新一页）。
- *  返回 {added, total, feedTotal}。错误记录到 settings 供后台显示。 */
+/** Run one scan. deep=true paginates all history for manual runs; scheduled scans
+ *  inspect only the latest page. Return {added, total, feedTotal}; record errors
+ *  in settings for display in Admin. */
 export async function scanSource(env, deep = false) {
   const sourceUrl = await getSetting(env, "source_url");
   if (!sourceUrl) {
@@ -153,7 +158,7 @@ export async function scanSource(env, deep = false) {
     const { entries, total: feedTotal } = await fetchEntries(sourceUrl, deep);
     const now = Date.now();
     let added = 0;
-    // 深度回溯可能有几千条：按 80 条一批写库
+    // Deep history may contain thousands of entries; write them in batches of 80.
     for (let i = 0; i < entries.length; i += 80) {
       const chunk = entries.slice(i, i + 80);
       const stmts = await Promise.all(chunk.map(async (e) =>

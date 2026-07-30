@@ -59,7 +59,8 @@ test("only DEV_INSECURE_COOKIE=1 drops the Secure attribute", async () => {
       },
     },
   });
-  // "0"/"false"/空串都不能算显式开启（环境变量恒为字符串，truthy 判断会误伤）
+  // "0", "false", and an empty string are not explicit enablement. Environment
+  // variables are always strings, so a truthiness check would misclassify them.
   for (const value of [undefined, "", "0", "false", "no"]) {
     const cookie = await sessionCookie(envWith(value), "admin");
     assert.match(cookie, / Secure;/, `value=${JSON.stringify(value)}`);

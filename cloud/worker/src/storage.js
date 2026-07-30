@@ -1,12 +1,13 @@
-// 存储调度层：按 album.storage_id 分派到具体后端。
+// Storage dispatcher: route operations by album.storage_id to a concrete backend.
 //
-// storage_id 必须指向 storages 表中的命名后端，所有类型使用同一套模型：
-//   'onedrive' → graph.js 的「带 config」变体（多账号容量池）
+// storage_id must reference a named backend in the storages table; all types use
+// the same model:
+//   'onedrive' -> graph.js explicit-config variants for a multi-account pool
 //   'webdav'   → webdav.js
-//   'gdrive'   → gdrive.js（Drive API v3，路径按文件夹名解析）
-//   'local'    → env.LOCAL_FS（Node 部署注入；Worker 无文件系统）
+//   'gdrive'   -> gdrive.js (Drive API v3, resolving paths by folder name)
+//   'local'    -> env.LOCAL_FS (injected by Node; Workers have no filesystem)
 //
-// 统一接口：downloadUrl / getFile / thumbnailUrl / listChildren /
+// Shared interface: downloadUrl / getFile / thumbnailUrl / listChildren /
 //           putSmallFile / deleteItem / createUploadSession
 
 import * as graph from "./graph.js";
@@ -62,7 +63,8 @@ export async function invalidateCredentialCache(env, storageId, kind, config = {
   }
 }
 
-/** 清除 OneDrive 临时下载直链；源站 401/403/5xx 后下次强制向 Graph 取新链接。 */
+/** Clear a temporary OneDrive download URL so the next request fetches a fresh
+ *  Graph URL after an origin 401/403/5xx. */
 export async function invalidateDownloadUrl(env, path, storageId) {
   const s = await requireStorage(env, storageId);
   if (s.kind === "onedrive" && s.config?.driveId) {
@@ -88,7 +90,8 @@ function needLocal(env) {
   throw new Error("本地存储仅支持 Node 部署（node src/node.js），Cloudflare Worker 无磁盘");
 }
 
-/** 音频/图片直链（能直连则返回 URL，否则 null → 上层走 Worker 代理）。 */
+/** Return a direct audio/image URL when supported, or null to make the caller
+ *  proxy through the Worker. */
 export async function downloadUrl(env, path, storageId) {
   const s = await requireStorage(env, storageId);
   if (s.kind === "onedrive") return graph.downloadUrlWith(env, s.config, path);
@@ -98,11 +101,11 @@ export async function downloadUrl(env, path, storageId) {
   return null;
 }
 
-/** 读文件字节（Worker 代理用）。返回 Response 或 null。 */
+/** Read file bytes for Worker proxying. Return a Response or null. */
 export async function getFile(env, path, storageId, range) {
   const s = await requireStorage(env, storageId);
   if (s.kind === "onedrive") {
-    // OneDrive 有直链，代理场景少用；这里取直链再 fetch
+    // OneDrive normally has direct URLs, so proxying is uncommon; obtain one and fetch it here.
     return graph.getFileWith(env, s.config, path, range);
   }
   if (s.kind === "webdav") return webdav.getFile(s.config, path, range);
@@ -114,7 +117,7 @@ export async function getFile(env, path, storageId, range) {
 export async function thumbnailUrl(env, path, size, storageId) {
   const s = await requireStorage(env, storageId);
   if (s.kind === "onedrive") return graph.thumbnailUrlWith(env, s.config, path, size);
-  return null; // webdav/gdrive/local 无通用服务端缩略图
+  return null; // WebDAV, Google Drive, and local storage have no generic server thumbnail.
 }
 
 export async function listChildren(env, folder, storageId, options = {}) {
@@ -165,7 +168,7 @@ export async function deleteItem(env, path, storageId) {
   return false;
 }
 
-/** 连通性测试（后台配置时用）。 */
+/** Test connectivity while configuring a backend in Admin. */
 export async function testConfig(env, kind, config) {
   if (kind === "onedrive") return graph.testStorageWith(env, config);
   if (kind === "webdav") return webdav.test(config);

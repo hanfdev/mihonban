@@ -79,7 +79,7 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
   const toast = useToast()
   const playback = albumPlaybackState(a.id, currentAlbumId, playingId)
   const openAlbumWithKey = (event) => {
-    // 焦点在嵌套的播放按钮上时放行：否则回车会同时触发播放和打开专辑
+    // Ignore keys from the nested play button; otherwise Enter would both start playback and open the album.
     if (event.target !== event.currentTarget) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
@@ -199,8 +199,8 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     if (decade && !decades.includes(decade)) setDecade('')
   }, [decade, decades])
 
-  // zhNorm 干草堆逐字符查 4000 项映射表，只随专辑列表重建；
-  // 每敲一个字只做廉价的 includes 过滤，不再全量重新归一化。
+  // Building the zhNorm haystack consults a 4,000-entry map for every character, so rebuild it only with the album list.
+  // Each keystroke then performs only a cheap includes filter instead of renormalizing the entire collection.
   const searchHay = useMemo(() => {
     const m = new Map()
     for (const a of albums || []) {
@@ -217,7 +217,7 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     const needle = zhNorm(q.trim())
     const wantG = genre.toLowerCase()
     const out = albums.filter((a) => {
-      // 管理员默认隐藏「已隐藏」；开关打开后才列出
+      // Hidden albums stay out of the administrator's default view until the visibility toggle is enabled.
       if (a.hidden && !(isAdmin && showHidden)) return false
       if (needle && !searchHay.get(a.id).includes(needle)) return false
       if (minR && (a.rym?.rating ?? 0) < minR) return false

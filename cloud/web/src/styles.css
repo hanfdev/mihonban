@@ -9,9 +9,10 @@
   --line-soft: #221d16;
   --ink: #f4ecdd;
   --ink-dim: #b0a58f;
-  /* 提亮以过 WCAG AA：原 #7c7260 在小字号（10.5–13px）文本上对比度仅
-     3.3–4.2:1，未达 4.5:1；#8d8370 在各背景上达 4.6–5.3:1，仍明显比
-     --ink-dim 淡，层级不变。 */
+  /* Lightened for WCAG AA: the original #7c7260 reached only a 3.3-4.2:1
+     contrast ratio for small text (10.5-13px), below the required 4.5:1.
+     #8d8370 reaches 4.6-5.3:1 across backgrounds while remaining visibly
+     lighter than --ink-dim, so the hierarchy stays intact. */
   --ink-faint: #8d8370;
   --accent: #e8542f;
   --accent-hi: #ff6b42;
@@ -29,13 +30,13 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { color-scheme: dark; }
-/* pan-x/pan-y = 只允许滚动手势：禁捏合缩放、禁双击缩放
-   （输入框聚焦的自动放大由 viewport meta 的 maximum-scale=1 关掉） */
+/* pan-x/pan-y permits scrolling gestures only: pinch and double-tap zoom are
+   disabled. The viewport meta maximum-scale=1 prevents focus zoom on inputs. */
 html, body { height: 100%; touch-action: pan-x pan-y; }
 
 body {
   margin: 0;
-  overflow: hidden; /* App Shell：页面永不滚动，滚动都在 .main 容器里 */
+  overflow: hidden; /* App shell: the page never scrolls; .main owns all scrolling. */
   background: var(--bg0);
   color: var(--ink);
   font-family: var(--sans);
@@ -44,7 +45,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 胶片颗粒 */
+/* Film grain */
 body::before {
   content: "";
   position: fixed;
@@ -65,9 +66,9 @@ img { display: block; }
 ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* 壳：顶栏/播放条/底栏是固定的骨架，内容在 .main 里滚动。
-   iOS 橡皮筋回弹只发生在 .main 内部，栏永远纹丝不动，
-   也不会有内容从半透明栏底下透出来。 */
+/* Shell: the header, player bar, and tab bar form a fixed frame while .main
+   scrolls. iOS rubber-band scrolling stays inside .main, keeping the bars
+   stationary and preventing content from showing through beneath them. */
 .app {
   height: 100vh;
   height: 100dvh;
@@ -79,20 +80,23 @@ img { display: block; }
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  /* 注意：这里绝不能加 -webkit-overflow-scrolling: touch——
-     它会把容器内 position:fixed 的弹层降级成绝对定位（iOS 经典坑）。
-     iOS 13+ 惯性滚动本来就是默认行为，不需要它。 */
+  /* Never add -webkit-overflow-scrolling: touch here. It makes fixed overlays
+     inside the container behave like absolutely positioned elements, a
+     longstanding iOS pitfall. Momentum scrolling is already the default on
+     iOS 13 and later. */
 }
 
 /* ---------- header ----------
-   三区：左 logo+主导航 · 中搜索 · 右管理员入口/语言/计数
-   管理员项（Import/Admin）放搜索右侧，长文案语言下不再与搜索叠压 */
+   Three zones: logo and primary nav on the left, search in the center, and
+   admin access, language, and count on the right. Keeping Import/Admin to the
+   right of search prevents overlap in languages with longer labels. */
 
 .hdr {
   flex: none;
   position: relative;
   z-index: 20;
-  /* 三栏对称：左导航 | 居中搜索 | 右管理 — 左右 1fr 保证搜索几何居中 */
+  /* Symmetric three-column layout: nav | centered search | admin. Matching
+     1fr side columns keep search geometrically centered. */
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, min(420px, 34vw)) minmax(0, 1fr);
   align-items: center;
@@ -167,7 +171,7 @@ img { display: block; }
 @media (hover: hover) { .nav a:hover { color: var(--ink); background: var(--bg2); } }
 .nav a.on { color: var(--ink); background: var(--bg3); }
 
-/* 管理员入口：视觉略弱于主导航，贴在搜索右侧形成「工具区」 */
+/* Admin links are quieter than the primary nav and form a utility area beside search. */
 .nav-admin { gap: 2px; }
 .nav-admin a {
   padding: 6px 11px;
@@ -185,7 +189,7 @@ img { display: block; }
 }
 
 .search {
-  /* 由 .hdr-center 三栏网格保证视觉居中；自身吃满中间列 */
+  /* The .hdr-center grid provides visual centering; this fills its middle column. */
   position: static;
   transform: none;
   width: 100%;
@@ -203,7 +207,8 @@ img { display: block; }
 }
 .search:focus-within { border-color: #4a4132; }
 .search svg { color: var(--ink-faint); flex: none; }
-/* 清除搜索：无样式按钮，渲染与原裸 SVG 像素一致，但可聚焦、有可访问名 */
+/* Clear search: an unstyled button that matches the original bare SVG pixel for
+   pixel while remaining focusable and carrying an accessible name. */
 .search-clear {
   background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; display: grid; place-items: center;
@@ -248,7 +253,7 @@ img { display: block; }
   border: 1px solid var(--line);
   color: var(--ink-dim);
   border-radius: 999px;
-  /* 短码 EN/JP…：收紧内边距，移动端不占位 */
+  /* Compact EN/JP-style codes so they consume less space on mobile. */
   padding: 5px 22px 5px 9px;
   font-size: 11.5px;
   font-weight: 600;
@@ -269,7 +274,7 @@ img { display: block; }
   .lang-wrap::after { right: 6px; }
 }
 
-/* 中宽屏：主导航再收一点 padding，中间搜索列收窄 */
+/* Medium widths: tighten primary-nav padding and narrow the search column. */
 @media (max-width: 1280px) {
   .nav a { padding: 7px 10px; }
   .nav-admin a { padding: 6px 9px; }
@@ -290,22 +295,25 @@ img { display: block; }
   padding: 14px 26px 4px;
   flex-wrap: wrap;
 }
-/* 平铺列表页（歌曲/收藏-歌曲）：工具栏与列表同宽居中，宽屏下不再各据一方。
-   收藏-音盤 tab 是网格布局（与曲库一致，全宽左对齐），故只在 .center 时居中 */
+/* Flat list pages (Tracks and favorite tracks): center the toolbar at the same
+   width as the list so they do not drift apart on wide screens. The favorite
+   albums tab uses the library grid and stays full-width and left-aligned, so
+   centering applies only under .center. */
 .tracks-page .filters, .favs-page .filters.center {
   max-width: 1360px;
   margin: 0 auto;
   width: 100%;
 }
 
-/* 统一筛选药丸（FilterSel 组件）：等宽，长文字循环滚动，
-   原生 select 透明盖在上面保留系统选单交互 */
+/* Shared filter pills (FilterSel): fixed width with marquee overflow. A
+   transparent native select sits above them to preserve system-menu behavior. */
 .fsel {
   position: relative;
   flex: none;
   display: block;
   box-sizing: border-box;
-  /* 固定宽：长文案语言不会把工具栏撑爆；标签在箭头左侧居中 */
+  /* Fixed width keeps long translations from expanding the toolbar; the label
+     remains centered in the space to the left of the arrow. */
   width: 7.75rem;
   max-width: 42vw;
   border: 1px solid var(--line);
@@ -326,7 +334,7 @@ img { display: block; }
   height: 100%;
   opacity: 0;
   cursor: pointer;
-  background-color: var(--bg1); /* opacity:0 看不见，但 Chromium 用它推导下拉弹层底色 */
+  background-color: var(--bg1); /* Invisible at opacity:0, but Chromium uses it for the popup background. */
 }
 .fsel-t {
   display: block;
@@ -364,7 +372,8 @@ img { display: block; }
   font-weight: 500;
 }
 
-/* select 去掉原生外观（iOS 会套一层肥大的系统框），自绘小箭头，全平台一致紧凑 */
+/* Remove native select styling (iOS adds an oversized system frame) and draw a
+   compact arrow for consistent rendering across platforms. */
 .sort-sel {
   appearance: none;
   -webkit-appearance: none;
@@ -372,12 +381,12 @@ img { display: block; }
   box-sizing: border-box;
   width: auto;
   min-width: 6.5rem;
-  max-width: min(11.5rem, 46vw); /* EN/FR/ES 长文案截断，不再撑满半行 */
+  max-width: min(11.5rem, 46vw); /* Truncate long EN/FR/ES labels before they consume half a row. */
   background: var(--bg1) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c7260' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center / 11px;
   border: 1px solid var(--line);
   color: var(--ink-dim);
   border-radius: 999px;
-  /* 左右对称（右侧留给箭头），关闭态选中项居中 */
+  /* Symmetric spacing, with room for the arrow on the right, centers the closed value. */
   padding: 6px 26px 6px 12px;
   font-size: 12.5px;
   line-height: 1.35;
@@ -389,10 +398,12 @@ img { display: block; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sort-sel.on { color: var(--gold); border-color: var(--gold-dim); } /* 筛选生效 */
-/* 排序类下拉 = 幽灵样式：纯文字+小箭头，不占一整块黑底（筛选类保留药丸）。
-   背景用页面底色而非 transparent —— Chromium 拿 select 的背景色当下拉弹层底色，
-   显式透明会回退成亮色系统弹层，跟筛选药丸的深色弹层撞在一起特别突兀 */
+.sort-sel.on { color: var(--gold); border-color: var(--gold-dim); } /* Active filter */
+/* Sort selects use a ghost treatment: text and a small arrow without a solid
+   dark block, while filter selects retain their pills. Use the page background
+   rather than transparent because Chromium derives the popup color from the
+   select background; explicit transparency falls back to a bright system popup
+   that clashes sharply with the dark filter menus. */
 .sort-sel.ghost {
   background-color: var(--bg0);
   border-color: transparent;
@@ -400,7 +411,7 @@ img { display: block; }
 }
 @media (hover: hover) { .sort-sel.ghost:hover { border-color: var(--line); } }
 
-/* 原生下拉弹层的选项行统一暗色（Chromium / Firefox 都认 option 的底色文字色） */
+/* Keep native popup options dark; Chromium and Firefox both honor option colors. */
 select option { background-color: var(--bg2); color: var(--ink); }
 
 /* ---------- album grid ---------- */
@@ -408,27 +419,30 @@ select option { background-color: var(--bg2); color: var(--ink); }
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
-  /* 行距 ≈ 列距的视觉量：行间只留「下一张封面的呼吸」，不叠加大块空气 */
+  /* Match the visual rhythm of the column gap: leave breathing room before the
+     next cover without introducing a large empty band. */
   gap: 12px 16px;
   padding: 20px 26px 36px;
 }
 @media (max-width: 560px) {
-  /* minmax(0,1fr) 而非 1fr：1fr=minmax(auto,1fr)，长标题的固有宽度会撑破轨道
-     导致左列被挤宽、右列变窄。0 让两列严格等宽 */
+  /* Use minmax(0,1fr), not 1fr: 1fr means minmax(auto,1fr), so a long title can
+     expand its intrinsic track, widening the left column and narrowing the
+     right. A zero minimum keeps both columns exactly equal. */
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; padding: 14px 16px 28px; }
 }
-/* 网格项本身可收缩（收藏页音盤卡外层还包了一层 .fav-card） */
+/* Grid items must shrink; favorite album cards have an additional .fav-card wrapper. */
 .grid > * { min-width: 0; }
 
 .card {
   cursor: pointer;
-  min-width: 0; /* 可收缩，长标题不撑破网格轨道 */
+  min-width: 0; /* Allow shrinking so long titles cannot expand the grid track. */
   display: flex;
   flex-direction: column;
-  /* 注意：这里不能用 content-visibility——它会启用 paint containment，把封面的
-     悬停浮起、阴影和键盘焦点框（都溢出卡片盒子）裁掉。专辑网格规模远小于全库
-     曲目列表，收益本就有限，视觉回归不值当。曲目行（.trow.flat）才是该优化真正
-     划算的场景。 */
+  /* Do not use content-visibility here. Its paint containment clips cover lift,
+     shadows, and keyboard focus rings that extend beyond the card. Album grids
+     are much smaller than the full track list, so the modest gain is not worth
+     the visual regression. Track rows (.trow.flat) are where this optimization
+     provides a meaningful return. */
 }
 .cover {
   position: relative;
@@ -483,9 +497,10 @@ select option { background-color: var(--bg2); color: var(--ink); }
 @media (hover: hover) { .card:hover .play-fab { opacity: 1; transform: translateY(0); } }
 @media (hover: hover) { .play-fab:hover { background: var(--accent-hi); } }
 
-/* 封面墙节奏（Spotify / Apple Music 式）：
-   封面 → 8px → 标题（单行省略）→ 2px → 艺人（单行）
-   每张卡文字区高度恒定 → 网格行高齐平，长标题绝不把艺人挤下去、不拉大行距。 */
+/* Cover-wall rhythm, in the style of Spotify and Apple Music:
+   cover -> 8px -> one-line truncated title -> 2px -> one-line artist.
+   A fixed text area keeps grid rows aligned, preventing long titles from
+   pushing the artist down or increasing row spacing. */
 .card-meta {
   margin-top: 8px;
   display: flex;
@@ -500,7 +515,7 @@ select option { background-color: var(--bg2); color: var(--ink); }
   font-size: 14.5px;
   letter-spacing: 0.005em;
   line-height: 1.3;
-  height: 1.3em;              /* 固定一行 */
+  height: 1.3em;              /* Fixed to one line */
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -512,7 +527,7 @@ select option { background-color: var(--bg2); color: var(--ink); }
   color: var(--ink-faint);
   font-size: 12px;
   line-height: 1.25;
-  height: 1.25em;             /* 固定一行 */
+  height: 1.25em;             /* Fixed to one line */
   display: flex;
   align-items: center;
   gap: 6px;
@@ -649,7 +664,7 @@ select option { background-color: var(--bg2); color: var(--ink); }
 }
 .hero-cover img { width: 100%; height: 100%; object-fit: cover; }
 
-/* 隐藏音盤角标（封面 / 艺人页卡） */
+/* Hidden-album badge on cover and artist-page cards */
 .badge-hidden {
   position: absolute;
   top: 10px; right: 10px;
@@ -913,7 +928,7 @@ select option { background-color: var(--bg2); color: var(--ink); }
   padding: 10px 20px;
   background: #100d0a;
   border-top: 1px solid var(--line-soft);
-  /* 迷你条上滑展开播放页：手势归我们，不要被 pan-y 抢走 */
+  /* The upward swipe that expands the player belongs to us; pan-y must not capture it. */
   touch-action: pan-x;
   user-select: none;
   -webkit-user-select: none;
@@ -969,7 +984,8 @@ select option { background-color: var(--bg2); color: var(--ink); }
   overflow: hidden;
 }
 .p-sub-link { color: var(--ink-faint); }
-/* 副行只有歌手名（专辑名已移除：冗余且会把长歌手名挤没），可占满整行 */
+/* The secondary line contains only the artist. The album was redundant and
+   crowded out long artist names, so the artist may now use the full row. */
 .p-artist-link { flex: 0 1 auto; max-width: 100%; }
 .p-artist-credit { max-width: 100%; }
 .p-sub-link:disabled { cursor: default; }
@@ -1017,7 +1033,7 @@ select option { background-color: var(--bg2); color: var(--ink); }
   display: flex;
   align-items: center;
   cursor: pointer;
-  touch-action: none;   /* 触屏拖动洗擦进度，不让页面接管手势 */
+  touch-action: none;   /* Let touch scrubbing control progress without page interference. */
 }
 .p-bar .rail { width: 100%; height: 3.5px; border-radius: 2px; background: var(--bg3); position: relative; }
 .p-bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--ink); }
@@ -1307,7 +1323,8 @@ select.tin { appearance: auto; }
 .login-card input:focus { border-color: #55492f; }
 .login-card button { width: 100%; margin-top: 12px; justify-content: center; padding: 13px; font-size: 14.5px; }
 .login-err { color: #ff8b7a; font-size: 13px; margin-top: 12px; min-height: 18px; }
-/* 已登录态叠层登录：升管理员 / 换号时不整页跳走的视觉（全屏遮罩） */
+/* Overlay login for an active session: elevate to admin or switch accounts
+   without navigating away from the current page. */
 .login-wrap.login-overlay {
   position: fixed; inset: 0; z-index: 80;
   background:
@@ -1316,7 +1333,7 @@ select.tin { appearance: auto; }
   backdrop-filter: blur(10px);
 }
 
-/* ---------- 顶栏会话菜单（角色切换 / 退出） ---------- */
+/* ---------- Header session menu (role switching / sign out) ---------- */
 .sess { position: relative; flex: none; }
 .sess-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1368,7 +1385,7 @@ select.tin { appearance: auto; }
 .sess-menu button:hover { background: var(--bg2); color: var(--ink); }
 .sess-menu button.danger:hover { color: #ff8b7a; background: rgba(255, 100, 80, 0.08); }
 @media (max-width: 720px) {
-  .sess-label { display: none; } /* 移动端只留图标，省顶栏 */
+  .sess-label { display: none; } /* Keep only the icon on mobile to save header space. */
   .sess-btn { padding: 0 9px; width: 34px; justify-content: center; }
   .sess-btn .sess-chev { display: none; }
 }
@@ -1380,7 +1397,7 @@ select.tin { appearance: auto; }
 
 /* ================= v2.2 ================= */
 
-/* ---------- 通用小件 ---------- */
+/* ---------- Shared small components ---------- */
 
 .heart-btn {
   border: none;
@@ -1490,7 +1507,7 @@ select.tin { appearance: auto; }
 
 .tin.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
 
-/* ---------- 歌曲平铺列表（曲库 / 收藏-歌曲） ---------- */
+/* ---------- Flat track lists (library / favorite tracks) ---------- */
 
 .tracks-page, .favs-page { padding-bottom: 10px; }
 .flat-list { padding: 6px 26px 30px; max-width: 1360px; margin: 0 auto; }
@@ -1498,8 +1515,9 @@ select.tin { appearance: auto; }
 .trow.flat {
   grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 52px 34px;
   padding: 7px 12px;
-  /* 全库曲目一次全渲染：跳过屏外行的布局/绘制（DOM 结构不变）。
-     预估高度必须与最终 60px 行高一致，否则远距离定位会累积偏移。 */
+  /* The full library renders every track at once, so skip layout and paint for
+     offscreen rows without changing the DOM. The estimated height must match
+     the final 60px row height or long-distance jumps accumulate position error. */
   content-visibility: auto;
   contain-intrinsic-size: auto 60px;
 }
@@ -1523,16 +1541,16 @@ select.tin { appearance: auto; }
 .trow .t-heart .heart-btn.on { opacity: 1; }
 @media (hover: hover) { .trow:hover .t-heart .heart-btn { opacity: 1; } }
 
-/* ---------- 收藏页手动拖动排序 ---------- */
+/* ---------- Manual drag sorting on Favorites ---------- */
 
 .fav-drag-hint {
   display: flex; align-items: center; gap: 6px;
   padding: 10px 26px 0;
   color: var(--ink-faint); font-size: 12px;
 }
-.fav-drag-hint + .grid { padding-top: 12px; } /* 提示已占上方留白，网格收紧 */
+.fav-drag-hint + .grid { padding-top: 12px; } /* The hint already adds space above, so tighten the grid. */
 
-/* 访客访问开关 */
+/* Guest-access toggle */
 .switch-row {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px; margin-top: 14px;
@@ -1561,33 +1579,36 @@ select.tin { appearance: auto; }
 .toggle.on i { transform: translateX(19px); background: #fff; }
 .toggle:disabled { opacity: 0.5; cursor: default; }
 
-/* 访客顶栏「管理登录」按钮 */
+/* Guest header's admin-login button */
 .hdr-login { flex: none; margin-left: 10px; }
 .btn.ghost { background: transparent; border-color: var(--line); }
 @media (hover: hover) { .btn.ghost:hover { border-color: #4a4132; color: var(--ink); } }
-/* ---------- 收藏页拖动排序（手柄驱动） ----------
-   只有手柄 data-drag-handle 起拖：卡片/行本体完全自由（点击播放、竖向滚动、
-   图片正常）。手柄本身 touch-action:none 直接拖，不与页面滚动打架。 */
+/* ---------- Handle-driven drag sorting on Favorites ----------
+   Only data-drag-handle starts a drag, leaving the card or row free for playback,
+   vertical scrolling, and normal image behavior. touch-action:none on the handle
+   lets it drag directly without competing with page scrolling. */
 
-/* 歌曲行：手柄在最左，行本体保持原 grid */
+/* Track rows: place the handle at the far left and preserve the row's original grid. */
 .fav-trow { position: relative; }
-.fav-trow.draggable .trow.flat { padding-left: 40px; } /* 给手柄让位 */
+.fav-trow.draggable .trow.flat { padding-left: 40px; } /* Reserve room for the handle. */
 .fav-grip {
   position: absolute; left: 4px; top: 0; bottom: 0;
   width: 34px;
   display: flex; align-items: center; justify-content: center;
   color: var(--ink-dim); z-index: 3;
   cursor: grab;
-  touch-action: none;               /* 手柄上直接拖，不触发页面滚动 */
+  touch-action: none;               /* Drag directly from the handle without scrolling the page. */
   -webkit-touch-callout: none;
   -webkit-user-select: none; user-select: none;
-  /* 始终可见：iPad 带触控板时 (hover)+(pointer:fine) 也会命中，不能靠 hover 才显示 */
+  /* Always visible: an iPad trackpad matches hover and pointer:fine, so visibility
+     cannot depend on hover alone. */
   opacity: 1;
 }
 .fav-grip:active { cursor: grabbing; color: var(--ink); }
 @media (hover: hover) { .fav-trow.draggable:hover .fav-grip { color: var(--ink); } }
 
-/* 音盤卡：左上角悬浮手柄 — 可拖时始终可见（iPad 竖/横、触控板都不能藏） */
+/* Album cards: floating top-left handle, always visible while draggable on iPad
+   in either orientation and when using a trackpad. */
 .fav-card { position: relative; }
 .fav-card-grip {
   position: absolute; top: 8px; left: 8px; z-index: 6;
@@ -1601,7 +1622,7 @@ select.tin { appearance: auto; }
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   box-shadow: 0 2px 10px -4px rgba(0, 0, 0, 0.55);
-  /* 绝不 opacity:0：JS 只在 canDrag 时才挂这个节点 */
+  /* Never set opacity:0; JavaScript mounts this node only when canDrag is true. */
   opacity: 1;
   pointer-events: auto;
 }
@@ -1609,25 +1630,26 @@ select.tin { appearance: auto; }
 @media (hover: hover) {
   .fav-card-grip:hover { background: rgba(13, 11, 9, 0.92); }
 }
-/* 粗指针 / 触屏：略加大命中区 */
+/* Coarse pointers and touchscreens get a slightly larger hit area. */
 @media (pointer: coarse), (hover: none) {
   .fav-card-grip { width: 40px; height: 40px; top: 6px; left: 6px; }
   .fav-trow.draggable .trow.flat { padding-left: 44px; }
   .fav-grip { width: 40px; left: 2px; }
 }
 
-/* 卡片里的图片禁止原生拖拽（桌面红色禁止光标根因） */
+/* Disable native image dragging inside cards; it causes the desktop no-drop cursor. */
 .fav-card img, .fav-trow img { -webkit-user-drag: none; user-drag: none; }
 
-/* 拖拽进行中：只锁选中和长按菜单，不锁滚动（滚动由手柄的 pointer capture 接管） */
+/* During a drag, disable selection and long-press menus but not scrolling; the
+   handle's pointer capture manages the gesture. */
 body.reordering { -webkit-user-select: none; user-select: none; }
 body.reordering * { -webkit-touch-callout: none !important; }
-/* 被拖起的项：抬升+半透明，明确反馈 */
+/* Lift and fade the dragged item for clear feedback. */
 .fav-card.dragging { opacity: 0.6; }
 .fav-card.dragging .card { transform: scale(0.96); transition: transform 0.15s; }
 .fav-trow.dragging { opacity: 0.6; background: var(--bg2); border-radius: var(--r-sm); }
 
-/* ---------- 艺术家页 ---------- */
+/* ---------- Artist page ---------- */
 
 .artist-page { padding-bottom: 20px; }
 .artist-featured { margin-top: 18px; }
@@ -1670,7 +1692,7 @@ body.reordering * { -webkit-touch-callout: none !important; }
   transition: 0.18s;
   display: grid;
   place-items: center;
-  z-index: 3; /* 盖在白描线之上 */
+  z-index: 3; /* Keep it above the white outline. */
 }
 @media (hover: hover) { .avatar.editable:hover .avatar-edit { opacity: 1; } }
 .artist-info { flex: 1; min-width: 240px; }
@@ -1705,7 +1727,7 @@ body.reordering * { -webkit-touch-callout: none !important; }
 .artist-sort-edit.ghost { color: var(--ink-faint); }
 .artist-sort-form .field-hint { margin-top: 2px; }
 
-/* ---------- 专辑内页画廊 ---------- */
+/* ---------- Album image gallery ---------- */
 
 .gallery { padding: 8px 26px 26px; }
 .gallery h3 { font-family: var(--serif); font-size: 17px; margin: 0 0 14px; color: var(--ink-dim); font-weight: 600; }
@@ -1722,7 +1744,8 @@ body.reordering * { -webkit-touch-callout: none !important; }
 .gal-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.25s; -webkit-user-drag: none; user-drag: none; }
 @media (hover: hover) { .gal-thumb:hover img { transform: scale(1.04); } }
 .gal-thumb.dragging { opacity: 0.6; }
-/* 内页图拖动手柄：右上角悬浮（触屏常显/桌面 hover 出现） */
+/* Gallery-image drag handle: floats at top right, always visible on touch and
+   revealed on hover on desktop. */
 .gal-grip {
   position: absolute; top: 6px; right: 6px; z-index: 2;
   width: 28px; height: 28px; border-radius: 7px;
@@ -1847,7 +1870,7 @@ body.lb-lock { overflow: hidden; }
 @media (hover: hover) { .lb-bar a:hover { color: var(--gold); } }
 .btn.sm.danger { border-color: #5a2a22; color: #ff8b7a; }
 
-/* ---------- 播放器（新增件） ---------- */
+/* ---------- Player additions ---------- */
 
 .icon-btn.mode { position: relative; width: 34px; height: 34px; }
 .icon-btn.mode.on { color: var(--accent-hi); }
@@ -1864,7 +1887,8 @@ body.lb-lock { overflow: hidden; }
 .p-mini-rail { display: none; }
 .p-mini-ctrl { display: none; }
 
-/* 全屏播放页：桌面 = 左封面右信息双栏；移动 = 封面自适应 + 左对齐信息 */
+/* Full-screen player: two columns on desktop with cover left and details right;
+   responsive cover with left-aligned details on mobile. */
 .np-lock { overflow: hidden; }
 .np-sheet {
   position: fixed;
@@ -1876,20 +1900,22 @@ body.lb-lock { overflow: hidden; }
   padding: calc(14px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
   animation: np-in 0.36s cubic-bezier(0.32, 0.72, 0.1, 1);
   overflow: hidden;
-  touch-action: none; /* 下滑收回手势归我们管，浏览器别抢 */
+  touch-action: none; /* The downward dismiss gesture belongs to us, not the browser. */
 }
-/* 开合都是纯 transform（合成器动画，不重排不重绘，省电省资源） */
+/* Open and close use transforms only: compositor animation without layout or
+   repaint work, reducing power and resource use. */
 @keyframes np-in { from { transform: translateY(100%); } }
 .np-sheet.out {
   animation: np-out 0.28s cubic-bezier(0.55, 0, 0.85, 0.36) forwards;
   pointer-events: none;
 }
 @keyframes np-out { to { transform: translateY(100%); } }
-/* 内容物跟一拍轻微上浮，让入场有层次而不只是"一块板子滑上来" */
+/* Content rises a beat behind the panel, giving the entrance depth instead of
+   looking like a single slab sliding upward. */
 .np-sheet:not(.out) .np-body { animation: np-rise 0.5s 0.05s cubic-bezier(0.22, 0.9, 0.3, 1) backwards; }
 @keyframes np-rise { from { transform: translateY(18px); opacity: 0; } }
 
-/* 当前封面糊成整页背景，压暗收进暖黑 */
+/* Blur the current cover across the page and darken it into the warm-black palette. */
 .np-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .np-bg img {
   width: 100%;
@@ -1941,10 +1967,11 @@ body.lb-lock { overflow: hidden; }
   flex: 1;
   min-height: 0;
   display: flex;
-  flex-direction: column;   /* 移动端：纵排 */
+  flex-direction: column;   /* Mobile: vertical layout */
 }
 
-/* 封面：吃掉剩余高度，绝不溢出（height 跟随容器、上限跟随屏宽） */
+/* Cover: consume remaining height without overflow; height follows the container
+   while the upper bound follows the viewport width. */
 .np-cover {
   flex: 1;
   min-height: 100px;
@@ -2005,12 +2032,13 @@ body.lb-lock { overflow: hidden; }
 @media (hover: hover) { .np-artist:hover { color: var(--gold); } }
 .np-meta .heart-btn { flex: none; margin-top: 5px; }
 
-/* 进度条在 .np-panel（block）里，flex:1 不再泄漏；仍显式钉死以防万一 */
+/* The progress bar lives in block-level .np-panel, so flex:1 no longer leaks;
+   pin it explicitly as a defensive measure. */
 .np-panel .p-progress.big { flex: 0 0 auto; width: 100%; margin: 10px 0 2px; }
 .p-progress.big .p-bar .dot { opacity: 1; }
 .p-progress.big .p-bar { height: 22px; }
 
-/* 移动端：五键满宽分布（Spotify 式） */
+/* Mobile: distribute five controls across the full width, Spotify-style. */
 .np-panel .p-ctrl.big { width: 100%; justify-content: space-between; margin-top: 4px; }
 .p-ctrl.big .icon-btn { width: 50px; height: 50px; }
 .p-ctrl.big .icon-btn.main { width: 64px; height: 64px; }
@@ -2018,7 +2046,7 @@ body.lb-lock { overflow: hidden; }
 
 .np-vol { display: none; }
 
-/* 桌面：左封面右信息，垂直居中，整组限宽 */
+/* Desktop: cover left, details right, vertically centered with a constrained group width. */
 @media (min-width: 721px) {
   .np-body {
     flex-direction: row;
@@ -2065,11 +2093,11 @@ body.lb-lock { overflow: hidden; }
   }
 }
 
-/* ---------- 底部导航（移动端） ---------- */
+/* ---------- Bottom navigation (mobile) ---------- */
 
 .tabbar { display: none; }
 
-/* ---------- 管理后台帖子工具行 ---------- */
+/* ---------- Admin post toolbar ---------- */
 
 .post-tools {
   display: flex;
@@ -2081,19 +2109,21 @@ body.lb-lock { overflow: hidden; }
 .search.sm { padding: 6px 13px; max-width: 260px; flex: 1; min-width: 170px; }
 .search.sm input { font-size: 13px; }
 
-/* 移动端搜索按钮（桌面隐藏） */
+/* Mobile search button, hidden on desktop */
 .m-search { display: none; }
 .m-search-row { display: none; }
 
-/* ---------- 响应式：平板以下 ---------- */
+/* ---------- Responsive layout: tablet and below ---------- */
 
 @media (max-width: 900px) {
   .hero { gap: 22px; }
   .hero-cover { width: 210px; }
 }
 
-/* 紧凑壳（手机 + iPad 竖屏 ~768–834）：搜索改图标、导航进底栏，避免顶栏挤掉「艺人/精选」。
-   仅动 chrome（hdr/tabbar/迷你播放条），内容区密度仍由下方 720 断点控制。 */
+/* Compact shell for phones and portrait iPads around 768-834px: replace search
+   with an icon and move navigation to the tab bar so Artist and Favorites are
+   not crowded out of the header. This changes only the chrome (header, tab bar,
+   and mini-player); the 720px breakpoint below still controls content density. */
 @media (max-width: 900px) {
   .hdr {
     padding: 10px 16px;
@@ -2172,7 +2202,7 @@ body.lb-lock { overflow: hidden; }
 @media (max-width: 720px) {
   body { font-size: 14px; }
 
-  /* 筛选行横向滚动，不折行占屏 */
+  /* Let the filter row scroll horizontally instead of wrapping and consuming height. */
   .filters {
     padding: 10px 16px 2px;
     flex-wrap: nowrap;
@@ -2184,7 +2214,7 @@ body.lb-lock { overflow: hidden; }
 
   .grid { padding: 14px 16px 30px; }
 
-  /* 专辑页：竖排居中 */
+  /* Album page: centered vertical layout */
   .back-btn { margin: 12px 16px 0; }
   .hero {
     flex-direction: column;
@@ -2202,7 +2232,7 @@ body.lb-lock { overflow: hidden; }
   .tracks { padding: 6px 10px 24px; }
   .trow { grid-template-columns: 28px 1fr 52px 34px; }
   .trow .t-fmt { display: none; }
-  .trow .t-heart .heart-btn { opacity: 1; }  /* 触屏没有 hover */
+  .trow .t-heart .heart-btn { opacity: 1; }  /* Touchscreens have no hover. */
 
   .flat-list { padding: 4px 10px 24px; }
   .trow.flat { grid-template-columns: 44px minmax(0, 1fr) 46px 34px; }
@@ -2214,7 +2244,7 @@ body.lb-lock { overflow: hidden; }
   .artist-hero { padding: 16px; flex-direction: column; text-align: center; }
   .avatar { width: 136px; height: 136px; }
   .artist-info .genre-row, .artist-info .hero-actions { justify-content: center; }
-  .avatar-edit { opacity: 1; padding: 5px 0 7px; }  /* 触屏常显 */
+  .avatar-edit { opacity: 1; padding: 5px 0 7px; }  /* Always visible on touchscreens. */
 
   .import-wrap { padding: 16px; }
   .panel { padding: 18px; }
@@ -2230,16 +2260,16 @@ body.lb-lock { overflow: hidden; }
   .upl-row .upl-prog { display: none; }
 
   .gal-thumb, .gal-add { width: 118px; height: 118px; }
-  .lb-nav { display: none; }  /* 手机屏窄，点图外关闭 + 底栏序号即可 */
+  .lb-nav { display: none; }  /* On narrow phones, tap outside to close and use the footer index. */
 }
 
-/* 触屏设备：专辑卡播放键常显 */
+/* Touch devices: always show album-card play buttons. */
 @media (hover: none) {
   .cover .play-fab { opacity: 1; transform: none; width: 38px; height: 38px; }
   .trow .t-heart .heart-btn { opacity: 1; }
 }
 
-/* ---------- 曲目管理对话框 ---------- */
+/* ---------- Track-management dialog ---------- */
 
 .td-list { display: grid; gap: 4px; max-height: 46vh; overflow-y: auto; padding: 2px; }
 .td-row {
@@ -2326,7 +2356,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .td-list { max-height: 52vh; }
 }
 
-/* ---------- 艺人总览页 ---------- */
+/* ---------- Artists overview ---------- */
 
 .agrid {
   display: grid;
@@ -2414,7 +2444,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .agrid { grid-template-columns: repeat(2, 1fr); }
 }
 
-/* ---------- 简介（艺人页 bio / 专辑页 album-note） ---------- */
+/* ---------- Descriptions (artist bio / album note) ---------- */
 
 .note-text { max-width: 680px; }
 .note-body {
@@ -2526,7 +2556,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .artist-hero .note-text { margin-inline: auto; }
 }
 
-/* ---------- 图片裁剪器 ---------- */
+/* ---------- Image cropper ---------- */
 
 .crop-wrap { display: grid; justify-items: center; gap: 12px; }
 .crop-vp {
@@ -2539,7 +2569,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   border-radius: var(--r-md);
   background: var(--bg0);
   cursor: grab;
-  touch-action: none;   /* 触屏拖动取景，不滚动页面 */
+  touch-action: none;   /* Drag the crop on touch without scrolling the page. */
   user-select: none;
 }
 .crop-vp:active { cursor: grabbing; }
@@ -2582,7 +2612,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   cursor: pointer;
 }
 
-/* ---------- 播放键状态色：暂停 = 米白（邀请按下），播放中 = 唱标橙 ---------- */
+/* ---------- Play-state colors: pause is warm white (inviting a press), while
+   active playback uses label orange ---------- */
 
 .icon-btn.main.on { background: var(--accent); color: #fff6ec; }
 @media (hover: hover) {
@@ -2591,7 +2622,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .p-mini-ctrl .icon-btn { color: var(--ink); }
 .p-mini-ctrl .mini-play.on { color: var(--accent-hi); }
 
-/* 触屏：hover 不存在，用 :active 给瞬时按压反馈（松手即恢复，不会粘住） */
+/* Touchscreens have no hover, so :active provides momentary press feedback that
+   clears on release rather than sticking. */
 @media (hover: none) {
   .icon-btn:active { background: var(--bg2); }
   .btn:active { filter: brightness(1.18); }
@@ -2601,11 +2633,11 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .trow:active { background: var(--bg1); }
 }
 
-/* 播放页歌名可点：跳到所属专辑 */
+/* The player title is clickable and opens its album. */
 .np-title.link { cursor: pointer; max-width: 100%; transition: color 0.15s; }
 @media (hover: hover) { .np-title.link:hover { color: var(--gold); } }
 
-/* ---------- 艺人简介：短版 + 「阅读完整简介」 ---------- */
+/* ---------- Artist bio: excerpt plus full-bio action ---------- */
 
 .bio-short { max-width: 680px; font-size: 13.5px; }
 .bio-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
@@ -2632,7 +2664,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .artist-hero .bio-actions { justify-content: center; }
 }
 
-/* 编辑简介对话框：短版 + Markdown 长版 */
+/* Bio editor: short version plus long-form Markdown */
 .bio-form { display: grid; gap: 7px; }
 .bio-form label {
   margin-top: 10px;
@@ -2651,7 +2683,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 }
 .bio-form-loading { display: grid; place-items: center; padding: 34px; color: var(--ink-faint); }
 
-/* ---------- Markdown 正文排版 ---------- */
+/* ---------- Markdown body typography ---------- */
 
 .md { white-space: normal; line-height: 1.92; }
 .md p { margin: 0 0 1.05em; }
@@ -2699,12 +2731,13 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .md th { background: var(--bg1); color: var(--ink); font-weight: 600; }
 .md > :last-child { margin-bottom: 0; }
 
-/* ---------- Reader：长文阅读弹层（桌面居中卡片 / 移动全屏上滑） ---------- */
+/* ---------- Reader: centered long-form dialog on desktop, upward full-screen
+   sheet on mobile ---------- */
 
 .reader {
   position: fixed;
   inset: 0;
-  z-index: 110; /* 高于播放页(100)，低于 toast(120) */
+  z-index: 110; /* Above the player (100), below toasts (120). */
   background: rgba(8, 6, 4, 0.72);
   backdrop-filter: blur(10px);
   display: grid;
@@ -2747,7 +2780,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   background: var(--bg2);
   flex: none;
 }
-.reader-ava.sq { border-radius: 9px; } /* 专辑封面用方形圆角 */
+.reader-ava.sq { border-radius: 9px; } /* Album covers use rounded squares. */
 .reader-id { flex: 1; min-width: 0; }
 .reader-kicker {
   font-size: 10.5px;
@@ -2790,7 +2823,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .reader-body { padding: 20px 18px calc(30px + env(safe-area-inset-bottom)); }
 }
 
-/* ---------- 播放页进度条（Spotify 式）：满宽长条，时间挂两端下方 ---------- */
+/* ---------- Spotify-style player progress: full-width track with times below
+   at both ends ---------- */
 
 .p-progress.big { display: block; }
 .p-progress.big .p-bar { width: 100%; height: 26px; }
@@ -2804,14 +2838,14 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
-/* 拖动洗擦中：圆点放大、进度亮起，给出「抓住了」的手感 */
+/* While scrubbing, enlarge the thumb and brighten progress to convey a firm grab. */
 .p-bar.scrubbing .dot {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1.35);
 }
 .p-bar.scrubbing .fill { background: var(--accent-hi); }
 
-/* ---------- 播放页移动端布局（参考 Spotify 的比例与呼吸感） ---------- */
+/* ---------- Mobile player layout, using Spotify-like proportions and spacing ---------- */
 
 @media (max-width: 720px) {
   .np-sheet { padding-inline: 20px; }
@@ -2826,10 +2860,10 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .p-ctrl.big .icon-btn.mode { width: 46px; height: 46px; }
 }
 
-/* 专辑简介的「阅读全文」按钮与正文留白 */
+/* Spacing between the album description and its full-text action */
 .note-text .bio-read { margin-top: 10px; }
 
-/* ---------- 移动端筛选行：整体降一号，还空间给内容 ---------- */
+/* ---------- Mobile filter row: reduce the overall scale to leave room for content ---------- */
 
 @media (max-width: 720px) {
   .filters { padding: 8px 16px 2px; gap: 8px; }
@@ -2855,11 +2889,12 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .grid { padding-top: 12px; }
 }
 
-/* ---------- 手机横屏 / 矮视口：压缩壳高度，播放页转左右双栏 ---------- */
+/* ---------- Phone landscape / short viewports: compact the shell and switch
+   the player to two columns ---------- */
 
 @media (orientation: landscape) and (max-height: 600px) and (hover: none) {
   .app {
-    padding-left: env(safe-area-inset-left);   /* 刘海手机横屏的安全区 */
+    padding-left: env(safe-area-inset-left);   /* Safe area for notched phones in landscape. */
     padding-right: env(safe-area-inset-right);
   }
   .hdr { padding: 7px 18px; }
@@ -2871,7 +2906,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .tabbar a span { display: none; }
   .player { margin: 4px 8px 5px; padding: 6px 12px; }
 
-  /* 全屏播放页：封面居左、信息面板居右（窄宽也生效） */
+  /* Full-screen player: cover left, information panel right, even at narrow widths. */
   .np-sheet {
     --np-edge-left: max(22px, env(safe-area-inset-left));
     --np-edge-right: max(22px, env(safe-area-inset-right));
@@ -2948,13 +2983,13 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
     max-width: 40px;
     height: 40px;
   }
-  .np-vol { display: none; } /* 矮屏省掉音量条（手机有实体键） */
+  .np-vol { display: none; } /* Omit volume on short screens; phones have hardware controls. */
 
-  /* 网格在横屏下多排几列，别让两列大封面撑爆高度 */
+  /* Add columns in landscape so two oversized covers do not dominate the height. */
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
 }
 
-/* ---------- Discogs 导入对话框 ---------- */
+/* ---------- Discogs import dialog ---------- */
 
 .dg-cands { display: grid; gap: 6px; max-height: 46vh; overflow-y: auto; }
 .dg-cand {
@@ -2995,11 +3030,11 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .dg-group { font-size: 12px; color: var(--ink-faint); margin-bottom: 7px; letter-spacing: 0.04em; }
 .dropzone.slim { padding: 14px 16px; font-size: 12.5px; }
 
-/* 可点选的风格标签（Discogs 导入预览） */
+/* Selectable genre tags in the Discogs import preview */
 .gtag.pick { cursor: pointer; opacity: 0.4; }
 .gtag.pick.on { opacity: 1; outline: 1px solid var(--gold-dim); }
 
-/* ---------- 头像来源选择 ---------- */
+/* ---------- Avatar source picker ---------- */
 
 .ava-src-label { margin: 16px 0 10px; color: var(--ink-faint); font-size: 12.5px; }
 .ava-pick-grid {
@@ -3008,7 +3043,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   gap: 10px;
   max-height: 42vh;
   overflow-y: auto;
-  scrollbar-gutter: stable; /* 滚动条出没不再改变列宽 */
+  scrollbar-gutter: stable; /* Scrollbar appearance no longer changes column width. */
 }
 .ava-pick-grid img {
   width: 100%;
@@ -3018,8 +3053,9 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   cursor: pointer;
   transition: outline-color 0.15s, filter 0.15s;
 }
-/* hover 不能用 scale：放大会把图片顶出滚动容器 → 滚动条出现 → 列宽变 →
-   hover 又丢失……光标停在图片间隙时整个弹窗会无限抖动 */
+/* Do not scale on hover: enlargement pushes the image outside the scroll
+   container, which reveals a scrollbar, changes column width, and drops hover.
+   With the pointer between images, that cycle makes the dialog jitter endlessly. */
 @media (hover: hover) {
   .ava-pick-grid img:hover {
     outline: 2px solid var(--accent);
@@ -3028,7 +3064,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   }
 }
 
-/* ---------- 歌曲页 Spotify 式播放栏（吸顶，滚多深都够得着） ---------- */
+/* ---------- Spotify-style track-page playback bar, sticky so it remains
+   reachable at any scroll depth ---------- */
 
 .filters.pin {
   position: sticky;
@@ -3054,7 +3091,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   box-shadow: 0 10px 24px -10px rgba(232, 84, 47, 0.6);
   transition: background 0.15s, transform 0.12s;
 }
-.play-big svg { margin-left: 2px; } /* 三角形视觉居中 */
+.play-big svg { margin-left: 2px; } /* Optically center the triangle. */
 .play-big:disabled { opacity: 0.45; cursor: default; }
 @media (hover: hover) {
   .play-big:hover:not(:disabled) { background: var(--accent-hi); transform: scale(1.05); }
@@ -3074,7 +3111,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   transition: color 0.15s, border-color 0.15s, transform 0.12s;
 }
 .icon-round:disabled { opacity: 0.45; cursor: default; }
-/* hover 只作用于「未激活」的键——激活态(.on)的红色优先，避免鼠标悬停时被灰色盖掉 */
+/* Hover applies only to inactive controls. The active .on red takes precedence
+   so a pointer cannot cover it with gray. */
 @media (hover: hover) {
   .icon-round:not(.on):hover:not(:disabled) { color: var(--ink); border-color: #4a4132; }
   .icon-round.on:hover:not(:disabled) { color: var(--accent-hi); border-color: var(--accent); }
@@ -3084,7 +3122,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .trow.flat.is-hidden { opacity: 0.58; }
 .trow.flat.is-hidden:hover { opacity: 0.78; }
 
-/* 艺人页的隐藏内容开关：像一枚精致的唱机状态胶囊，而不是普通筛选 chip。 */
+/* The artist-page hidden-content toggle reads as a refined turntable status
+   capsule rather than an ordinary filter chip. */
 .visibility-toggle {
   height: 38px;
   display: inline-flex;
@@ -3179,7 +3218,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .visibility-toggle:not(.compact) { gap: 4px; padding-right: 4px; }
 }
 
-/* 歌曲页工具栏里的数量：沿用 .ctx-sub 的轻字色，略收紧与按钮的间距 */
+/* Track count in the toolbar: reuse the quiet .ctx-sub color and tighten its
+   spacing from the controls. */
 .filters.pin .ctx-sub {
   margin-left: 2px;
   font-variant-numeric: tabular-nums;
@@ -3192,18 +3232,18 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .icon-round { width: 34px; height: 34px; }
 }
 
-/* 「定位」跳过去后目标行闪一下 */
+/* Briefly flash the target row after a locate jump. */
 .trow.flash { animation: row-flash 1.7s ease; }
 @keyframes row-flash {
   0%, 45% { background: rgba(232, 84, 47, 0.18); }
   100% { background: transparent; }
 }
 
-/* Discogs 链接直读 */
+/* Direct Discogs URL parsing */
 .dg-url { display: flex; gap: 8px; margin-top: 12px; }
 .dg-url .tin { flex: 1; min-width: 0; }
 
-/* Discogs 图片导入：缩略图网格勾选 */
+/* Discogs image import: selectable thumbnail grid */
 .dg-imgblock { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 4px; }
 .dg-imggrid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
@@ -3237,7 +3277,8 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 }
 .ava-pick-grid img.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
 
-/* ---------- 歌名跑马灯（正在播放且溢出才滚，复用 fsel-roll 关键帧） ---------- */
+/* ---------- Title marquee: scroll only the playing title when it overflows,
+   reusing the fsel-roll keyframes ---------- */
 
 .mq {
   display: block;
@@ -3252,7 +3293,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .mq.roll span { flex: none; padding-right: 36px; }
 @media (prefers-reduced-motion: reduce) { .mq.roll i { animation: none; } }
 
-/* 列表行：播放中的行用跑马灯（flex 子项），其余行普通省略号 */
+/* List rows: the playing row uses a flex-item marquee; all others use ellipsis. */
 .t-title .mq { flex: 1; }
 .t-title .t-name {
   min-width: 0;
@@ -3261,7 +3302,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   text-overflow: ellipsis;
 }
 
-/* ---------- 多存储后端 ---------- */
+/* ---------- Multiple storage backends ---------- */
 .stor-list { display: grid; gap: 8px; margin-top: 12px; }
 .stor-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

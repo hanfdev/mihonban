@@ -19,9 +19,9 @@ function BioDialog({ name, initialNote, onClose, onSaved }) {
   useEffect(() => {
     let active = true
     setBioLoadFailed(false)
-    // 加载失败绝不能把 bio 置成 ''：空串保存时后端按「显式清空」处理
-    // （DELETE artistbio 行），一次网络抖动就会静默抹掉整篇长简介。
-    // 失败时保持 null（保存继续禁用）并给出错误提示。
+    // Never replace bio with '' after a load failure: saving an empty string means an explicit clear on the backend
+    // (DELETE the artistbio row), so a brief network failure could silently erase a long biography.
+    // Keep null on failure, leave Save disabled, and report the error.
     api.artistBio(name).then((r) => { if (active) setBio(r.bio) })
       .catch((e) => {
         if (!active) return
@@ -224,7 +224,7 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
       const parts = []
       if (r.avatarSet) parts.push(t('discogsArtist.avatar'))
       if (r.bioSet) parts.push(t('discogsArtist.bio'))
-      // 后端可能只写了简介、头像静默失败（旧版）；或返回 avatarError
+      // Older backends may save only the biography while the avatar fails silently, or return avatarError.
       if (wantAvatar && !r.avatarSet) {
         toast(r.avatarError
           ? t('discogsArtist.fail', r.avatarError)
@@ -234,7 +234,7 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
       } else {
         toast(t('discogsArtist.nothing'), 'err')
       }
-      // 只要有任一项成功就刷新；头像成功时父级会 bump avatarVer 破缓存
+      // Refresh when either item succeeds; an avatar success makes the parent bump avatarVer to bust caches.
       if (r.avatarSet || r.bioSet) onImported()
     } catch (e) { toast(t('discogsArtist.fail', e.message), 'err') }
     finally { setBusy(false) }
@@ -405,7 +405,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
 
   const pickCover = async (a) => {
     try {
-      // proxy=1：Worker 内联字节，不 302 到 R2/Graph，避免跨域 Failed to fetch
+      // proxy=1 makes the Worker return bytes instead of redirecting to R2/Graph, avoiding cross-origin fetch failures.
       const r = await fetch(`${artUrl(a.id, 1000)}&proxy=1`)
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       const blob = await r.blob()
@@ -420,7 +420,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
       const folder = allMine[0]?.folder || featured?.[0]?.folder
       const artistDir = folder ? folder.split('/').slice(0, -1).join('/') : ''
       if (!artistDir) throw new Error('no album folder')
-      // 唯一文件名，避免覆盖同路径导致缓存/读盘错乱
+      // Use a unique filename so overwriting the same path cannot confuse caches or storage reads.
       const stamp = Date.now().toString(36)
       const path = `${artistDir}/avatar-${stamp}.jpg`
        const uploaded = await api.uploadCover(path, blob)

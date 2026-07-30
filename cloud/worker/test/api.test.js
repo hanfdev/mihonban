@@ -507,7 +507,7 @@ test("settings updates are atomic when one setting write fails", async () => {
 test("legacy OneDrive migration never overwrites a colliding named storage", async () => {
   const db = new Database(":memory:");
   db.exec(schema.replace(
-    "storage_id  TEXT NOT NULL,             -- 所属命名存储后端",
+    "storage_id  TEXT NOT NULL,             -- owning named storage backend",
     "storage_id  TEXT,                       -- legacy unbound album"));
   db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
     VALUES ('onedrive-12345678', 'Local collision', 'local', ?, 1, 1)`)
@@ -2721,8 +2721,9 @@ test("catalog endpoints revalidate with ETag and return 304 until data changes",
       });
       assert.equal(revalidated.status, 304, `${path} unchanged -> 304`);
 
-      // 任何目录写入（这里改一首曲名，会回写 albums.updated_at）都要打破 304。
-      // 版本戳含 MAX(updated_at) 毫秒值：先等 2ms 保证时间戳前进。
+      // Any catalog write, here renaming a track and updating albums.updated_at,
+      // must invalidate the 304. The version stamp contains millisecond
+      // MAX(updated_at), so wait 2ms to ensure it advances.
       await new Promise((resolve) => setTimeout(resolve, 2));
       const bump = await companionRequest(env, `/api/album/${albumId}`, {
         method: "PATCH", ...jsonBody({ title: `Renamed for ${path}` }),

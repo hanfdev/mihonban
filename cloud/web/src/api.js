@@ -1,4 +1,4 @@
-// API 客户端：同源 fetch + cookie 会话；401 统一抛出触发登录界面。
+// API client: same-origin fetch with cookie sessions; all 401 responses raise AuthError to open the login view.
 
 import * as discogsDirect from './discogs-api.js'
 
@@ -50,7 +50,7 @@ export const discogsImageProxyUrl = (url) =>
     ? `/api/discogs-image-proxy?url=${encodeURIComponent(url)}`
     : ''
 
-// getSettingsShared 的 in-flight/结果缓存（写入或失败即失效）
+// In-flight/result cache for getSettingsShared; writes and failures invalidate it.
 let settingsShared = null;
 
 export const api = {
@@ -106,12 +106,12 @@ export const api = {
   uploadSession: (path) => req("POST", "/api/upload/session", { path }),
   uploadCover: (path, blob) =>
     req("POST", `/api/upload/cover?path=${encodeURIComponent(path)}`, blob),
-  // 收藏（管理员写，所有人读）
+  // Favorites: administrators write, everyone reads.
   favorites: () => req("GET", "/api/favorites"),
   addFavorite: (kind, id) => req("PUT", `/api/favorites/${kind}/${id}`),
   removeFavorite: (kind, id) => req("DELETE", `/api/favorites/${kind}/${id}`),
   reorderFavorites: (kind, ids) => req("PUT", `/api/favorites/${kind}/reorder`, { ids }),
-  // 艺术家
+  // Artists
   artists: (opts = {}) =>
     req("GET", `/api/artists${opts.hidden ? "?hidden=1" : ""}`),
   artistBio: (name) =>
@@ -121,14 +121,14 @@ export const api = {
       opts.hidden ? '?hidden=1' : ''}`),
   putArtist: (name, fields = {}) =>
     req("PUT", "/api/artists", { name, ...fields }),
-  // 专辑内页图片
+  // Album gallery images
   addAlbumImage: (albumId, path) =>
     req("POST", `/api/album/${albumId}/images`, { path }),
   deleteAlbumImage: (albumId, imgId, file) =>
     req("DELETE", `/api/album/${albumId}/images/${imgId}${file ? "?file=1" : ""}`),
   reorderAlbumImages: (albumId, ids) =>
     req("PUT", `/api/album/${albumId}/images/reorder`, { ids }),
-  // 专辑内曲目管理
+  // Album track management
   addTrack: (albumId, payload) =>
     req("POST", `/api/album/${albumId}/tracks`, payload),
   patchTrack: (albumId, trackId, fields) =>
@@ -142,8 +142,8 @@ export const api = {
   changePassword: (target, current, next) =>
     req("POST", "/api/admin/password", { target, current, next }),
   getSettings: () => req("GET", "/api/admin/settings"),
-  // 后台页四个卡片挂载时各自要读设置：共享同一个 in-flight 请求，
-  // 一次网络往返喂所有卡片。写入或失败后失效，下次重新拉取。
+  // The four admin cards read settings on mount. Share one in-flight request so a single round trip serves them all.
+  // A write or failure invalidates the cache, and the next caller fetches a fresh copy.
   getSettingsShared: () => {
     if (!settingsShared) {
       settingsShared = req("GET", "/api/admin/settings")
@@ -152,7 +152,7 @@ export const api = {
     return settingsShared;
   },
   putSettings: (s) => {
-    // PUT 前后都失效：请求在途时若有挂载点缓存了写前快照，完成后也会被清掉
+    // Invalidate both before and after PUT so a pre-write snapshot cached during the request is cleared as well.
     settingsShared = null;
     return req("PUT", "/api/admin/settings", s)
       .finally(() => { settingsShared = null; });
@@ -170,7 +170,7 @@ export const api = {
   testR2: () => req("POST", "/api/admin/r2/test"),
   prewarmR2: (offset, limit) =>
     req("POST", "/api/admin/r2/prewarm", { offset, limit }),
-  // 多存储后端
+  // Multiple storage backends
   listStorages: () => req("GET", "/api/admin/storages"),
   addStorage: (s) => req("POST", "/api/admin/storages", s),
   putStorageBackend: (id, s) => req("PUT", `/api/admin/storages/${id}`, s),
@@ -186,11 +186,11 @@ export const api = {
     req("POST", "/api/admin/storages/gdrive-auth-url", { clientId, redirectUri }),
   gdriveExchange: (payload) =>
     req("POST", "/api/admin/storages/gdrive-exchange", payload),
-  // 配置导出 / 导入（重新部署后还原 OneDrive / R2 / 存储后端）
+  // Configuration export/import for restoring OneDrive, R2, and storage backends after redeployment.
   exportConfig: () => req("GET", "/api/admin/config/export"),
   importConfig: (payload) => {
-    // 导入会覆盖后台设置。前后都清缓存，避免在途的旧 settings 请求在
-    // 导入完成后重新把旧快照放回共享缓存。
+    // Import overwrites admin settings. Clear the cache on both sides so an older in-flight request cannot
+    // repopulate the shared cache with a pre-import snapshot after the import completes.
     settingsShared = null;
     return req("POST", "/api/admin/config/import", payload)
       .finally(() => { settingsShared = null; });
@@ -204,7 +204,7 @@ export const imgUrl = (imgId, s = 0) =>
   s ? `/api/image/${imgId}?s=${s}` : `/api/image/${imgId}`;
 export const artistArtUrl = (name, v = 0) => {
   const q = new URLSearchParams();
-  // v 可以是数字（会话内 bump）或 'c'（有自定义头像，刷新后仍能与默认封面区分）
+  // v may be a session-local numeric bump or 'c', which distinguishes a custom avatar from the default cover after refresh.
   if (v !== 0 && v !== '' && v != null) q.set('v', String(v));
   const qs = q.toString();
   return `/api/artist-art/${encodeURIComponent(name)}${qs ? `?${qs}` : ''}`;
@@ -312,17 +312,17 @@ async function uploadChunk(uploadUrl, blob, start, end, total, onProgress) {
   throw new Error("上传失败");
 }
 
-/** 上传音频到当前写入目标：
- *  - OneDrive / Google Drive：resumable session 分片直传
- *  - WebDAV / Local：整文件经 Worker 流式代理 PUT
- *  onProgress(uploadedBytes)。返回最终 item JSON（或 {ok:true}）。 */
+/** Upload audio to the current write target:
+ *  - OneDrive / Google Drive: direct chunked upload through a resumable session
+ *  - WebDAV / Local: stream the complete file through the Worker with PUT
+ *  Calls onProgress(uploadedBytes) and returns the final item JSON (or {ok:true}). */
 export async function uploadFileToOneDrive(path, file, onProgress) {
   if (!file || !Number.isFinite(file.size) || file.size <= 0) {
     throw new Error("不能上传空文件");
   }
   const sess = await api.uploadSession(path);
   if (sess.proxy) {
-    // WebDAV / Local 无会话后端：整文件流式代理上传（带进度）
+    // WebDAV and Local have no resumable session; stream the complete file through the proxy with progress.
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT",
@@ -344,7 +344,7 @@ export async function uploadFileToOneDrive(path, file, onProgress) {
     });
   }
   const { uploadUrl } = sess;
-  const CHUNK = 10 * 1024 * 1024; // 10MiB = 320KiB × 32（Graph 要求的对齐）
+  const CHUNK = 10 * 1024 * 1024; // 10 MiB = 320 KiB × 32, satisfying Graph's alignment requirement.
   let done = 0;
   while (done < file.size) {
     const end = Math.min(done + CHUNK, file.size);
@@ -366,7 +366,7 @@ export async function uploadFileToOneDrive(path, file, onProgress) {
     }
     if (done >= file.size) {
       const { __status, __resumeAt, ...item } = uploadResult;
-      return item; // 最后一片返回 item 元数据
+      return item; // The final chunk returns item metadata.
     }
   }
 }

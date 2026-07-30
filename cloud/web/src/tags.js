@@ -1,5 +1,5 @@
-// 客户端读取音频 tag（上传建专辑用）：music-metadata 优先，失败降级为
-// 文件名解析 + <audio> 时长探测，保证任何情况下都能继续上传。
+// Read audio tags client-side when creating an album. Prefer music-metadata, then fall back to filename parsing
+// and <audio> duration probing so an upload can continue even when metadata extraction fails.
 
 const fromFilename = (name) => {
   const stem = name.replace(/\.[^.]+$/, "");

@@ -1,7 +1,8 @@
-"""mihonban cloud pull：云端有、本地没有的专辑要被拉回本地库，并按云端
-元数据补写文件 tag（OneDrive 主源必须自描述——网页上传的文件常没 tag）。
+"""Test mihonban cloud pull: albums present in the cloud but missing locally are
+downloaded and tagged from cloud metadata. Authoritative OneDrive files must be
+self-describing because web uploads often have no tags.
 
-不碰网络也不碰 rclone —— requests 与 subprocess 全部打桩。
+No real network or rclone access; requests and subprocess are fully stubbed.
 """
 
 from __future__ import annotations
@@ -378,7 +379,7 @@ def test_pull_skips_existing_albums(cloud_cfg, monkeypatch):
                         lambda *a, **k: called.append(a) or True)
     rc = cloud.run_pull(cloud_cfg, _console(), quiet=True)
     assert rc == 0
-    assert called == []  # 本地已有且未要求 retag，不该下载也不该动
+    assert called == []  # Already local without retag requested; do not download or modify it.
 
 
 def test_pull_downloads_missing(cloud_cfg, monkeypatch):
@@ -396,7 +397,7 @@ def test_pull_downloads_missing(cloud_cfg, monkeypatch):
 
 
 def test_pull_retags_and_uploads_back(cloud_cfg, monkeypatch):
-    """拉回的专辑 tag 有改动 → 回传 OneDrive + 重新登记。"""
+    """Changed tags on a pulled album are uploaded to OneDrive and registered again."""
     monkeypatch.setattr(cloud, "cloud_library", lambda cfg: [
         _remote("Music/Library/jenny01/Cluster", "jenny01", "Cluster")])
     _stub_download(monkeypatch)
@@ -414,7 +415,7 @@ def test_pull_retags_and_uploads_back(cloud_cfg, monkeypatch):
 
 
 def test_pull_retag_existing_repairs_local(cloud_cfg, monkeypatch):
-    """--retag：本地已有的云端专辑也补 tag（修存量），没改动就不回传。"""
+    """--retag repairs existing local cloud albums and uploads nothing when unchanged."""
     local = cloud_cfg.music_root / "jenny01" / "Cluster"
     local.mkdir(parents=True)
     (local / "01.mp3").write_bytes(b"audio")
@@ -574,7 +575,7 @@ def test_pull_quietly_never_raises(cloud_cfg, monkeypatch):
     def boom(cfg):
         raise RuntimeError("network down")
     monkeypatch.setattr(cloud, "cloud_library", boom)
-    cloud.pull_quietly(cloud_cfg, _console())  # 不应抛出
+    cloud.pull_quietly(cloud_cfg, _console())  # Must not raise.
 
 
 def test_rclone_download_builds_correct_command(cloud_cfg, monkeypatch):
@@ -623,7 +624,7 @@ def test_rclone_upload_timeout_is_reported(cloud_cfg, monkeypatch):
 
 @pytest.mark.needs_ffmpeg
 def test_retag_album_writes_cloud_metadata(cloud_cfg, silent_mp3):
-    """无 tag 的文件按云端元数据补齐；第二遍幂等（0 改动）。"""
+    """Fill an untagged file from cloud metadata; the second pass is idempotent with zero changes."""
     album_dir = cloud_cfg.music_root / "jenny01" / "Cluster"
     album_dir.mkdir(parents=True)
     f = album_dir / "01 opener.mp3"
@@ -643,14 +644,15 @@ def test_retag_album_writes_cloud_metadata(cloud_cfg, silent_mp3):
     assert audio["tracknumber"] == ["1"]
     assert audio["date"] == ["2024"]
     assert audio["genre"] == ["Dream Pop", "Shoegaze"]
-    # 幂等：没有差异就不写
+    # Idempotent: write nothing when there is no difference.
     assert cloud.retag_album(cloud_cfg, album_dir, album, tracks) == 0
 
 
 @pytest.mark.needs_ffmpeg
 def test_retag_preserves_curated_tags(cloud_cfg, silent_mp3):
-    """精修过的 tag 不被裸年份/专辑艺人清洗掉：
-    完整日期满足年份、"3/10" 满足音轨号、feat 艺人保留。"""
+    """Preserve curated tags rather than flattening them to a bare year or album
+    artist: a full date satisfies year, ``3/10`` satisfies track number, and a
+    featured artist remains intact."""
     album_dir = cloud_cfg.music_root / "山下達郎" / "[1978] GO AHEAD!"
     album_dir.mkdir(parents=True)
     f = album_dir / "03 song.mp3"
@@ -671,8 +673,8 @@ def test_retag_preserves_curated_tags(cloud_cfg, silent_mp3):
                "title": "BOMBER", "track": 3, "disc": 1}]
     assert cloud.retag_album(cloud_cfg, album_dir, album, tracks) == 0
     audio = mutagen.File(f, easy=True)
-    assert audio["date"] == ["1978-12-25"]          # 完整日期没被清洗
-    assert audio["artist"] == ["山下達郎 feat. 吉田美奈子"]  # feat 保留
+    assert audio["date"] == ["1978-12-25"]          # Preserve the full date.
+    assert audio["artist"] == ["山下達郎 feat. 吉田美奈子"]  # Preserve the featured artist.
     assert audio["tracknumber"] == ["3/10"]
 
 

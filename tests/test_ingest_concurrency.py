@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""并发健壮性：两个 watch/ingest 抢同一批包不再互相打死（v2.4.1 修复）。"""
+"""Concurrency resilience: two watch/ingest processes no longer crash each other while racing for one batch."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from mihonban.lockfile import release, try_lock
 def test_move_with_suffix_tolerates_missing_source(tmp_path: Path):
     gone = tmp_path / "nope.rar"
     dest = tmp_path / "done"
-    assert _move_with_suffix(gone, dest) is None       # 不抛异常
+    assert _move_with_suffix(gone, dest) is None       # Must not raise.
     assert not (dest / "nope.rar").exists()
 
 
@@ -25,7 +25,7 @@ def test_quarantine_missing_item_leaves_no_litter(cfg):
     cfg.ensure_dirs()
     gone = cfg.inbox / "vanished.rar"
     assert _quarantine(cfg, gone, "vanished", "unexpected error: x") is None
-    assert not (cfg.quarantine_dir / "vanished").exists()  # 不留空目录
+    assert not (cfg.quarantine_dir / "vanished").exists()  # Leave no empty directory.
 
 
 def test_quarantine_keeps_reason_for_each_item(cfg):
@@ -106,9 +106,9 @@ def test_post_import_recovers_files_when_library_path_is_unknown(
 
 def test_run_ingest_skips_archives_gone_from_list(cfg):
     cfg.ensure_dirs()
-    ghost = cfg.inbox / "ghost.rar"          # 清单里有、盘上已没有
+    ghost = cfg.inbox / "ghost.rar"          # Listed, but already gone from disk.
     results = run_ingest(cfg, apply=True, archives=[ghost])
-    assert results == []                     # 静默跳过，不报错不隔离
+    assert results == []                     # Skip silently without error or quarantine.
     assert not (cfg.quarantine_dir / "ghost").exists()
 
 
@@ -128,13 +128,13 @@ def test_process_item_cleans_workspace_after_unexpected_failure(cfg, monkeypatch
 
 def test_ingest_lock_blocks_second_runner(cfg):
     cfg.ensure_dirs()
-    held = try_lock(cfg.state_dir / "ingest.lock")     # 模拟另一个实例持锁
+    held = try_lock(cfg.state_dir / "ingest.lock")     # Simulate another process owning the lock.
     assert held is not None
     try:
         (cfg.inbox / "x.rar").write_bytes(b"not really a rar")
         results = run_ingest(cfg, apply=True)
-        assert results == []                 # 拿不到锁 → 本轮直接让路
-        assert (cfg.inbox / "x.rar").exists()  # 文件原封不动
+        assert results == []                 # No lock: yield this run immediately.
+        assert (cfg.inbox / "x.rar").exists()  # Leave the file untouched.
     finally:
         release(held)
 
@@ -143,8 +143,8 @@ def test_lockfile_reacquire_after_release(tmp_path: Path):
     p = tmp_path / "l.lock"
     a = try_lock(p)
     assert a is not None
-    assert try_lock(p) is None               # 持有中不可重入
+    assert try_lock(p) is None               # Cannot re-enter while held.
     release(a)
-    b = try_lock(p)                          # 释放后可再拿
+    b = try_lock(p)                          # Can acquire again after release.
     assert b is not None
     release(b)
