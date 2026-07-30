@@ -27,6 +27,7 @@ Les mots de passe enregistrés dans Admin dépassent les valeurs de démarrage d
 
 ## Lecture et interactions mobiles
 
+- La navigation principale ouvre toujours la destination en haut de page. Cliquez de nouveau sur le logo ou l’élément de navigation actif pour remonter en douceur ; les onglets Albums et Morceaux de la page Favoris suivent la même règle.
 - Le volume, la langue et le tri sont enregistrés par origin du navigateur. Un nouveau nom d’hôte ou domaine personnalisé repart avec de nouvelles préférences ; sans valeur enregistrée, le volume commence à 100 %.
 - La lecture démarre dans l’événement de toucher/clic d’origine afin qu’Android Chrome puisse établir une lecture audible et une session multimédia système. Sur les navigateurs compatibles, l’écran verrouillé/la notification permet lecture, pause, piste précédente/suivante et recherche.
 - Sur mobile, touchez la pochette ou la zone vide du mini-lecteur, ou faites glisser le mini-lecteur vers le haut, pour ouvrir l’écran de lecture. Les liens d’album et d’artiste restent indépendants.

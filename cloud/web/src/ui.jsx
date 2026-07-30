@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect,
 import { createPortal } from 'react-dom'
 import { useI18n } from './i18n.jsx'
 import { fmtDur, fmtTotal } from './format.js'
+import { hashOf } from './navigation.js'
 
 export { fmtDur, fmtTotal }
 
@@ -339,11 +340,6 @@ const initialHistoryState = history.state && typeof history.state === 'object'
   ? history.state : {}
 history.replaceState({ ...initialHistoryState,
   [NAV_STATE]: { session: NAV_SESSION, depth: 0 } }, '')
-
-const hashOf = (value) => {
-  const path = String(value || '/').replace(/^#/, '')
-  return `#${path.startsWith('/') ? path : `/${path}`}`
-}
 
 export const navigate = (value, { replace = false } = {}) => {
   const hash = hashOf(value)

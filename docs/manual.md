@@ -27,6 +27,7 @@ Passwords saved in Admin override environment bootstrap values. Changing either 
 
 ## Playback and mobile interaction
 
+- Primary navigation always opens its destination at the top. Click the active logo or navigation item again to scroll smoothly back to the top; the Albums and Tracks tabs inside Favorites follow the same rule.
 - Volume, language, and sort preferences are local to each browser origin. Opening a new hostname or custom domain starts with fresh preferences; an unset volume starts at 100%.
 - Playback is initiated inside the originating tap/click so Android Chrome can establish audible playback and a system media session. The lock-screen/notification controls expose play, pause, previous, next, and seeking where the browser supports them.
 - On mobile, tap the cover or the empty part of the mini-player, or swipe the mini-player upward, to open Now Playing. Album and artist links remain independently tappable.

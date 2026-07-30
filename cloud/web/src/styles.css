@@ -95,10 +95,11 @@ img { display: block; }
   flex: none;
   position: relative;
   z-index: 20;
-  /* Symmetric three-column layout: nav | centered search | admin. Matching
-     1fr side columns keep search geometrically centered. */
+  /* Content-aware columns keep the primary navigation and account tools from
+     invading the search area. The search remains centered inside the space
+     that is actually available rather than between two artificially equal sides. */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, min(420px, 34vw)) minmax(0, 1fr);
+  grid-template-columns: max-content minmax(180px, 1fr) max-content;
   align-items: center;
   column-gap: 14px;
   padding: 12px 22px;
@@ -274,18 +275,20 @@ img { display: block; }
   .lang-wrap::after { right: 6px; }
 }
 
-/* Medium widths: tighten primary-nav padding and narrow the search column. */
+/* Medium widths: tighten navigation before the search becomes a compact action. */
 @media (max-width: 1280px) {
   .nav a { padding: 7px 10px; }
   .nav-admin a { padding: 6px 9px; }
   .logo em { display: none; }
-  .hdr { grid-template-columns: minmax(0, 1fr) minmax(160px, min(320px, 30vw)) minmax(0, 1fr); }
-}
-@media (max-width: 1100px) {
   .hdr-count { display: none; }
-  .hdr { grid-template-columns: minmax(0, 1fr) minmax(140px, min(260px, 28vw)) minmax(0, 1fr); }
+  .hdr { grid-template-columns: max-content minmax(160px, 1fr) max-content; }
 }
-
+/* Preserve all four primary destinations in the awkward desktop/tablet band.
+   Search moves behind its familiar icon before it can cover Artists or Picks. */
+@media (max-width: 1180px) {
+  .hdr { grid-template-columns: minmax(0, 1fr) auto; }
+  .hdr-center { display: none; }
+}
 /* ---------- filter bar ---------- */
 
 .filters {
@@ -1275,20 +1278,38 @@ select option { background-color: var(--bg2); color: var(--ink); }
 .stat span { color: var(--ink-faint); font-size: 12px; }
 
 .post-list { display: grid; gap: 4px; }
-.post-list.dim { opacity: 0.62; }
+.post-list.dim .post-title { color: var(--ink-faint); }
 .post-row {
   display: grid;
-  grid-template-columns: 1fr 92px auto auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: center;
+  min-height: 48px;
   padding: 7px 10px;
   border-radius: var(--r-sm);
   font-size: 13.5px;
 }
 @media (hover: hover) { .post-row:hover { background: var(--bg2); } }
-.post-title { color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+.post-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--ink-dim);
+}
+.post-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-title svg { flex: none; }
 @media (hover: hover) { .post-title:hover { color: var(--gold); } }
 .post-date { color: var(--ink-faint); font-size: 12px; text-align: right; }
+.post-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.post-status { color: var(--ink-faint); font-size: 12px; white-space: nowrap; }
 .btn.sm { padding: 5px 11px; font-size: 12px; }
 
 textarea.tin { resize: vertical; line-height: 1.6; }
@@ -2113,6 +2134,18 @@ body.lb-lock { overflow: hidden; }
 .m-search { display: none; }
 .m-search-row { display: none; }
 
+@media (max-width: 1180px) {
+  .m-search { display: grid; color: var(--ink-dim); }
+  .m-search.on { color: var(--accent-hi); }
+  .m-search-row { display: block; flex: none; padding: 4px var(--page-gutter) 8px; }
+  .m-search-row .search {
+    width: auto;
+    max-width: none;
+    flex: 1;
+    min-width: 0;
+  }
+}
+
 /* ---------- Responsive layout: tablet and below ---------- */
 
 @media (max-width: 900px) {
@@ -2253,8 +2286,34 @@ body.lb-lock { overflow: hidden; }
   .dialog { padding: 20px; max-height: 92vh; }
   .overlay { padding: 12px; align-items: end; }
   .stat-row { gap: 18px; }
-  .post-row { grid-template-columns: 1fr auto; }
-  .post-row .post-date:first-of-type { display: none; }
+  .post-tools { gap: 10px; }
+  .post-tools .seg { width: 100%; }
+  .post-tools .seg button { flex: 1; padding-inline: 8px; }
+  .post-tools .search.sm { width: 100%; max-width: none; flex-basis: 100%; min-height: 42px; }
+  .post-list { gap: 0; }
+  .post-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    row-gap: 8px;
+    min-height: 0;
+    padding: 13px 4px;
+    border-bottom: 1px solid var(--line-soft);
+    border-radius: 0;
+  }
+  .post-row:first-child { border-top: 1px solid var(--line-soft); }
+  .post-main { display: contents; }
+  .post-title { grid-column: 1 / -1; line-height: 1.4; color: var(--ink); }
+  .post-title span {
+    display: -webkit-box;
+    overflow: hidden;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .post-date { grid-column: 1; grid-row: 2; text-align: left; }
+  .post-actions { grid-column: 2; grid-row: 2; }
+  .post-actions .btn.sm { min-height: 34px; padding: 5px 10px; }
 
   .upl-row { grid-template-columns: 24px 1fr 62px 26px; }
   .upl-row .upl-prog { display: none; }

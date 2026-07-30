@@ -27,6 +27,7 @@ Las contraseñas guardadas en Admin anulan los valores de arranque del entorno d
 
 ## Reproducción e interacción móvil
 
+- La navegación principal abre siempre el destino desde la parte superior. Vuelve a pulsar el logotipo o la opción de navegación activa para subir suavemente; las pestañas Álbumes y Canciones de Favoritos siguen la misma regla.
 - El volumen, el idioma y la ordenación se guardan por origin del navegador. Un nombre de host o dominio personalizado nuevo empieza con preferencias nuevas; si no hay volumen guardado, comienza al 100 %.
 - La reproducción comienza dentro del toque/clic original para que Android Chrome pueda establecer audio y una sesión multimedia del sistema. En navegadores compatibles, la pantalla de bloqueo/notificación permite reproducir, pausar, cambiar de pista y buscar.
 - En móvil, toca la portada o el espacio vacío del minirreproductor, o deslízalo hacia arriba, para abrir la pantalla de reproducción. Los enlaces del álbum y del artista siguen siendo independientes.

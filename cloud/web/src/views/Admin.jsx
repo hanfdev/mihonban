@@ -299,16 +299,21 @@ function SourceCard() {
       <div className={`post-list ${tab !== 'new' && tab !== 'all' ? 'dim' : ''}`}>
         {posts.map((p) => (
           <div key={p.id} className="post-row">
-            <a href={p.url} target="_blank" rel="noreferrer" className="post-title">
-              {p.title} <I.ext size={11} /></a>
-            <span className="post-date">{p.published}</span>
-            {p.status === 'new' ? <>
-              <button className="btn sm" onClick={() => mark(p.id, 'done')}>{t('admin.markDone')}</button>
-              <button className="btn sm" onClick={() => mark(p.id, 'ignored')}>{t('admin.markIgnore')}</button>
-            </> : <>
-              <span className="post-date">{p.status === 'done' ? t('admin.statusDone') : t('admin.statusIgnored')}</span>
-              <button className="btn sm" onClick={() => mark(p.id, 'new')}>{t('admin.markRestore')}</button>
-            </>}
+            <div className="post-main">
+              <a href={p.url} target="_blank" rel="noreferrer" className="post-title">
+                <span>{p.title}</span><I.ext size={11} />
+              </a>
+              <span className="post-date">{p.published}</span>
+            </div>
+            <div className="post-actions">
+              {p.status === 'new' ? <>
+                <button className="btn sm" onClick={() => mark(p.id, 'done')}>{t('admin.markDone')}</button>
+                <button className="btn sm" onClick={() => mark(p.id, 'ignored')}>{t('admin.markIgnore')}</button>
+              </> : <>
+                <span className={`post-status ${p.status}`}>{p.status === 'done' ? t('admin.statusDone') : t('admin.statusIgnored')}</span>
+                <button className="btn sm" onClick={() => mark(p.id, 'new')}>{t('admin.markRestore')}</button>
+              </>}
+            </div>
           </div>
         ))}
         {!loading && posts.length === 0 && (

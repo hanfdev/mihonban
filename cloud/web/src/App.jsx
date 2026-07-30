@@ -18,6 +18,7 @@ import { installTrackMediaSessionHandlers } from './media-session.js'
 import { adjacentQueuePosition } from './player-queue.js'
 import { sessionAfterLogout } from './session.js'
 import { visibleAlbumCount } from './visibility.js'
+import { isCurrentHash, scrollToTop } from './navigation.js'
 
 const parseHash = () => {
   const h = location.hash.replace(/^#\/?/, '')
@@ -38,10 +39,10 @@ const AUDIO_MIME = {
 // Navigation links use the in-app router for an ordinary left click while preserving custom history depth.
 // Modified clicks stay with the browser: Ctrl/Cmd opens a tab, Shift opens a window, and Alt downloads.
 // Calling preventDefault unconditionally would make the real href we added effectively useless.
-const navClick = (hash) => (e) => {
+const navClick = (hash, onNavigate) => (e) => {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0) return
   e.preventDefault()
-  navigate(hash)
+  onNavigate(hash)
 }
 
 // Fallback view for initial data failures other than 401, using the same visual language as the album error state.
@@ -106,6 +107,7 @@ export default function App() {
   const [mSearch, setMSearch] = useState(false)    // Mobile search row toggle
   const [scrolled, setScrolled] = useState(false)  // Add a header shadow after content scrolls
   const mainRef = useRef(null)
+  const navScrollRef = useRef('auto')
 
   // ---- Player state ----
   const audioRef = useRef(null)
@@ -124,7 +126,10 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       setRoute(parseHash())
-      mainRef.current?.scrollTo(0, 0)   // Scrolling lives in the content container, not window.
+      const behavior = navScrollRef.current
+      navScrollRef.current = 'auto'
+      // Wait for the destination view to render before moving its scroll container.
+      requestAnimationFrame(() => scrollToTop(mainRef.current, behavior))
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
@@ -608,7 +613,14 @@ export default function App() {
     )
   }
 
-  const nav = navigate
+  const navigateToTop = (hash) => {
+    if (isCurrentHash(hash, location.hash)) {
+      scrollToTop(mainRef.current)
+      return
+    }
+    navScrollRef.current = 'smooth'
+    navigate(hash)
+  }
 
   const searchable = ['library', 'tracks', 'genre', 'favs', 'artists'].includes(route.view)
   // Separate the primary navigation from the admin entry so long translations cannot cover the search field.
@@ -647,14 +659,14 @@ export default function App() {
       <header className={`hdr ${scrolled ? 'on-scroll' : ''}`}>
         <div className="hdr-left">
           <a className="logo" href="#/" aria-label={t('brand')}
-             onClick={navClick('/')}>
+             onClick={navClick('/', navigateToTop)}>
             <Logo /> <span className="logo-t">{t('brand')} <em>{t('brandSub')}</em></span>
           </a>
           <nav className="nav nav-main">
             {NAV_MAIN.map((n) => (
               <a key={n.key} className={n.on ? 'on' : ''} href={`#${n.hash}`}
                  aria-current={n.on ? 'page' : undefined}
-                 onClick={navClick(n.hash)}>{n.label}</a>
+                 onClick={navClick(n.hash, navigateToTop)}>{n.label}</a>
             ))}
           </nav>
         </div>
@@ -686,7 +698,7 @@ export default function App() {
               {NAV_ADMIN.map((n) => (
                 <a key={n.key} className={n.on ? 'on' : ''} href={`#${n.hash}`}
                    aria-current={n.on ? 'page' : undefined}
-                   onClick={navClick(n.hash)}>{n.label}</a>
+                   onClick={navClick(n.hash, navigateToTop)}>{n.label}</a>
               ))}
             </nav>
           )}
@@ -773,7 +785,7 @@ export default function App() {
           <FavoritesPage {...shared} favs={favs} onReorder={reorderFavs}
                          tracks={tracksAll} ensureTracks={ensureTracks}
                          tab={route.arg === 'tracks' ? 'tracks' : 'albums'}
-                         onTabChange={(tab) => nav(`/favs/${tab}`)} />
+                         onTabChange={(tab) => navigateToTop(`/favs/${tab}`)} />
         )}
         {route.view === 'artist' && (
           <ArtistPage key={route.arg} {...shared} name={route.arg} artists={artists}
@@ -825,7 +837,7 @@ export default function App() {
         {NAV.map((n) => (
           <a key={n.key} className={n.on ? 'on' : ''} href={`#${n.hash}`}
              aria-label={n.label} aria-current={n.on ? 'page' : undefined}
-             onClick={navClick(n.hash)}>
+             onClick={navClick(n.hash, navigateToTop)}>
             <n.icon size={21} /><span>{n.label}</span>
           </a>
         ))}
