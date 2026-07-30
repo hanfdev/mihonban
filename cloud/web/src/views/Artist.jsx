@@ -562,9 +562,10 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
             <div className="big">{t('artistPage.emptyAlbums')}</div>
           </div>
         )}
-        {mine.map((a) => (
+        {mine.map((a, index) => (
           <AlbumCard key={a.id} a={a} onOpen={onOpen}
                      onOpenArtist={onOpenArtist} onPlay={playAlbum}
+                     priority={index < 16}
                      currentAlbumId={currentAlbumId} playingId={playingId}
                      onTogglePlayback={onTogglePlayback} />
         ))}

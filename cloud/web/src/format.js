@@ -12,6 +12,15 @@ export function fmtDur(value) {
   return `${minutes}:${String(total % 60).padStart(2, '0')}`
 }
 
+export function fmtBitrate(value) {
+  const bitrate = Number(value)
+  if (!Number.isFinite(bitrate) || bitrate <= 0) return ''
+  if (bitrate >= 1000) {
+    return `${(bitrate / 1000).toFixed(2).replace(/\.?0+$/, '')}M`
+  }
+  return `${Math.round(bitrate)}K`
+}
+
 /** Format total duration; pass t from useI18n when available. */
 export function fmtTotal(value, t) {
   const seconds = Number(value)

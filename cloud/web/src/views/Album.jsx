@@ -9,6 +9,7 @@ import { I, CropDialog, Dialog, Heart, Md, NoteText, Rating, Reader,
 import { useI18n } from '../i18n.jsx'
 import { galleryImageLoadState, gallerySwipeDirection } from '../gallery-gesture.js'
 import { albumPlaybackState } from '../album-playback.js'
+import { fmtBitrate } from '../format.js'
 import { ArtistCredit, ArtistEditor, artistCreditText, creditsFromTags,
          creditsOf, sameArtistNames } from '../artist-credit.jsx'
 
@@ -22,6 +23,21 @@ const IMAGE_EXT = {
 const imageExt = (file) => IMAGE_EXT[String(file?.type || '').toLowerCase()]
   || (/\.(jpe?g|png|webp|gif|avif)$/i.exec(file?.name || '')?.[1]
     || '').toLowerCase().replace('jpeg', 'jpg')
+
+function TrackFormat({ format, bitrate }) {
+  const rate = fmtBitrate(bitrate)
+  return (
+    <span className={`t-fmt ${rate ? 'has-rate' : ''}`}>
+      {format && <span className="t-code">{format}</span>}
+      {format && rate && <span className="t-fmt-sep" aria-hidden="true">·</span>}
+      {rate && (
+        <span className="t-rate" title={`${Math.round(Number(bitrate))} kbps`}>
+          {rate}
+        </span>
+      )}
+    </span>
+  )
+}
 
 function DescriptorSummary({ values }) {
   const { t } = useI18n()
@@ -1598,8 +1614,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
                               className="album-track-artists" />
               )}
             </span>
-            <span className="t-fmt">
-              {t.format}{t.bitrate ? ` · ${t.bitrate}k` : ''}</span>
+            <TrackFormat format={t.format} bitrate={t.bitrate} />
             <span className="t-dur">{fmtDur(t.duration)}</span>
             <span className="t-heart">
               <Heart on={favTracks.has(t.id)} canEdit={isAdmin}

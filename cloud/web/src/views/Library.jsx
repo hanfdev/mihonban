@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { api, artUrl } from '../api.js'
 import { ClearFilters, FilterSel, I, Rating, VisibilityToggle, goBack, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
@@ -11,8 +11,70 @@ import { ArtistCredit, artistCreditText, artistSearchText, creditsOf,
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 
+const coverPreloadCallbacks = new WeakMap()
+let coverPreloadObserver = null
+
+function observeCoverAhead(element, onEnter) {
+  if (typeof IntersectionObserver === 'undefined') {
+    onEnter()
+    return () => {}
+  }
+  if (!coverPreloadObserver) {
+    coverPreloadObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return
+        const callback = coverPreloadCallbacks.get(entry.target)
+        if (callback) callback()
+        coverPreloadObserver.unobserve(entry.target)
+        coverPreloadCallbacks.delete(entry.target)
+      })
+    }, { rootMargin: '1600px 0px' })
+  }
+  coverPreloadCallbacks.set(element, onEnter)
+  coverPreloadObserver.observe(element)
+  return () => {
+    coverPreloadObserver.unobserve(element)
+    coverPreloadCallbacks.delete(element)
+  }
+}
+
+function AheadCoverImage({ src, alt, priority = false }) {
+  const imageRef = useRef(null)
+  const [shouldLoad, setShouldLoad] = useState(priority)
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    setReady(false)
+    if (priority) {
+      setShouldLoad(true)
+      return undefined
+    }
+    setShouldLoad(false)
+    return observeCoverAhead(imageRef.current, () => setShouldLoad(true))
+  }, [priority, src])
+
+  const revealWhenDecoded = async () => {
+    const image = imageRef.current
+    if (!image) return
+    try { await image.decode() } catch { /* onload still provides a usable image */ }
+    if (image === imageRef.current && image.getAttribute('src') === src) setReady(true)
+  }
+
+  return (
+    <>
+      <span className="cover-placeholder" aria-hidden="true"><I.disc size={26} /></span>
+      <img ref={imageRef} className={`cover-img ${ready ? 'is-ready' : ''}`}
+           loading="eager" decoding="async"
+           fetchPriority={priority ? 'high' : 'auto'}
+           src={shouldLoad ? src : undefined} alt={alt}
+           onLoad={revealWhenDecoded} onError={() => setReady(false)} />
+    </>
+  )
+}
+
 export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
-                            currentAlbumId, playingId, onTogglePlayback }) {
+                            currentAlbumId, playingId, onTogglePlayback,
+                            priority = false }) {
   const { t } = useI18n()
   const toast = useToast()
   const playback = albumPlaybackState(a.id, currentAlbumId, playingId)
@@ -25,12 +87,13 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
     }
   }
   return (
-    <div className={`card ${a.hidden ? 'is-hidden' : ''}`}>
+    <div className={`card ${a.hidden ? 'is-hidden' : ''} ${
+              playback.current ? 'is-current' : ''}`}>
       <div className="cover" role="button" tabIndex={0}
            aria-label={`${a.title} · ${artistCreditText(a)}`}
            onKeyDown={openAlbumWithKey} onClick={() => onOpen(a.id)}>
-        <img loading="lazy" src={artUrl(a.id, 400)}
-             alt={`${a.title} · ${artistCreditText(a)}`} />
+        <AheadCoverImage src={artUrl(a.id, 400)} priority={priority}
+                         alt={`${a.title} · ${artistCreditText(a)}`} />
         {a.hidden && <span className="badge-hidden">{t('albumPage.hiddenBadge')}</span>}
         <button className={`play-fab ${playback.current ? 'is-current' : ''} ${
                   playback.playing ? 'is-playing' : ''}`}
@@ -247,7 +310,7 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
         </div>
       </div>
 
-      <div className="grid">
+      <div className="grid library-grid">
         {!shown && [...Array(12)].map((_, i) =>
           <div key={i}><div className="sk" style={{ aspectRatio: 1 }} />
             <div className="sk" style={{ height: 14, marginTop: 11, width: '80%' }} />
@@ -258,9 +321,10 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
             <div>{t('empty.tryOther')}</div>
           </div>
         )}
-        {shown && shown.map((a) =>
+        {shown && shown.map((a, index) =>
           <AlbumCard key={a.id} a={a} onOpen={onOpen}
                      onOpenArtist={onOpenArtist} onPlay={playAlbum}
+                     priority={index < 16}
                      currentAlbumId={currentAlbumId} playingId={playingId}
                      onTogglePlayback={onTogglePlayback} />)}
       </div>

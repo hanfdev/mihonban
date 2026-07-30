@@ -32,6 +32,7 @@ Passwords saved in Admin override environment bootstrap values. Changing either 
 - On mobile, tap the cover or the empty part of the mini-player, or swipe the mini-player upward, to open Now Playing. Album and artist links remain independently tappable.
 - The compact mobile transport keeps previous, play/pause, and next visible in that order. Shuffle and repeat remain available in the full Now Playing view.
 - Gallery images show a loading state while switching; swipe horizontally to move between pages on touch devices.
+- Album grids preload covers ahead of the viewport and keep a restrained placeholder visible until decoding completes. On fine-pointer desktop library screens, covers are slightly toned down at rest and return to their original color on hover, keyboard focus, or current playback. Track bitrates at or above 1000 kbps use compact `M` notation; hover the value to see the exact kbps.
 
 ## Inbox folders and archives
 

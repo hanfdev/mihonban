@@ -318,6 +318,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
               )}
               <AlbumCard a={a} onOpen={onOpen}
                          onOpenArtist={onOpenArtist} onPlay={playAlbum}
+                         priority={i < 16}
                          currentAlbumId={currentAlbumId} playingId={playingId}
                          onTogglePlayback={onTogglePlayback} />
             </div>

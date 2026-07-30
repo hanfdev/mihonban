@@ -32,6 +32,7 @@ Les mots de passe enregistrés dans Admin dépassent les valeurs de démarrage d
 - Sur mobile, touchez la pochette ou la zone vide du mini-lecteur, ou faites glisser le mini-lecteur vers le haut, pour ouvrir l’écran de lecture. Les liens d’album et d’artiste restent indépendants.
 - Le mini-lecteur mobile affiche toujours, dans cet ordre, piste précédente, lecture/pause et piste suivante. La lecture aléatoire et la répétition restent disponibles dans l’écran de lecture complet.
 - Un état de chargement apparaît pendant le changement d’image du livret ; balayez horizontalement pour passer à l’image précédente ou suivante.
+- Les grilles d’albums préchargent les pochettes proches de la fenêtre et conservent un espace réservé discret jusqu’à la fin du décodage. Dans la bibliothèque de bureau avec pointeur précis, les pochettes au repos sont légèrement atténuées et retrouvent leurs couleurs d’origine au survol, au focus clavier ou pendant la lecture. Les débits d’au moins 1000 kbps utilisent une notation compacte en `M` ; survolez la valeur pour afficher le nombre exact de kbps.
 
 ## Dossiers et archives de la boîte de réception
 

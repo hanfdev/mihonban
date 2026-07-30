@@ -32,6 +32,7 @@ Las contraseñas guardadas en Admin anulan los valores de arranque del entorno d
 - En móvil, toca la portada o el espacio vacío del minirreproductor, o deslízalo hacia arriba, para abrir la pantalla de reproducción. Los enlaces del álbum y del artista siguen siendo independientes.
 - El minirreproductor móvil muestra siempre, en este orden, pista anterior, reproducir/pausar y pista siguiente. La reproducción aleatoria y la repetición siguen disponibles en la pantalla de reproducción completa.
 - Al cambiar una imagen del libreto se muestra un estado de carga; desliza horizontalmente para ver la imagen anterior o siguiente.
+- Las cuadrículas de álbumes precargan las portadas cercanas a la ventana y mantienen un marcador discreto hasta que termina la decodificación. En la biblioteca de escritorio con puntero preciso, las portadas en reposo se atenúan ligeramente y recuperan sus colores originales al pasar el puntero, recibir el foco del teclado o estar reproduciéndose. Las tasas de bits de 1000 kbps o más usan una notación compacta en `M`; pasa el puntero sobre el valor para ver los kbps exactos.
 
 ## Carpetas y archivos de la bandeja de entrada
 
