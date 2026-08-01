@@ -1,10 +1,10 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { ClearFilters, FilterSel, I, usePointerReorder, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
-import { AlbumCard } from './Library.jsx'
+import { AlbumCard, isPriorityCover } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
 import { defaultCollator, jaCollator } from '../format.js'
 import { locateTrackRow } from '../track-locate.js'
@@ -208,12 +208,12 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
     locateTrackRow(currentId)
   }
 
-  const playAlbum = async (a) => {
+  const playAlbum = useCallback(async (a) => {
     try {
       const detail = await api.album(a.id)
       if (detail.tracks?.length) onPlay(detail, detail.tracks) // Let player state choose the starting position.
     } catch (e) { toast(e.message, 'err') }
-  }
+  }, [onPlay, toast])
 
   const empty = (what) => (
     <div className="empty">
@@ -318,7 +318,7 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
               )}
               <AlbumCard a={a} onOpen={onOpen}
                          onOpenArtist={onOpenArtist} onPlay={playAlbum}
-                         priority={i < 16}
+                         priority={isPriorityCover(i)}
                          currentAlbumId={currentAlbumId} playingId={playingId}
                          onTogglePlayback={onTogglePlayback} />
             </div>

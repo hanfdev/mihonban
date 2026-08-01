@@ -35,6 +35,133 @@ function companionEnv(db, extra = {}) {
   };
 }
 
+async function testSha16(value) {
+  const bytes = await crypto.subtle.digest(
+    "SHA-1", new TextEncoder().encode(value.normalize("NFC")),
+  );
+  return [...new Uint8Array(bytes)].map((byte) =>
+    byte.toString(16).padStart(2, "0")).join("").slice(0, 16);
+}
+
+test("runtime migration adds manual track title columns to legacy databases", async () => {
+  const db = new Database(":memory:");
+  const legacySchema = schema.replace(
+    /^\s*title_override INTEGER NOT NULL DEFAULT 0,.*\r?\n/gm, "",
+  );
+  db.exec(legacySchema);
+  const folder = "Music/Library/Legacy/[2006] Album";
+  const path = `${folder}/Legacy - Song.flac`;
+  const unchangedPath = `${folder}/Unchanged.flac`;
+  const albumId = await testSha16(folder);
+  const trackId = await testSha16(path);
+  const unchangedTrackId = await testSha16(unchangedPath);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main-store', 'Main', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES (?, 'Legacy', 'Album', ?, 'main-store', 1, 1)`)
+    .run(albumId, folder);
+  const insertTrack = db.prepare(
+    "INSERT INTO tracks (id, album_id, title, path) VALUES (?, ?, ?, ?)");
+  insertTrack.run(trackId, albumId, "Song", path);
+  insertTrack.run(unchangedTrackId, albumId, "Unchanged", unchangedPath);
+  const env = companionEnv(db);
+
+  try {
+    const response = await companionRequest(env, "/api/library");
+    assert.equal(response.status, 200);
+    assert.ok(db.prepare("PRAGMA table_info(tracks)").all()
+      .some((column) => column.name === "title_override"));
+    assert.ok(db.prepare("PRAGMA table_info(track_imports)").all()
+      .some((column) => column.name === "title_override"));
+
+    const synced = await companionRequest(env, "/api/albums", {
+      method: "POST",
+      ...jsonBody({
+        folder, artist: "Legacy", title: "Album",
+        tracks: [
+          { path, title: "Legacy - Song" },
+          { path: unchangedPath, title: "Unchanged" },
+        ],
+      }),
+    });
+    assert.equal(synced.status, 200, (await synced.json()).error);
+    assert.deepEqual(db.prepare(
+      "SELECT title, title_override FROM tracks WHERE id = ?").get(trackId),
+    { title: "Song", title_override: 1 });
+    assert.deepEqual(db.prepare(
+      "SELECT title, title_override FROM tracks WHERE id = ?")
+      .get(unchangedTrackId),
+    { title: "Unchanged", title_override: 0 });
+  } finally {
+    db.close();
+  }
+});
+
+test("manual track titles survive album and track synchronization", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main-store', 'Main', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  const folder = "Music/Library/jenny01/[2006] jenny01 Best";
+  const firstPath = `${folder}/jenny01 - Star scooter.flac`;
+  const secondPath = `${folder}/jenny01 - Maybe I'm in love.flac`;
+  const register = (firstTitle, secondTitle) => companionRequest(env, "/api/albums", {
+    method: "POST",
+    ...jsonBody({
+      folder, artist: "jenny01", title: "jenny01 Best",
+      tracks: [
+        { path: firstPath, title: firstTitle, track: 1, duration: 180 },
+        { path: secondPath, title: secondTitle, track: 2, duration: 190 },
+      ],
+    }),
+  });
+
+  try {
+    const created = await register(
+      "jenny01 - Star scooter", "jenny01 - Maybe I'm in love");
+    const createdBody = await created.json();
+    assert.equal(created.status, 200, createdBody.error);
+    const albumId = createdBody.id;
+    let detail = await (await companionRequest(
+      env, `/api/album/${albumId}`)).json();
+    const firstId = detail.tracks.find((track) => track.path === firstPath).id;
+
+    const renamed = await companionRequest(
+      env, `/api/album/${albumId}/tracks/${firstId}`, {
+        method: "PATCH", ...jsonBody({ title: "Star scooter" }),
+      });
+    assert.equal(renamed.status, 200, (await renamed.json()).error);
+    assert.deepEqual(db.prepare(
+      "SELECT title, title_override FROM tracks WHERE id = ?").get(firstId),
+    { title: "Star scooter", title_override: 1 });
+
+    const rescanned = await register(
+      "jenny01 - Star scooter", "Maybe I'm in love");
+    assert.equal(rescanned.status, 200, (await rescanned.json()).error);
+    detail = await (await companionRequest(
+      env, `/api/album/${albumId}`)).json();
+    const first = detail.tracks.find((track) => track.id === firstId);
+    const second = detail.tracks.find((track) => track.path === secondPath);
+    assert.equal(first.title, "Star scooter");
+    assert.equal(first.titleOverride, true);
+    assert.equal(second.title, "Maybe I'm in love");
+    assert.equal(second.titleOverride, false);
+
+    const trackSync = await companionRequest(env, `/api/album/${albumId}/tracks`, {
+      method: "POST",
+      ...jsonBody({ path: firstPath, title: "jenny01 - Star scooter", track: 1 }),
+    });
+    assert.equal(trackSync.status, 200, (await trackSync.json()).error);
+    assert.deepEqual(db.prepare(
+      "SELECT title, title_override FROM tracks WHERE id = ?").get(firstId),
+    { title: "Star scooter", title_override: 1 });
+  } finally {
+    db.close();
+  }
+});
+
 test("genre mirror triggers follow direct album updates and deletes", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
@@ -745,9 +872,94 @@ test("image size inputs are strict and temporary cloud redirects are not cached"
   }
 });
 
-test("R2 image redirects carry the stable mirror version and cache publicly", async () => {
+test("album list covers request bounded transforms while detail covers keep source bytes", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
+  const coverPath = "Music/Library/Artist/Album/cover.jpg";
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00]);
+  const webp = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+  ]);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('media', 'Media', 'onedrive', ?, 1, 1)`).run(JSON.stringify({
+    clientId: "client", clientSecret: "secret", refreshToken: "refresh",
+    driveId: "drive",
+  }));
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, cover_path, storage_id, created_at, updated_at)
+    VALUES ('album', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      ?, 'media', 1, 1)`).run(coverPath);
+  const env = companionEnv(db);
+  await env.KV.put(`dl:media:${coverPath}`, "https://media.example.test/cover");
+  const realFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input, init = {}) => {
+    requests.push({ url: String(input), image: init.cf?.image || null });
+    const transformed = !!init.cf?.image;
+    return new Response(transformed ? webp : jpeg, { headers: {
+      "Content-Type": transformed ? "image/webp" : "image/jpeg",
+    } });
+  };
+
+  try {
+    assert.equal((await companionRequest(env, "/api/art/album?s=400")).status, 200);
+    assert.equal((await companionRequest(env, "/api/art/album?s=1000")).status, 200);
+    assert.deepEqual(requests, [
+      {
+        url: "https://media.example.test/cover",
+        image: { fit: "scale-down", width: 640, height: 640, format: "webp" },
+      },
+      { url: "https://media.example.test/cover", image: null },
+    ]);
+  } finally {
+    globalThis.fetch = realFetch;
+    db.close();
+  }
+});
+
+test("R2 image redirects use size-aware mirrors and cache publicly", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('media', 'Media', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, cover_path, storage_id, created_at, updated_at)
+    VALUES ('album', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      'Music/Library/Artist/Album/cover.jpg', 'media', 1, 1)`).run();
+  db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
+  db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at, cache_policy)
+    VALUES
+      ('art:album:640', 'img/art_album_640.jpg', 123456, 1),
+      ('art:album:original', 'img/art_album_original.jpg', 234567, 1)`).run();
+  const env = companionEnv(db, {
+    R2_ACCESS_KEY: "access",
+    R2_SECRET_KEY: "secret",
+    R2_ENDPOINT: "https://r2.example",
+    R2_BUCKET: "bucket",
+    R2_PUBLIC_URL: "https://cdn.example",
+  });
+  try {
+    const card = await companionRequest(env, "/api/art/album?s=480");
+    const detail = await companionRequest(env, "/api/art/album?s=1000");
+    assert.equal(card.status, 302);
+    assert.equal(detail.status, 302);
+    assert.equal(card.headers.get("location"),
+      "https://cdn.example/img/art_album_640.jpg?v=123456");
+    assert.equal(detail.headers.get("location"),
+      "https://cdn.example/img/art_album_original.jpg?v=234567");
+    assert.equal(card.headers.get("cache-control"),
+      "public, max-age=300, stale-while-revalidate=86400");
+  } finally {
+    db.close();
+  }
+});
+
+test("compact cover variants derive from the stable original R2 mirror", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  const webp = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+  ]);
   db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
     VALUES ('media', 'Media', 'local', '{}', 1, 1)`).run();
   db.prepare(`INSERT INTO albums
@@ -764,17 +976,35 @@ test("R2 image redirects carry the stable mirror version and cache publicly", as
     R2_BUCKET: "bucket",
     R2_PUBLIC_URL: "https://cdn.example",
   });
+  const realFetch = globalThis.fetch;
+  let uploaded = null;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url === "https://cdn.example/img/art_album_original.jpg?v=123456") {
+      assert.deepEqual(init.cf?.image, {
+        fit: "scale-down", width: 640, height: 640, format: "webp",
+      });
+      return new Response(webp, { headers: { "Content-Type": "image/webp" } });
+    }
+    if (init.method === "PUT" && url.startsWith("https://r2.example/")) {
+      uploaded = new Uint8Array(init.body);
+      return new Response(null, { status: 200 });
+    }
+    throw new Error(`unexpected request ${init.method || "GET"} ${url}`);
+  };
+
   try {
-    const card = await companionRequest(env, "/api/art/album?s=480");
-    const detail = await companionRequest(env, "/api/art/album?s=1000");
-    assert.equal(card.status, 302);
-    assert.equal(detail.status, 302);
-    assert.equal(card.headers.get("location"),
-      "https://cdn.example/img/art_album_original.jpg?v=123456");
-    assert.equal(card.headers.get("location"), detail.headers.get("location"));
-    assert.equal(card.headers.get("cache-control"),
-      "public, max-age=300, stale-while-revalidate=86400");
+    const response = await companionRequest(env, "/api/art/album?s=400");
+    assert.equal(response.status, 200);
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), webp);
+    assert.deepEqual(uploaded, webp);
+    assert.deepEqual(db.prepare(`SELECT cache_key, r2_key FROM r2_cache
+      WHERE cache_key = 'art:album:640'`).get(), {
+      cache_key: "art:album:640",
+      r2_key: "img/art_album_640.webp",
+    });
   } finally {
+    globalThis.fetch = realFetch;
     db.close();
   }
 });
@@ -796,8 +1026,8 @@ test("default artist art reuses the earliest visible album R2 mirror", async () 
   db.prepare("INSERT INTO settings (k, v) VALUES ('r2_enabled', '1')").run();
   db.prepare(`INSERT INTO r2_cache (cache_key, r2_key, created_at, cache_policy)
     VALUES
-      ('art:hidden:original', 'img/art_hidden_original.jpg', 111, 1),
-      ('art:visible:original', 'img/art_visible_original.jpg', 222, 1)`)
+      ('art:hidden:256', 'img/art_hidden_256.jpg', 111, 1),
+      ('art:visible:256', 'img/art_visible_256.jpg', 222, 1)`)
     .run();
   const env = companionEnv(db, {
     R2_ACCESS_KEY: "access",
@@ -810,7 +1040,7 @@ test("default artist art reuses the earliest visible album R2 mirror", async () 
     const response = await companionRequest(env, "/api/artist-art/Artist");
     assert.equal(response.status, 302);
     assert.equal(response.headers.get("location"),
-      "https://cdn.example/img/art_visible_original.jpg?v=222");
+      "https://cdn.example/img/art_visible_256.jpg?v=222");
     assert.equal(response.headers.get("cache-control"),
       "public, max-age=300, stale-while-revalidate=86400");
   } finally {
@@ -2179,9 +2409,13 @@ test("R2 prewarm claims existing public objects without reading source images", 
     });
     assert.deepEqual(calls, [
       { url: "https://cdn.example/img/art_album-1_original.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_256.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_640.jpg", method: "HEAD" },
     ]);
     assert.deepEqual(db.prepare(
       "SELECT cache_key, r2_key FROM r2_cache ORDER BY cache_key").all(), [
+      { cache_key: "art:album-1:256", r2_key: "img/art_album-1_256.jpg" },
+      { cache_key: "art:album-1:640", r2_key: "img/art_album-1_640.jpg" },
       { cache_key: "art:album-1:original", r2_key: "img/art_album-1_original.jpg" },
     ]);
   } finally {
@@ -2228,6 +2462,8 @@ test("R2 prewarm never uploads when the public existence check is inconclusive",
     });
     assert.deepEqual(calls, [
       { url: "https://cdn.example/img/art_album-1_original.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_256.jpg", method: "HEAD" },
+      { url: "https://cdn.example/img/art_album-1_640.jpg", method: "HEAD" },
     ]);
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM r2_cache").get().count, 0);
   } finally {

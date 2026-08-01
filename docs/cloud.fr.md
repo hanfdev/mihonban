@@ -59,6 +59,8 @@ Les cookies de production nécessitent HTTPS. `DEV_INSECURE_COOKIE=1` n’existe
 - `settings` : hachages de mot de passe, drapeaux de module, configuration R2, paramètres de source et autres états runtime.
 - `source_posts`, `track_imports` et tables de cache-image : métadonnées opérationnelles.
 
+L’autorité du titre d’une piste est explicite. Renommer une piste dans l’administration active son indicateur `tracks.title_override` ; les scans ultérieurs du compagnon, les réenregistrements d’album complet et la synchronisation d’une piste conservent alors ce titre, tandis que les pistes ordinaires continuent de suivre les tags du fichier. Les bases D1 existantes ajoutent automatiquement cette colonne. Une ligne antérieure à la migration est classée lors de son prochain enregistrement : une valeur identique devient un titre synchronisé ordinaire ; en cas de différence, le titre D1 actuel est conservé prudemment comme modification manuelle afin d’éviter toute perte. Les sauvegardes logiques SQLite/D1 conservent cet indicateur.
+
 Le JSON des paramètres d’administrateur exporte un sous-ensemble autorisé de paramètres ainsi que des configurations de stockage nommées, y compris les identifiants. Il exclut les lignes de catalogue, les hachages de mots de passe et les anciennes sessions. Stockez-le chiffré.
 
 ## Téléversement et lecture
@@ -76,7 +78,7 @@ Sans R2, l’API lit les images depuis le stockage qui les possède et applique 
 
 Les redirections d’images R2 publiques sont mises en cache cinq minutes par le navigateur et l’edge Cloudflare, avec `stale-while-revalidate`. La destination est une URL R2 versionnée et immuable : actualiser la bibliothèque ne relance donc pas le Worker pour chaque pochette, tandis qu’un remplacement est pris en compte après cette fenêtre. Les redirections d’images masquées et d’audio restent privées et sans cache.
 
-Les pochettes d’album lisent directement le fichier source enregistré. C’est important pour les pochettes recadrées manuellement ou depuis Discogs : les miniatures fournisseur `c480x480` et `c1000x1000` peuvent choisir des cadrages différents et recadrer encore une image portrait. Toutes les vues de pochette partagent donc le miroir `art:<album-id>:original`, que le navigateur réduit sans demander un nouveau recadrage au fournisseur.
+Les listes d’albums et les surfaces compactes utilisent des dérivés WebP de 256 px ou 640 px produits depuis le fichier enregistré par Cloudflare Image Transformations. `fit: scale-down` conserve exactement le cadrage manuel ou Discogs sans dépendre d’un cache de miniatures du fournisseur susceptible d’être obsolète, tout en évitant de décoder des sources de plusieurs Mo pendant le défilement. Les vues de détail et de recadrage utilisent toujours l’original. R2 conserve `art:<album-id>:original` comme source de transformation, avec `art:<album-id>:256` et `art:<album-id>:640`. Si la transformation est indisponible, l’API sert l’original en secours sans jamais l’enregistrer sous une clé de dérivé.
 
 Si une redirection vers le miroir public aboutit à un objet absent ou obsolète, l’application web réessaie depuis le stockage propriétaire. Le Worker valide les octets de l’image, revient de la miniature du fournisseur au fichier original si nécessaire, puis répare l’objet R2 et son index D1 versionné après une récupération réussie. Un ancien 404 mis en cache devient ainsi auto-réparable sans exposer les identifiants du stockage privé au navigateur.
 

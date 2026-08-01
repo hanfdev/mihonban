@@ -9,6 +9,42 @@ export function storedVolume(value, fallback = 1) {
   return Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : fallback
 }
 
+/** Detect a home-screen or otherwise installed standalone web app. */
+export function isStandaloneWebApp(browserWindow = globalThis.window,
+                                   browserNavigator = globalThis.navigator) {
+  if (browserNavigator?.standalone === true) return true
+  try {
+    return browserWindow?.matchMedia?.('(display-mode: standalone)')?.matches === true
+  } catch {
+    return false
+  }
+}
+
+/** Detect iPhone, iPad, and iPadOS browsers that advertise a desktop platform. */
+export function isIOSDevice(browserNavigator = globalThis.navigator) {
+  const platform = String(browserNavigator?.platform || '')
+  const userAgent = String(browserNavigator?.userAgent || '')
+  return /iPhone|iPad|iPod/.test(`${platform} ${userAgent}`)
+    || (/Mac/.test(platform) && Number(browserNavigator?.maxTouchPoints) > 1)
+}
+
+/** Keep installed iOS web apps on their native playback path. */
+export function shouldDeferLockScreenPlayback(
+  browserWindow = globalThis.window,
+  browserNavigator = globalThis.navigator,
+) {
+  return isIOSDevice(browserNavigator)
+    && !isStandaloneWebApp(browserWindow, browserNavigator)
+}
+
+/** Pause a silent iOS browser clock only when playback stalls in the background. */
+export function shouldPauseForBackgroundBuffering(
+  eligible, visibilityState, audioPaused, audioEnded, systemSeekPending = false,
+) {
+  return !!eligible && visibilityState === 'hidden'
+    && !audioPaused && !audioEnded && !systemSeekPending
+}
+
 /**
  * Catalog duration comes from file tags or parsers and is more stable than Safari's evolving OGG stream estimate.
  * Use the browser-reported duration only when the catalog has no valid value.
@@ -33,14 +69,46 @@ export function seekAudio(audio, seconds, knownDuration, fast = false) {
 }
 
 /** Push reliable duration and progress to the iOS lock screen and Control Center. */
-export function updateMediaPosition(session, audio, knownDuration) {
+export function updateMediaPosition(session, audio, knownDuration,
+                                    knownPosition = undefined) {
   if (!session || !audio || typeof session.setPositionState !== 'function') return false
   const duration = mediaDuration(knownDuration, audio.duration)
   if (!duration) return false
-  const position = clampMediaTime(audio.currentTime, duration)
+  const position = clampMediaTime(
+    knownPosition === undefined ? audio.currentTime : knownPosition,
+    duration,
+  )
   const rate = positive(audio.playbackRate) || 1
   session.setPositionState({ duration, playbackRate: rate, position })
   return true
+}
+
+/** Hold a lock-screen seek target until the media element reaches it. */
+export function resolvePendingMediaSeek(
+  pending, sourceId, currentTime, seeking, now = Date.now(),
+) {
+  if (!pending || pending.sourceId !== sourceId) {
+    return { pending: null, position: undefined }
+  }
+  const current = Math.max(Number(currentTime) || 0, 0)
+  const reached = !seeking && Math.abs(current - pending.target) <= 1.5
+  const expired = now - pending.requestedAt >= 15_000
+  if (reached || expired) {
+    return { pending: null, position: undefined }
+  }
+  return { pending, position: pending.target }
+}
+
+/** Freeze the lock-screen timeline before replacing the active media source. */
+export function freezeMediaSession(session) {
+  if (!session) return false
+  try {
+    session.playbackState = 'paused'
+    if (typeof session.setPositionState === 'function') session.setPositionState()
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -57,13 +125,22 @@ export function mediaSessionPlaybackState(eventType, audioPaused,
   return previousState === 'playing' ? 'playing' : 'paused'
 }
 
-/** Load the selected source without starting its media clock. */
+/** Load a selected source without starting its native media clock. */
 export function loadAudioUntilPlayable(audio, source, onPlayable) {
   if (!audio) return () => {}
-  const ready = () => onPlayable?.()
-  audio.addEventListener('canplay', ready, { once: true })
+  let active = true
+  const ready = () => {
+    if (!active) return
+    active = false
+    audio.removeEventListener('canplay', ready)
+    onPlayable?.()
+  }
+  audio.addEventListener('canplay', ready)
   audio.preload = 'auto'
   audio.src = source
   audio.load()
-  return () => audio.removeEventListener('canplay', ready)
+  return () => {
+    active = false
+    audio.removeEventListener('canplay', ready)
+  }
 }

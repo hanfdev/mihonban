@@ -1632,7 +1632,8 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
           <div className="sim-row">
             {al.similar.map((s) => (
               <div key={s.id} className="sim-card" onClick={() => onOpen(s.id)}>
-                <img loading="lazy" src={artUrl(s.id, 300)} alt="" />
+                <img loading="lazy" decoding="async"
+                     src={artUrl(s.id, 300)} alt="" />
                 <div className="n">{s.title}</div>
                 <Rating value={s.rating} />
               </div>

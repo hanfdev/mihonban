@@ -199,7 +199,8 @@ export const api = {
 
 export const artUrl = (albumId, s = 400, origin = false) =>
   `/api/art/${albumId}?s=${s}${origin ? '&proxy=1&fallback=1' : ''}`;
-export const streamUrl = (trackId) => `/api/stream/${trackId}`;
+export const streamUrl = (trackId, { proxy = false } = {}) =>
+  `/api/stream/${trackId}${proxy ? '?proxy=1' : ''}`;
 export const imgUrl = (imgId, s = 0) =>
   s ? `/api/image/${imgId}?s=${s}` : `/api/image/${imgId}`;
 export const artistArtUrl = (name, v = 0) => {

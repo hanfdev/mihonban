@@ -532,6 +532,9 @@ async function ensureMigrations(env) {
       "ALTER TABLE favorites ADD COLUMN sort_order INTEGER",
       "ALTER TABLE albums ADD COLUMN storage_id TEXT",
       "ALTER TABLE albums ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0",
+      // NULL identifies a pre-migration row. Its current D1 title wins the first
+      // time an older companion submits a different value, preventing data loss.
+      "ALTER TABLE tracks ADD COLUMN title_override INTEGER",
       "ALTER TABLE artists ADD COLUMN storage_id TEXT",
       "ALTER TABLE album_images ADD COLUMN source_key TEXT",
     ];
@@ -617,6 +620,7 @@ async function ensureMigrations(env) {
       disc INTEGER NOT NULL DEFAULT 1,
       track INTEGER,
       title TEXT NOT NULL,
+      title_override INTEGER NOT NULL DEFAULT 0,
       duration REAL,
       format TEXT NOT NULL DEFAULT '',
       bitrate INTEGER,
@@ -630,6 +634,13 @@ async function ensureMigrations(env) {
     try {
       await env.DB.prepare(
         "ALTER TABLE track_imports ADD COLUMN artist_mode INTEGER NOT NULL DEFAULT 0")
+        .run();
+    } catch (e) {
+      if (!/duplicate column|already exists/i.test(String(e?.message || e))) throw e;
+    }
+    try {
+      await env.DB.prepare(
+        "ALTER TABLE track_imports ADD COLUMN title_override INTEGER NOT NULL DEFAULT 0")
         .run();
     } catch (e) {
       if (!/duplicate column|already exists/i.test(String(e?.message || e))) throw e;
@@ -865,7 +876,9 @@ app.get("/api/album/:id", async (c) => {
     { results: artistRows }, { results: trackArtistRows }] =
     await Promise.all([
       c.env.DB.prepare(`
-        SELECT id, disc, track, title, duration, format, bitrate, size, path
+        SELECT id, disc, track, title,
+               title_override AS titleOverride,
+               duration, format, bitrate, size, path
         FROM tracks WHERE album_id = ? ORDER BY disc, track, title`)
         .bind(id).all(),
       c.env.DB.prepare(
@@ -898,7 +911,8 @@ app.get("/api/album/:id", async (c) => {
   out.tracks = tracks.map((track) => {
     const ownArtists = trackArtistMap.get(track.id) || [];
     const artists = ownArtists.length ? ownArtists : albumArtists;
-    return { ...track, artists, artist: artistCredit(artists),
+    return { ...track, titleOverride: !!track.titleOverride,
+      artists, artist: artistCredit(artists),
       artistSort: artists[0]?.sort || "", hasCustomArtists: !!ownArtists.length };
   });
   out.note = noteRow?.text || "";
@@ -1281,7 +1295,7 @@ app.get("/api/artist-art/:name", async (c) => {
     });
   }
   const ch = [...name][0]?.toUpperCase() || "♪";
-  // Without a custom avatar, reuse the original-cover mirror from the earliest
+  // Without a custom avatar, reuse a compact cover mirror from the earliest
   // visible album. Public fallback must always choose a visible album or an
   // admin could write a hidden cover into the public R2 cache.
   const albumVisibility = publiclyVisible
@@ -1294,11 +1308,14 @@ app.get("/api/artist-art/:name", async (c) => {
   if (alb) {
     const cover = await resolveCover(c.env, alb);
     if (cover) {
-      const res = await serveImageR2(c, `art:${alb.id}:original`, cover, null,
+      const variant = coverImageVariant(120);
+      const res = await serveImageR2(
+        c, `art:${alb.id}:${variant.key}`, cover, null,
         publiclyVisible
           ? "public, max-age=300, stale-while-revalidate=86400"
           : "private, no-store",
-        alb.storage_id || null, !!publiclyVisible);
+        alb.storage_id || null, !!publiclyVisible, variant.transform,
+        `art:${alb.id}:original`);
       if (res) return res;
     }
   }
@@ -2079,6 +2096,14 @@ const R2_IMAGE_EXT_BY_MIME = {
   "image/avif": "avif", "image/jpeg": "jpg",
 };
 const R2_IMAGE_EXTENSIONS = new Set(Object.values(R2_IMAGE_EXT_BY_MIME));
+const coverImageVariant = (requestedSize) => {
+  const width = requestedSize <= 160 ? 256 : requestedSize <= 480 ? 640 : null;
+  return width
+    ? { key: String(width), transform: {
+      fit: "scale-down", width, height: width, format: "webp",
+    } }
+    : { key: "original", transform: null };
+};
 const r2ImageKeyBase = (cacheKey) =>
   `img/${cacheKey.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
 const r2ImageObjectKey = (cacheKey, contentType) =>
@@ -2120,26 +2145,51 @@ async function validImageResponse(response) {
   return contentType ? { bytes, contentType } : null;
 }
 
-async function readStoredImage(env, srcPath, dim, storageId) {
+async function readTransformedImageUrl(url, imageTransform) {
+  try {
+    const image = await validImageResponse(await fetchWithTimeout(url, {
+      cf: { image: imageTransform },
+    }));
+    return image?.contentType === "image/webp"
+      ? { ...image, transformed: true } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readStoredImage(env, srcPath, dim, storageId,
+  imageTransform = null) {
   // A OneDrive thumbnail URL may occasionally return a transient non-image
   // body with HTTP 200. Validate bytes, then fall back to the original direct
   // URL and finally the authenticated provider read instead of surfacing a
   // broken cover to the browser.
-  const urls = [];
+  const requests = [];
   if (dim) {
     try {
       const thumbnail = await storage.thumbnailUrl(env, srcPath, dim, storageId);
-      if (thumbnail) urls.push(thumbnail);
+      if (thumbnail) requests.push({ url: thumbnail, init: undefined });
     } catch { /* continue to the original file */ }
   }
   try {
     const direct = await storage.downloadUrl(env, srcPath, storageId);
-    if (direct && !urls.includes(direct)) urls.push(direct);
+    if (direct) {
+      // Resize the source bytes themselves so a provider thumbnail cache cannot
+      // return an older crop after a cover is replaced at the same path.
+      if (imageTransform) {
+        const transformed = await readTransformedImageUrl(direct, imageTransform);
+        if (transformed) return transformed;
+      }
+      if (!requests.some((request) => request.url === direct && !request.init)) {
+        requests.push({ url: direct, init: undefined });
+      }
+    }
   } catch { /* continue to the authenticated provider read */ }
-  for (const url of urls) {
+  for (const request of requests) {
     try {
-      const image = await validImageResponse(await fetchWithTimeout(url));
-      if (image) return image;
+      const image = await validImageResponse(
+        await fetchWithTimeout(request.url, request.init));
+      if (!image) continue;
+      return image;
     } catch { /* try the next source */ }
   }
   try {
@@ -2171,7 +2221,8 @@ async function claimExistingR2Image(env, conf, cacheKey, srcPath) {
 }
 
 async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
-  storageId = null, allowPublicMirror = true) {
+  storageId = null, allowPublicMirror = true, imageTransform = null,
+  transformSourceKey = null) {
   const conf = await r2.r2Conf(c.env);
   // 1) Existing R2 mirror: redirect to the public CDN before checking the edge
   // cache, so stale cached 200-byte responses cannot block it.
@@ -2213,15 +2264,36 @@ async function serveImageR2(c, cacheKey, srcPath, dim, cacheControl,
   }
   // 3) Read bytes from the owning storage. Use a direct thumbnail URL when
   // available; proxy the original for WebDAV and similar backends.
-  const source = await readStoredImage(c.env, srcPath, dim, storageId);
+  let source = null;
+  let hasTransformSourceMirror = false;
+  if (conf.ready && imageTransform && transformSourceKey) {
+    const sourceRow = await c.env.DB.prepare(
+      "SELECT r2_key, created_at FROM r2_cache WHERE cache_key = ?")
+      .bind(transformSourceKey).first();
+    if (sourceRow) {
+      hasTransformSourceMirror = true;
+      source = await readTransformedImageUrl(
+        r2.r2PublicUrl(conf, sourceRow.r2_key, sourceRow.created_at),
+        imageTransform);
+    }
+  }
+  source ||= await readStoredImage(
+    c.env, srcPath, dim, storageId, imageTransform);
   if (!source) return null;
   const { bytes, contentType: ct } = source;
   // 4) Mirror to R2 lazily in the background without blocking the response.
-  if (conf.ready && allowPublicMirror) {
+  if (conf.ready && allowPublicMirror
+      && (!imageTransform || source.transformed)) {
     // Return source bytes immediately. The next request will use the R2
     // redirect after this best-effort mirror finishes.
     await runBestEffortInBackground(
       c, mirrorImageBytes(c, conf, cacheKey, bytes, ct));
+  } else if (conf.ready && allowPublicMirror && imageTransform
+      && transformSourceKey && !hasTransformSourceMirror) {
+    // Backends without public source URLs need one extra request: seed the
+    // original R2 mirror now, then derive the compact variant from it later.
+    await runBestEffortInBackground(
+      c, mirrorImageBytes(c, conf, transformSourceKey, bytes, ct));
   }
   const res = new Response(bytes, {
     headers: {
@@ -2324,13 +2396,12 @@ app.get("/api/art/:albumId", async (c) => {
   if (!cover) return c.body(PLACEHOLDER_SVG, 200,
     { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=3600" });
 
-  // A cover is a visual identity, not a responsive thumbnail. Manual and
-  // Discogs cover crops are already square files; asking OneDrive for another
-  // square thumbnail can crop them again and even choose a different focal
-  // window at each size. Mirror the stored bytes once and let browsers scale
-  // that exact user-approved composition on every surface.
+  // Small surfaces use bounded transforms of the stored source itself. This
+  // preserves the exact user-approved crop while avoiding multi-megabyte image
+  // decodes in dense album and track lists. Large detail views keep the source.
+  const variant = coverImageVariant(size);
   const dim = null;
-  const logicalKey = `art:${album.id}:original`;
+  const logicalKey = `art:${album.id}:${variant.key}`;
   // proxy=1 always returns origin bytes without redirecting to R2 or Graph. The
   // frontend uses this for canvas/cropping to avoid cross-origin Failed to fetch.
   const wantProxy = c.req.query("proxy") === "1" || c.req.query("inline") === "1";
@@ -2345,8 +2416,15 @@ app.get("/api/art/:albumId", async (c) => {
     if (c.req.query("fallback") === "1" && !album.hidden) {
       const conf = await r2.r2Conf(c.env);
       if (conf.ready) {
-        await runBestEffortInBackground(
-          c, mirrorImageBytes(c, conf, logicalKey, bytes, ct));
+        if (variant.transform) {
+          // This endpoint intentionally serves original bytes to canvas and
+          // fallback consumers. Never record them under a resized cache key.
+          await runBestEffortInBackground(c, c.env.DB.prepare(
+            "DELETE FROM r2_cache WHERE cache_key = ?").bind(logicalKey).run());
+        } else {
+          await runBestEffortInBackground(
+            c, mirrorImageBytes(c, conf, logicalKey, bytes, ct));
+        }
       }
     }
     return new Response(bytes, {
@@ -2358,7 +2436,8 @@ app.get("/api/art/:albumId", async (c) => {
   }
   const res = await serveImageR2(c, logicalKey, cover, dim,
     album.hidden ? "private, no-store" : "public, max-age=604800",
-    album.storage_id, !album.hidden);
+    album.storage_id, !album.hidden, variant.transform,
+    `art:${album.id}:original`);
   if (!res) return c.json({ error: "cover unavailable" }, 502);
   return res;
 });
@@ -2548,10 +2627,10 @@ app.post("/api/albums", async (c) => {
   const importId = crypto.randomUUID();
   const stageStatements = normalizedTracks.map((t) => c.env.DB.prepare(`
     INSERT INTO track_imports (import_id, id, album_id, disc, track, title,
-      duration, format, bitrate, size, path, artist_mode, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .bind(importId, t.id, t.albumId, t.disc, t.track, t.title, t.duration,
-      t.format, t.bitrate, t.size, t.path, t.artistMode, now));
+      title_override, duration, format, bitrate, size, path, artist_mode, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(importId, t.id, t.albumId, t.disc, t.track, t.title, 0,
+      t.duration, t.format, t.bitrate, t.size, t.path, t.artistMode, now));
   const creditStageStatements = normalizedTracks.flatMap((track) =>
     (track.artists || []).map((artist, position) => c.env.DB.prepare(`
       INSERT INTO track_artist_imports
@@ -2572,6 +2651,19 @@ app.post("/api/albums", async (c) => {
     // D1 batch is transactional. The live album is untouched until every
     // staged row exists, then metadata, favorites and tracks change together.
     await c.env.DB.batch([
+      // A manually edited title is authoritative. Resolve it inside the same
+      // transaction that replaces live rows so a concurrent edit cannot be lost.
+      c.env.DB.prepare(`UPDATE track_imports SET
+        title = (SELECT t.title FROM tracks t
+          WHERE t.id = track_imports.id AND t.album_id = track_imports.album_id),
+        title_override = 1
+        WHERE import_id = ? AND EXISTS (
+          SELECT 1 FROM tracks t
+          WHERE t.id = track_imports.id
+            AND t.album_id = track_imports.album_id
+            AND (t.title_override = 1 OR
+              (t.title_override IS NULL AND t.title != track_imports.title))
+        )`).bind(importId),
       albumStmt,
       c.env.DB.prepare("DELETE FROM album_artists WHERE album_id = ?").bind(id),
       ...ensureArtistRows(c.env.DB, albumArtists),
@@ -2586,8 +2678,10 @@ app.post("/api/albums", async (c) => {
         (SELECT id FROM tracks WHERE album_id = ?)`).bind(id),
       c.env.DB.prepare("DELETE FROM tracks WHERE album_id = ?").bind(id),
       c.env.DB.prepare(`INSERT INTO tracks
-        (id, album_id, disc, track, title, duration, format, bitrate, size, path)
-        SELECT id, album_id, disc, track, title, duration, format, bitrate, size, path
+        (id, album_id, disc, track, title, title_override,
+          duration, format, bitrate, size, path)
+        SELECT id, album_id, disc, track, title, title_override,
+          duration, format, bitrate, size, path
         FROM track_imports WHERE import_id = ?`).bind(importId),
       c.env.DB.prepare(`INSERT OR IGNORE INTO artists (name, avatar_path)
         SELECT DISTINCT artist, '' FROM track_artist_imports
@@ -3075,7 +3169,14 @@ app.post("/api/album/:id/tracks", async (c) => {
       format, bitrate, size, path)
     VALUES (?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET album_id=excluded.album_id,
-      disc=excluded.disc, track=excluded.track, title=excluded.title,
+      disc=excluded.disc, track=excluded.track,
+      title=CASE WHEN tracks.title_override = 1 OR
+                      (tracks.title_override IS NULL
+                       AND tracks.title != excluded.title)
+                 THEN tracks.title ELSE excluded.title END,
+      title_override=CASE WHEN tracks.title_override IS NULL
+        THEN CASE WHEN tracks.title != excluded.title THEN 1 ELSE 0 END
+        ELSE tracks.title_override END,
       duration=excluded.duration, format=excluded.format,
       bitrate=excluded.bitrate, size=excluded.size`)
     .bind(tid, id, disc, track, titleInput || p.split("/").pop(), duration,
@@ -3115,7 +3216,8 @@ app.patch("/api/album/:id/tracks/:tid", async (c) => {
     const title = boundedText(b.title, 1000, { allowEmpty: false });
     if (title === INVALID_INPUT) return c.json({ error: "title 格式无效" }, 400);
     statements.push(c.env.DB.prepare(
-      "UPDATE tracks SET title = ? WHERE id = ? AND album_id = ?")
+      `UPDATE tracks SET title = ?, title_override = 1
+       WHERE id = ? AND album_id = ?`)
       .bind(title, trackId, albumId));
   }
   let nextCredits = null;
@@ -3798,39 +3900,38 @@ app.post("/api/admin/r2/purge-hidden", async (c) => {
 
 // Mirror one image to R2, skipping existing objects. storageId may be empty for
 // the default backend. Return 'done', 'skip', or 'fail'.
-async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim, storageId = null) {
+async function mirrorImageToR2(env, conf, cacheKey, srcPath, dim,
+  storageId = null, imageTransform = null, transformSourceKey = null) {
   if (typeof cacheKey !== "string" || !cacheKey
       || typeof srcPath !== "string" || !srcPath) return "fail";
   const exists = await env.DB.prepare(
     "SELECT 1 FROM r2_cache WHERE cache_key = ?").bind(cacheKey).first();
   if (exists) return "skip"; // Already in R2; do not upload again.
   if (await claimExistingR2Image(env, conf, cacheKey, srcPath)) return "skip";
-  let bytes, ct;
-  const url = (dim ? await storage.thumbnailUrl(env, srcPath, dim, storageId) : null)
-    || (await storage.downloadUrl(env, srcPath, storageId));
-  if (url) {
-    const img = await fetchWithTimeout(url);
-    if (!img.ok) { await discardResponse(img); return "fail"; }
-    ct = img.headers.get("Content-Type") || "image/jpeg";
-    try { bytes = await readResponseLimited(img, MAX_BUFFERED_IMAGE_BYTES); }
-    catch { return "fail"; }
-  } else {
-    const r = await storage.getFile(env, srcPath, storageId);
-    if (!r) return "fail";
-    ct = r.headers.get("Content-Type") || "image/jpeg";
-    try { bytes = await readResponseLimited(r, MAX_BUFFERED_IMAGE_BYTES); }
-    catch { return "fail"; }
+  let source = null;
+  if (imageTransform && transformSourceKey) {
+    const sourceRow = await env.DB.prepare(
+      "SELECT r2_key, created_at FROM r2_cache WHERE cache_key = ?")
+      .bind(transformSourceKey).first();
+    if (sourceRow) {
+      source = await readTransformedImageUrl(
+        r2.r2PublicUrl(conf, sourceRow.r2_key, sourceRow.created_at),
+        imageTransform);
+    }
   }
-  ct = imageMimeFromBytes(bytes);
-  if (!ct) return "fail";
+  source ||= await readStoredImage(
+    env, srcPath, dim, storageId, imageTransform);
+  if (!source) return "fail";
+  if (imageTransform && !source.transformed) return "fail";
+  const { bytes, contentType: ct } = source;
   const r2key = r2ImageObjectKey(cacheKey, ct);
   if (!(await r2.r2Put(conf, r2key, bytes, ct))) return "fail";
   await recordR2Mirror(env, cacheKey, r2key);
   return "done";
 }
 
-// Prewarm all images into R2 in batches: original album covers, gallery images
-// at 480/1000, and artist avatars at 480. Skip existing objects and return
+// Prewarm all images into R2 in batches: original and 256/640 album covers, gallery
+// images at 480/1000, and artist avatars at 480. Skip existing objects and return
 // progress for frontend polling.
 app.post("/api/admin/r2/prewarm", async (c) => {
   const conf = await r2.r2Conf(c.env);
@@ -3872,7 +3973,7 @@ app.post("/api/admin/r2/prewarm", async (c) => {
        WHERE COALESCE(hidden,0)=0 ORDER BY created_at, id LIMIT ? OFFSET ?`)
       .bind(Math.min(limit, nAlbums - offset), offset).all();
     for (const album of results) {
-      tasks.push({ kind: "cover", album, sizes: [["original", null]],
+      tasks.push({ kind: "cover", album, requestSizes: ["original", 120, 400],
         sid: album.storage_id || null });
     }
   }
@@ -3921,10 +4022,19 @@ app.post("/api/admin/r2/prewarm", async (c) => {
       let cover;
       try { cover = await resolveCover(c.env, t.album); } catch { cover = null; }
       if (!cover) { skipped++; continue; }
-      for (const [size, dim] of t.sizes) {
-        const r = await mirror(c.env, conf, `art:${t.album.id}:${size}`, cover, dim, t.sid);
-        r === "done" ? done++ : r === "skip" ? skipped++ : failed++;
+      const sizeResults = [];
+      const sourceKey = `art:${t.album.id}:original`;
+      for (const requestedSize of t.requestSizes) {
+        const variant = requestedSize === "original"
+          ? { key: "original", transform: null }
+          : coverImageVariant(requestedSize);
+        sizeResults.push(await mirror(
+          c.env, conf, `art:${t.album.id}:${variant.key}`, cover, null, t.sid,
+          variant.transform, sourceKey));
       }
+      if (sizeResults.includes("fail")) failed++;
+      else if (sizeResults.includes("done")) done++;
+      else skipped++;
     } else if (t.kind === "image") {
       // Count each row once so done/skipped/failed and row-based total share the
       // same unit; the completion toast cannot exceed the progress-bar total.

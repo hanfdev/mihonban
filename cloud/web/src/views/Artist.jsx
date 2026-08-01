@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, artUrl, artistArtUrl, discogsImageProxyUrl } from '../api.js'
 import { CropDialog, Dialog, I, Md, Reader, VisibilityToggle,
          fmtTotal, goBack, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
-import { AlbumCard } from './Library.jsx'
+import { AlbumCard, isPriorityCover } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
 import { preferredArtistSort } from '../aliases.js'
 import { hasArtist } from '../artist-credit.jsx'
@@ -434,12 +434,12 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
     finally { setBusy(false) }
   }
 
-  const playAlbum = async (a) => {
+  const playAlbum = useCallback(async (a) => {
     try {
       const detail = await api.album(a.id)
       if (detail.tracks?.length) onPlay(detail, detail.tracks)
     } catch (e) { toast(e.message, 'err') }
-  }
+  }, [onPlay, toast])
 
   const playAll = async () => {
     try {
@@ -565,7 +565,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
         {mine.map((a, index) => (
           <AlbumCard key={a.id} a={a} onOpen={onOpen}
                      onOpenArtist={onOpenArtist} onPlay={playAlbum}
-                     priority={index < 16}
+                     priority={isPriorityCover(index)}
                      currentAlbumId={currentAlbumId} playingId={playingId}
                      onTogglePlayback={onTogglePlayback} />
         ))}

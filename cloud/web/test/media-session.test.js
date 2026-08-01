@@ -43,3 +43,19 @@ test('one unsupported action does not prevent the remaining controls', () => {
 
   assert.deepEqual(installed, ['play', 'pause', 'previoustrack', 'nexttrack'])
 })
+
+test('omitted standalone play and pause handlers remain native', () => {
+  const actions = new Map()
+  const session = {
+    setActionHandler(action, handler) { actions.set(action, handler) },
+  }
+
+  installTrackMediaSessionHandlers(session, {
+    previoustrack() {}, nexttrack() {}, seekto() {},
+  })
+
+  assert.equal(actions.get('play'), null)
+  assert.equal(actions.get('pause'), null)
+  assert.equal(typeof actions.get('previoustrack'), 'function')
+  assert.equal(typeof actions.get('nexttrack'), 'function')
+})

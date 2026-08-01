@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, artUrl } from '../api.js'
 import { ClearFilters, FilterSel, I, Rating, VisibilityToggle, goBack, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
@@ -6,6 +6,7 @@ import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { albumPlaybackState } from '../album-playback.js'
 import { defaultCollator, jaCollator } from '../format.js'
+import { currentCoverLoadingProfile } from '../cover-loading.js'
 import { ArtistCredit, artistCreditText, artistSearchText, creditsOf,
          hasArtist } from '../artist-credit.jsx'
 
@@ -13,6 +14,9 @@ const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 
 const coverPreloadCallbacks = new WeakMap()
 let coverPreloadObserver = null
+const coverLoading = currentCoverLoadingProfile()
+
+export const isPriorityCover = (index) => index < coverLoading.priorityCount
 
 function observeCoverAhead(element, onEnter) {
   if (typeof IntersectionObserver === 'undefined') {
@@ -28,7 +32,7 @@ function observeCoverAhead(element, onEnter) {
         coverPreloadObserver.unobserve(entry.target)
         coverPreloadCallbacks.delete(entry.target)
       })
-    }, { rootMargin: '1600px 0px' })
+    }, { rootMargin: coverLoading.rootMargin })
   }
   coverPreloadCallbacks.set(element, onEnter)
   coverPreloadObserver.observe(element)
@@ -53,13 +57,6 @@ function AheadCoverImage({ src, alt, priority = false }) {
     return observeCoverAhead(imageRef.current, () => setShouldLoad(true))
   }, [priority, src])
 
-  const revealWhenDecoded = async () => {
-    const image = imageRef.current
-    if (!image) return
-    try { await image.decode() } catch { /* onload still provides a usable image */ }
-    if (image === imageRef.current && image.getAttribute('src') === src) setReady(true)
-  }
-
   return (
     <>
       <span className="cover-placeholder" aria-hidden="true"><I.disc size={26} /></span>
@@ -67,14 +64,14 @@ function AheadCoverImage({ src, alt, priority = false }) {
            loading="eager" decoding="async"
            fetchPriority={priority ? 'high' : 'auto'}
            src={shouldLoad ? src : undefined} alt={alt}
-           onLoad={revealWhenDecoded} onError={() => setReady(false)} />
+           onLoad={() => setReady(true)} onError={() => setReady(false)} />
     </>
   )
 }
 
-export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
-                            currentAlbumId, playingId, onTogglePlayback,
-                            priority = false }) {
+function AlbumCardInner({ a, onOpen, onOpenArtist, onPlay,
+                          currentAlbumId, playingId, onTogglePlayback,
+                          priority = false }) {
   const { t } = useI18n()
   const toast = useToast()
   const playback = albumPlaybackState(a.id, currentAlbumId, playingId)
@@ -125,6 +122,21 @@ export function AlbumCard({ a, onOpen, onOpenArtist, onPlay,
     </div>
   )
 }
+
+function sameAlbumCard(prev, next) {
+  if (prev.a !== next.a || prev.priority !== next.priority
+      || prev.onOpen !== next.onOpen || prev.onOpenArtist !== next.onOpenArtist
+      || prev.onPlay !== next.onPlay
+      || prev.onTogglePlayback !== next.onTogglePlayback) return false
+  const previous = albumPlaybackState(
+    prev.a.id, prev.currentAlbumId, prev.playingId)
+  const current = albumPlaybackState(
+    next.a.id, next.currentAlbumId, next.playingId)
+  return previous.current === current.current
+    && previous.playing === current.playing
+}
+
+export const AlbumCard = React.memo(AlbumCardInner, sameAlbumCard)
 
 export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
                                   genreFromRoute, isAdmin,
@@ -231,12 +243,12 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
   }, [albums, searchHay, q, minR, genre, decade, artist, sort, SORTS, isAdmin,
       showHidden])
 
-  const playAlbum = async (a) => {
+  const playAlbum = useCallback(async (a) => {
     try {
       const detail = await api.album(a.id)
       if (detail.tracks?.length) onPlay(detail, detail.tracks)
     } catch (e) { toast(e.message, 'err') }
-  }
+  }, [onPlay, toast])
 
   const activeFilterCount = Number(!!q.trim()) + Number(minR > 0)
     + Number(!!decade) + Number(!!artist)
@@ -259,46 +271,48 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
           {shown && <span className="ctx-sub">{t('count.albums', shown.length)}</span>}
         </div>
       )}
-      <div className="filters">
-        <FilterSel on={minR > 0} value={String(minR)}
-                   onChange={(e) => setMinR(Number(e.target.value))}>
-          <option value="0">{t('library.filterRating')}</option>
-          {![0, 2.5, 3, 3.2, 3.4, 3.5, 3.6, 3.8, 4, 4.2].includes(minR) &&
-            <option value={String(minR)}>{minR.toFixed(1)}+</option>}
-          <option value="2.5">2.5+</option>
-          <option value="3">3.0+</option>
-          <option value="3.2">3.2+</option>
-          <option value="3.4">3.4+</option>
-          <option value="3.5">3.5+</option>
-          <option value="3.6">3.6+</option>
-          <option value="3.8">3.8+</option>
-          <option value="4">4.0+</option>
-          <option value="4.2">4.2+</option>
-        </FilterSel>
-        <FilterSel on={!!decade} value={decade}
-                   onChange={(e) => setDecade(e.target.value)}>
-          <option value="">{t('library.filterDecade')}</option>
-          {decades.map((d) => <option key={d} value={d}>{d}</option>)}
-        </FilterSel>
-        <FilterSel on={!!artist} value={artist}
-                   onChange={(e) => setArtist(e.target.value)}>
-          <option value="">{t('library.filterArtist')}</option>
-          {artistList.map(([name, n]) =>
-            <option key={name} value={name}>{name}（{n}）</option>)}
-        </FilterSel>
-        {!genreFromRoute && (
-          <FilterSel on={!!genre} value={genre}
-                     onChange={(e) => setGenre(e.target.value)}>
-            <option value="">{t('library.filterGenre')}</option>
-            {genres.map((g) => <option key={g} value={g}>{g}</option>)}
+      <div className="filters library-filters">
+        <div className="library-filter-main">
+          <FilterSel on={minR > 0} value={String(minR)}
+                     onChange={(e) => setMinR(Number(e.target.value))}>
+            <option value="0">{t('library.filterRating')}</option>
+            {![0, 2.5, 3, 3.2, 3.4, 3.5, 3.6, 3.8, 4, 4.2].includes(minR) &&
+              <option value={String(minR)}>{minR.toFixed(1)}+</option>}
+            <option value="2.5">2.5+</option>
+            <option value="3">3.0+</option>
+            <option value="3.2">3.2+</option>
+            <option value="3.4">3.4+</option>
+            <option value="3.5">3.5+</option>
+            <option value="3.6">3.6+</option>
+            <option value="3.8">3.8+</option>
+            <option value="4">4.0+</option>
+            <option value="4.2">4.2+</option>
           </FilterSel>
-        )}
-        {isAdmin && hiddenAlbumCount > 0 && (
-          <VisibilityToggle on={showHidden}
-                            onToggle={() => setShowHidden((value) => !value)}
-                            label={t('library.showHidden')}
-                            count={hiddenAlbumCount} />
-        )}
+          <FilterSel on={!!decade} value={decade}
+                     onChange={(e) => setDecade(e.target.value)}>
+            <option value="">{t('library.filterDecade')}</option>
+            {decades.map((d) => <option key={d} value={d}>{d}</option>)}
+          </FilterSel>
+          <FilterSel on={!!artist} value={artist}
+                     onChange={(e) => setArtist(e.target.value)}>
+            <option value="">{t('library.filterArtist')}</option>
+            {artistList.map(([name, n]) =>
+              <option key={name} value={name}>{name}（{n}）</option>)}
+          </FilterSel>
+          {!genreFromRoute && (
+            <FilterSel on={!!genre} value={genre}
+                       onChange={(e) => setGenre(e.target.value)}>
+              <option value="">{t('library.filterGenre')}</option>
+              {genres.map((g) => <option key={g} value={g}>{g}</option>)}
+            </FilterSel>
+          )}
+          {isAdmin && hiddenAlbumCount > 0 && (
+            <VisibilityToggle on={showHidden}
+                              onToggle={() => setShowHidden((value) => !value)}
+                              label={t('library.showHidden')}
+                              count={hiddenAlbumCount} />
+          )}
+        </div>
         <div className="filter-tail">
           <ClearFilters count={activeFilterCount} onClear={clearFilters}
                         label={t('common.clearFilters')} />
@@ -324,7 +338,7 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
         {shown && shown.map((a, index) =>
           <AlbumCard key={a.id} a={a} onOpen={onOpen}
                      onOpenArtist={onOpenArtist} onPlay={playAlbum}
-                     priority={index < 16}
+                     priority={isPriorityCover(index)}
                      currentAlbumId={currentAlbumId} playingId={playingId}
                      onTogglePlayback={onTogglePlayback} />)}
       </div>

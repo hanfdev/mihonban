@@ -59,6 +59,8 @@ Production cookies require HTTPS. `DEV_INSECURE_COOKIE=1` exists only for truste
 - `settings`: password hashes, module flags, R2 configuration, source settings, and other runtime state.
 - `source_posts`, `track_imports`, and image-cache tables: operational metadata.
 
+Track-title authority is explicit. Renaming a track in Admin sets its `tracks.title_override` flag; later companion scans, whole-album registrations, and single-track synchronization preserve that title, while ordinary tracks continue to follow file tags. Existing D1 databases add the column automatically. A pre-migration row remains unclassified until its next registration: a matching value becomes an ordinary synchronized title, while a differing value conservatively keeps the current D1 title as a manual override. Logical SQLite/D1 backups preserve the flag.
+
 The Admin settings JSON exports an allowlisted subset of settings plus named storage configurations, including credentials. It excludes catalog rows, password hashes, and old sessions. Store it encrypted.
 
 ## Upload and playback
@@ -76,7 +78,7 @@ Without R2, the API reads images from the owning storage and uses edge/browser c
 
 Public R2 image redirects are cached by the browser and Cloudflare edge for five minutes, with stale-while-revalidate enabled. The redirect points to a versioned, immutable R2 URL, so refreshing the library does not invoke the Worker for every cover while a replacement cover still rolls out after its cache window. Hidden images and audio redirects remain private and uncached.
 
-Album covers use the stored source file directly. This is important for manually or Discogs-cropped covers: provider-generated `c480x480` and `c1000x1000` thumbnails may choose different focal windows and can crop a portrait source again. All cover surfaces therefore share the `art:<album-id>:original` mirror; the browser scales that exact square composition instead of requesting another provider crop.
+Album lists and compact artwork surfaces use 256 px or 640 px WebP derivatives generated from the stored source bytes with Cloudflare Image Transformations. `fit: scale-down` preserves the exact manual or Discogs crop without relying on a provider thumbnail cache, while avoiding multi-megabyte source-image decodes during scrolling. Detail and crop surfaces still use the original. R2 keeps the original transformation source as `art:<album-id>:original` alongside `art:<album-id>:256` and `art:<album-id>:640`. If transformations are unavailable, the API serves the source as a fallback but never records it under a derivative key.
 
 If a public mirror redirect resolves to a missing or stale object, the web app retries against the owning storage. The Worker validates the returned image bytes, falls back from a provider thumbnail to the original file when necessary, and repairs the R2 object plus its versioned D1 index after a successful recovery. This makes an old cached 404 self-healing without putting private storage credentials in the browser.
 

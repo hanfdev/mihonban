@@ -95,11 +95,11 @@ img { display: block; }
   flex: none;
   position: relative;
   z-index: 20;
-  /* Content-aware columns keep the primary navigation and account tools from
-     invading the search area. The search remains centered inside the space
-     that is actually available rather than between two artificially equal sides. */
+  /* Equal side tracks center search on the viewport rather than in the uneven
+     space left between navigation and account controls. */
   display: grid;
-  grid-template-columns: max-content minmax(180px, 1fr) max-content;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(180px, min(420px, 34vw)) minmax(0, 1fr);
   align-items: center;
   column-gap: 14px;
   padding: 12px 22px;
@@ -190,7 +190,7 @@ img { display: block; }
 }
 
 .search {
-  /* The .hdr-center grid provides visual centering; this fills its middle column. */
+  /* The symmetric header grid provides visual centering; this fills its middle track. */
   position: static;
   transform: none;
   width: 100%;
@@ -281,11 +281,15 @@ img { display: block; }
   .nav-admin a { padding: 6px 9px; }
   .logo em { display: none; }
   .hdr-count { display: none; }
-  .hdr { grid-template-columns: max-content minmax(160px, 1fr) max-content; }
+  .hdr {
+    grid-template-columns:
+      minmax(0, 1fr) minmax(160px, min(320px, 30vw)) minmax(0, 1fr);
+  }
 }
-/* Preserve all four primary destinations in the awkward desktop/tablet band.
-   Search moves behind its familiar icon before it can cover Artists or Picks. */
-@media (max-width: 1180px) {
+/* Preserve all four primary destinations throughout the desktop/tablet band.
+   The full search field needs genuinely wide side tracks; otherwise the left
+   navigation can overflow its equal grid track and disappear underneath it. */
+@media (max-width: 1760px) {
   .hdr { grid-template-columns: minmax(0, 1fr) auto; }
   .hdr-center { display: none; }
 }
@@ -298,6 +302,7 @@ img { display: block; }
   padding: 14px 26px 4px;
   flex-wrap: wrap;
 }
+.library-filter-main { display: contents; }
 /* Flat list pages (Tracks and favorite tracks): center the toolbar at the same
    width as the list so they do not drift apart on wide screens. The favorite
    albums tab uses the library grid and stays full-width and left-aligned, so
@@ -764,7 +769,7 @@ select option { background-color: var(--bg2); color: var(--ink); }
   max-width: 680px;
   margin-top: 10px;
 }
-.descriptor-summary.has-overflow:not(.expanded) { padding-right: 52px; }
+.descriptor-summary.has-overflow:not(.expanded) { padding-right: 0; }
 .descriptor-summary .descriptors {
   display: -webkit-box;
   margin-top: 0;
@@ -779,13 +784,13 @@ select option { background-color: var(--bg2); color: var(--ink); }
   overflow: visible;
 }
 .descriptor-more {
-  position: absolute;
-  right: 0;
-  bottom: 0;
+  position: static;
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  padding: 2px 0 2px 12px;
+  width: max-content;
+  margin: 5px 0 0 auto;
+  padding: 3px 0;
   border: 0;
   background: transparent;
   color: var(--gold-dim);
@@ -794,9 +799,7 @@ select option { background-color: var(--bg2); color: var(--ink); }
 }
 .descriptor-more svg { transition: transform .16s ease; }
 .descriptor-summary.expanded .descriptor-more {
-  position: static;
   margin-top: 3px;
-  padding-left: 0;
   background: transparent;
 }
 .descriptor-summary.expanded .descriptor-more svg {
@@ -2134,7 +2137,7 @@ body.lb-lock { overflow: hidden; }
 .m-search { display: none; }
 .m-search-row { display: none; }
 
-@media (max-width: 1180px) {
+@media (max-width: 1760px) {
   .m-search { display: grid; color: var(--ink-dim); }
   .m-search.on { color: var(--accent-hi); }
   .m-search-row { display: block; flex: none; padding: 4px var(--page-gutter) 8px; }
@@ -2285,6 +2288,7 @@ body.lb-lock { overflow: hidden; }
   .frow label { font-size: 12px; }
   .dialog { padding: 20px; max-height: 92vh; }
   .overlay { padding: 12px; align-items: end; }
+  .crop-overlay { align-items: center; }
   .stat-row { gap: 18px; }
   .post-tools { gap: 10px; }
   .post-tools .seg { width: 100%; }
@@ -3699,6 +3703,30 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   .p-title .mq, .p-sub { width: max-content; max-width: 100%; }
 }
 
+/* Tablet-width filter bars stay a single, scrollable tool rail. Admin-only
+   visibility controls must not push sorting onto a detached second line. */
+@media (min-width: 721px) and (max-width: 1280px) {
+  .library-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+  .library-filter-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-padding-inline: 1px;
+  }
+  .library-filter-main::-webkit-scrollbar { display: none; }
+  .library-filter-main > * { flex: none; }
+  .library-filters .fsel { width: clamp(6.75rem, 14vw, 7.4rem); }
+  .library-filters .filter-tail { margin-left: 0; }
+}
+
 /* The mobile mini player is a glanceable transport, not a full metadata row.
    Keep it to title + artist so long artist and album names do not both lose
    meaning through truncation. The album remains available in the full player. */
@@ -3970,6 +3998,18 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
     background: var(--accent);
     color: #fff;
     box-shadow: 0 12px 28px -10px rgba(232, 84, 47, .72);
+  }
+}
+
+/* Touch scrolling should not continuously re-sample fixed noise and several
+   translucent backdrop layers. Their color, border, shadow, and geometry stay
+   unchanged; only the expensive live blur/noise composition is removed. */
+@media (pointer: coarse), (hover: none) {
+  body::before { display: none; }
+  .hdr,
+  .cover .play-fab {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 

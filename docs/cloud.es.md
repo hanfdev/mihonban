@@ -59,6 +59,8 @@ Las cookies de producción requieren HTTPS. `DEV_INSECURE_COOKIE=1` existe solo 
 - `settings`: hashes de contraseñas, flags de módulo, configuración de R2, configuración de código fuente y otros estados runtime.
 - Tablas de `source_posts`, `track_imports` y caché de imágenes: metadatos operativos.
 
+La autoridad del título de una pista es explícita. Al cambiar el nombre de una pista en Administración se activa su indicador `tracks.title_override`; los escaneos posteriores del compañero, los registros del álbum completo y la sincronización de una sola pista conservan ese título, mientras que las pistas normales siguen las etiquetas del archivo. Las bases D1 existentes añaden la columna automáticamente. Una fila anterior a la migración se clasifica en su siguiente registro: si el valor coincide pasa a ser un título sincronizado normal; si difiere, se conserva de forma preventiva el título D1 actual como cambio manual para evitar pérdidas. Las copias lógicas de SQLite/D1 conservan el indicador.
+
 El JSON de configuración de administrador exporta un subconjunto de configuraciones permitidas más configuraciones de almacenamiento nombradas, incluyendo credenciales. Excluye filas de catálogo, hashes de contraseñas y sesiones antiguas. Guárdalo cifrado.
 
 ## Subir y reproducir
@@ -76,7 +78,7 @@ Sin R2, la API lee las imágenes desde el almacenamiento que las posee y aplica 
 
 Las redirecciones de imágenes públicas de R2 se almacenan en la caché del navegador y del edge de Cloudflare durante cinco minutos, con `stale-while-revalidate`. El destino es una URL R2 versionada e inmutable, así que al actualizar la biblioteca no se invoca al Worker para cada portada; los cambios de portada se aplican después de esa ventana. Las redirecciones de imágenes ocultas y de audio siguen siendo privadas y no se almacenan en caché.
 
-Las portadas de álbum leen directamente el archivo de origen almacenado. Es importante para las portadas recortadas manualmente o desde Discogs: las miniaturas del proveedor `c480x480` y `c1000x1000` pueden elegir encuadres distintos y volver a recortar una imagen vertical. Todas las vistas de portada comparten por eso el espejo `art:<album-id>:original`; el navegador reduce esa misma composición cuadrada sin pedir otro recorte al proveedor.
+Las listas de álbumes y las superficies de carátula compactas usan derivados WebP de 256 px o 640 px generados desde el archivo almacenado mediante Cloudflare Image Transformations. `fit: scale-down` conserva exactamente el recorte manual o de Discogs sin depender de una caché de miniaturas del proveedor que puede quedar desactualizada, y evita decodificar imágenes de origen de varios MB durante el desplazamiento. Las vistas de detalle y recorte siguen usando el original. R2 conserva `art:<album-id>:original` como fuente de transformación junto con `art:<album-id>:256` y `art:<album-id>:640`. Si la transformación no está disponible, la API sirve el original como respaldo, pero nunca lo registra con una clave derivada.
 
 Si una redirección al espejo público termina en un objeto ausente u obsoleto, la aplicación web vuelve a intentarlo desde el almacenamiento propietario. El Worker valida los bytes de la imagen, recurre del thumbnail del proveedor al archivo original cuando es necesario y, tras recuperarlo, repara el objeto R2 y su índice D1 versionado. Así, un 404 antiguo almacenado en caché se repara automáticamente sin exponer al navegador las credenciales del almacenamiento privado.
 

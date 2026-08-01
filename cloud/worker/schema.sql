@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS tracks (
   disc     INTEGER NOT NULL DEFAULT 1,
   track    INTEGER,
   title    TEXT NOT NULL,
+  title_override INTEGER NOT NULL DEFAULT 0, -- 1 = preserve an admin-edited title during synchronization
   duration REAL,
   format   TEXT NOT NULL DEFAULT '',
   bitrate  INTEGER,
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS track_imports (
   disc       INTEGER NOT NULL DEFAULT 1,
   track      INTEGER,
   title      TEXT NOT NULL,
+  title_override INTEGER NOT NULL DEFAULT 0,
   duration   REAL,
   format     TEXT NOT NULL DEFAULT '',
   bitrate    INTEGER,
@@ -174,7 +176,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_images_album_source
   ON album_images(album_id, source_key)
   WHERE source_key IS NOT NULL AND source_key != '';
 
--- R2 image-mirror index: cache_key (for example art:<albumId>:480) maps to an
+-- R2 image-mirror index: cache_key (for example art:<albumId>:640) maps to an
 -- uploaded R2 object key. A hit redirects to the public CDN, keeping image bytes
 -- out of the Worker and avoiding OneDrive Graph API traffic.
 CREATE TABLE IF NOT EXISTS r2_cache (

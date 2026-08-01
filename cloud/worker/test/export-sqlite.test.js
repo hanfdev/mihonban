@@ -26,8 +26,10 @@ test("SQLite export restores library data without leaking config by default", ()
       (id, artist, title, folder, storage_id, created_at, updated_at)
       VALUES ('album-1', 'Artist', 'Album', 'Music/Library/Artist/Album',
         'catalog-store', 1, 1)`).run();
-    source.prepare(`INSERT INTO tracks (id, album_id, title, path)
-      VALUES ('track-1', 'album-1', 'Track', 'Music/Library/Artist/Album/01.flac')`).run();
+    source.prepare(`INSERT INTO tracks
+      (id, album_id, title, title_override, path)
+      VALUES ('track-1', 'album-1', 'Track', 1,
+        'Music/Library/Artist/Album/01.flac')`).run();
     source.prepare(`INSERT INTO album_artists
       (album_id, artist, artist_sort, position) VALUES
       ('album-1', 'Artist', 'Artist', 0),
@@ -57,6 +59,9 @@ test("SQLite export restores library data without leaking config by default", ()
       target.exec(sql);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM albums").get().n, 1);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM tracks").get().n, 1);
+      assert.equal(target.prepare(
+        "SELECT title_override FROM tracks WHERE id = 'track-1'").get()
+        .title_override, 1);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM album_artists").get().n, 2);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM track_artists").get().n, 2);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM artists").get().n, 1);

@@ -301,7 +301,8 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
           <div className="recent-list">
             {recent.map((a) => (
               <div key={a.id} className="recent-item" onClick={() => onOpen(a.id)}>
-                <img loading="lazy" src={artUrl(a.id, 120)} alt="" />
+                <img loading="lazy" decoding="async"
+                     src={artUrl(a.id, 120)} alt="" />
                 <div>
                   <div className="rn">{a.title}</div>
                   <div className="rs">{a.artist}{a.year ? ` · ${a.year}` : ''}</div>

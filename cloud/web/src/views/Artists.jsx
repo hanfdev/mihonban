@@ -169,7 +169,7 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
                    && e.hiddenCount === e.count ? 'is-hidden' : ''}`}
                  onClick={() => onOpenArtist(e.name)}>
               <div className="acard-avatar">
-                <img loading="lazy"
+                <img loading="lazy" decoding="async"
                      src={artistArtUrl(e.name,
                        avatarFlagBy.get(e.name)
                          ? `c${avatarVer || ''}`

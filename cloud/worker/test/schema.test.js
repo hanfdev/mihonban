@@ -24,10 +24,16 @@ test("fresh schema includes current storage and image identity columns", () => {
       .map((c) => c.name);
     const trackArtistColumns = db.prepare("PRAGMA table_info(track_artists)").all()
       .map((c) => c.name);
+    const trackColumns = db.prepare("PRAGMA table_info(tracks)").all()
+      .map((c) => c.name);
+    const trackImportColumns = db.prepare("PRAGMA table_info(track_imports)").all()
+      .map((c) => c.name);
     assert.ok(albumColumns.includes("storage_id"));
     assert.ok(albumColumns.includes("hidden"));
     assert.ok(artistColumns.includes("storage_id"));
     assert.ok(imageColumns.includes("source_key"));
+    assert.ok(trackColumns.includes("title_override"));
+    assert.ok(trackImportColumns.includes("title_override"));
     assert.deepEqual(albumArtistColumns,
       ["album_id", "artist", "artist_sort", "position"]);
     assert.deepEqual(trackArtistColumns,

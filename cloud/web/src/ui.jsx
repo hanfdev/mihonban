@@ -256,7 +256,7 @@ let dialogTitleSeq = 0
 // Independent window Escape listeners would close both at once and discard unsaved parent-form content.
 // A shared stack lets only the top dialog respond. onClose stays current through a ref while the listener mounts once.
 const dialogStack = []
-export function Dialog({ title, onClose, children, className = '' }) {
+export function Dialog({ title, onClose, children, className = '', overlayClassName = '' }) {
   const boxRef = useRef(null)
   const [titleId] = useState(() => `dlg-t-${++dialogTitleSeq}`)
   // Capture the opener during render. Child autoFocus runs during commit, so reading document.activeElement in an effect
@@ -289,7 +289,8 @@ export function Dialog({ title, onClose, children, className = '' }) {
   }, [])
 
   return createPortal(
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={`overlay ${overlayClassName}`.trim()}
+         onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`dialog ${className}`.trim()} role="dialog" aria-modal="true"
            aria-labelledby={titleId} tabIndex={-1} ref={boxRef}>
         <h3 id={titleId}>{title}</h3>
@@ -653,7 +654,8 @@ export function CropDialog({ file, title, round = false,
   const h = img ? img.height * scale : 0
 
   return (
-    <Dialog title={title || t('crop.title')} onClose={onClose}>
+    <Dialog title={title || t('crop.title')} onClose={onClose}
+            className="crop-dialog" overlayClassName="crop-overlay">
       <div className="crop-wrap">
         <div className={`crop-vp ${round ? 'round' : ''}`} ref={vpRef}
              onPointerDown={onPointerDown} onPointerMove={onPointerMove}

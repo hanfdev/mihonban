@@ -21,7 +21,8 @@ function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
            if (e.target !== e.currentTarget) return
            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(i) }
          }}>
-      <img className="t-art" loading="lazy" src={artUrl(t.albumId, 120)} alt=""
+      <img className="t-art" loading="lazy" decoding="async"
+           src={artUrl(t.albumId, 120)} alt=""
            onClick={(e) => { e.stopPropagation(); onOpen(t.albumId) }} />
       <span className="t-main">
         <span className="t-title">

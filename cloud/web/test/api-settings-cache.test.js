@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { api } from '../src/api.js'
+import { api, streamUrl } from '../src/api.js'
 
 const jsonResponse = (body) => ({
   ok: true,
   status: 200,
   json: async () => body,
+})
+
+test('audio stream URLs opt into the same-origin proxy without duplicate query text', () => {
+  assert.equal(streamUrl('track 1'), '/api/stream/track 1')
+  assert.equal(streamUrl('track 1', { proxy: true }), '/api/stream/track 1?proxy=1')
 })
 
 test('config import invalidates the shared admin settings cache', async () => {
