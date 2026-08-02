@@ -21,6 +21,8 @@ El JSON de administrador por sí solo no es una copia de seguridad de catálogo.
 
 Los créditos ordenados del álbum se guardan en `album_artists`. Los créditos propios de una pista solo se guardan en `track_artists` cuando son necesarios; sin filas, la pista hereda los artistas del álbum. Las exportaciones SQL lógicas incluyen ambas tablas. Tras una actualización, Mihonban las crea y conserva el texto de artista anterior como un único crédito exacto. No lo divide por comas, pues también son válidas en nombres y claves de ordenación. Usa el editor del álbum para una colaboración completa o el botón de artista en la gestión de pistas para invitados que aparecen solo en algunas canciones.
 
+`artist_sort` es opcional: los valores vacíos se conservan al exportar e importar, mientras que la búsqueda y la ordenación usan el nombre original como alternativa en tiempo de ejecución.
+
 ## Antes de trasladar el almacenamiento local Node a Cloudflare
 
 Cloudflare no puede leer un backend Node `local`. Aunque la antigua Node app sigue disponible:

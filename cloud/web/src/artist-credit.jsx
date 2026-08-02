@@ -62,8 +62,8 @@ export function ArtistEditor({ value, onChange, disabled = false,
                    const name = event.target.value
                    const match = options.get(name)
                    update(index, { name,
-                     sort: match?.sort || (!row.sort || row.sort === row.name
-                       ? name : row.sort) })
+                     sort: match ? (match.sort || '')
+                       : (!row.sort || row.sort === row.name ? '' : row.sort) })
                  }} />
           <input className="tin" value={row.sort || ''} disabled={disabled}
                  placeholder={t('albumPage.artistSortPh')}

@@ -91,7 +91,7 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
   const start = async () => {
     if (uploadInFlight.current || phase !== 'edit') return
     const artists = (form.artists || []).map((artist) => ({
-      name: artist.name.trim(), sort: (artist.sort || artist.name).trim(),
+      name: artist.name.trim(), sort: (artist.sort || '').trim(),
     }))
     const artistKeys = new Set(artists.map((artist) => artist.name.toLocaleLowerCase()))
     if (!artists.length || artists.some((artist) => !artist.name)

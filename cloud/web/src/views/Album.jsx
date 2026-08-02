@@ -130,7 +130,7 @@ function EditDialog({ album, artistOptions, onClose, onSaved }) {
   const save = async () => {
     if (saveInFlight.current) return
     const artists = credits.map((artist) => ({
-      name: artist.name.trim(), sort: (artist.sort || artist.name).trim(),
+      name: artist.name.trim(), sort: (artist.sort || '').trim(),
     }))
     const title = f.title.trim()
     const yearText = String(f.year || '').trim()
@@ -1051,7 +1051,7 @@ function TrackArtistsDialog({ album, track, artistOptions, onClose, onSaved }) {
 
   const save = async () => {
     const artists = credits.map((artist) => ({
-      name: artist.name.trim(), sort: (artist.sort || artist.name).trim(),
+      name: artist.name.trim(), sort: (artist.sort || '').trim(),
     }))
     const unique = new Set(artists.map((artist) => artist.name.toLocaleLowerCase()))
     if (custom && (!artists.length || artists.some((artist) => !artist.name)

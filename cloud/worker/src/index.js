@@ -206,6 +206,12 @@ function artistCredit(artists) {
   return names.join(", ");
 }
 
+function explicitArtistSort(name, sort) {
+  const artistName = String(name || "").normalize("NFC");
+  const value = String(sort || "").trim().normalize("NFC");
+  return value && value !== artistName ? value : "";
+}
+
 function albumArtistsInput(value, fallbackName = "", fallbackSort = "") {
   const source = value === undefined
     ? [{ name: fallbackName, sort: fallbackSort }]
@@ -221,10 +227,10 @@ function albumArtistsInput(value, fallbackName = "", fallbackSort = "") {
     }
     const name = boundedText(object.name, 500, { allowEmpty: false });
     const sort = object.sort === undefined
-      ? name : boundedText(object.sort, 500);
+      ? "" : boundedText(object.sort, 500);
     if (name === INVALID_INPUT || sort === INVALID_INPUT) return INVALID_INPUT;
     const normalizedName = name.normalize("NFC");
-    const normalizedSort = (sort || normalizedName).normalize("NFC");
+    const normalizedSort = explicitArtistSort(normalizedName, sort);
     const key = normalizedName.toLocaleLowerCase();
     if (seen.has(key)) return INVALID_INPUT;
     seen.add(key);
@@ -258,7 +264,9 @@ async function applyArtistSortOverrides(db, artists) {
   }
   return artists.map((artist) => ({
     ...artist,
-    sort: overrides.get(artist.name) || artist.sort || artist.name,
+    sort: overrides.has(artist.name)
+      ? explicitArtistSort(artist.name, overrides.get(artist.name))
+      : explicitArtistSort(artist.name, artist.sort),
   }));
 }
 
@@ -266,7 +274,8 @@ function groupAlbumArtists(rows) {
   const grouped = new Map();
   for (const row of rows || []) {
     const list = grouped.get(row.album_id) || [];
-    list.push({ name: row.artist, sort: row.artist_sort || row.artist });
+    list.push({ name: row.artist,
+      sort: explicitArtistSort(row.artist, row.artist_sort) });
     grouped.set(row.album_id, list);
   }
   return grouped;
@@ -276,7 +285,8 @@ function groupTrackArtists(rows) {
   const grouped = new Map();
   for (const row of rows || []) {
     const list = grouped.get(row.track_id) || [];
-    list.push({ name: row.artist, sort: row.artist_sort || row.artist });
+    list.push({ name: row.artist,
+      sort: explicitArtistSort(row.artist, row.artist_sort) });
     grouped.set(row.track_id, list);
   }
   return grouped;
@@ -306,12 +316,12 @@ async function contributorsForAlbum(db, albumId) {
 const artistRowsForAlbum = (db, albumId, artists) => artists.map((artist, position) =>
   db.prepare(`INSERT INTO album_artists
     (album_id, artist, artist_sort, position) VALUES (?, ?, ?, ?)`)
-    .bind(albumId, artist.name, artist.sort || artist.name, position));
+    .bind(albumId, artist.name, explicitArtistSort(artist.name, artist.sort), position));
 
 const artistRowsForTrack = (db, trackId, artists) => artists.map((artist, position) =>
   db.prepare(`INSERT INTO track_artists
     (track_id, artist, artist_sort, position) VALUES (?, ?, ?, ?)`)
-    .bind(trackId, artist.name, artist.sort || artist.name, position));
+    .bind(trackId, artist.name, explicitArtistSort(artist.name, artist.sort), position));
 
 function removeInheritedTrackArtists(db, albumId, artists) {
   const matches = artists.map(() => "(ta.position = ? AND ta.artist = ?)").join(" OR ");
@@ -384,10 +394,12 @@ function albumOut(row) {
   const secondaryGenres = J(row.sec_genres);
   const artists = Array.isArray(row.albumArtists) && row.albumArtists.length
     ? row.albumArtists
-    : [{ name: row.artist, sort: row.artist_sort || row.artist }];
+    : [{ name: row.artist,
+      sort: explicitArtistSort(row.artist, row.artist_sort) }];
   return {
     id: row.id, artist: artistCredit(artists) || row.artist,
-    artistSort: artists[0]?.sort || row.artist_sort, artists,
+    artistSort: explicitArtistSort(artists[0]?.name || row.artist,
+      artists[0]?.sort ?? row.artist_sort), artists,
     title: row.title, year: row.year, folder: row.folder,
     storageId: row.storage_id || null,
     hidden: !!row.hidden,
@@ -554,7 +566,7 @@ async function ensureMigrations(env) {
       SELECT album_id, artist, artist_sort FROM album_artists
       UNION ALL
       SELECT t.album_id, ta.artist,
-             COALESCE(MIN(NULLIF(TRIM(ta.artist_sort), '')), ta.artist) AS artist_sort
+             COALESCE(MIN(NULLIF(TRIM(ta.artist_sort), '')), '') AS artist_sort
       FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
       WHERE NOT EXISTS (
         SELECT 1 FROM album_artists aa
@@ -565,7 +577,8 @@ async function ensureMigrations(env) {
     const artistLinksView = await env.DB.prepare(`SELECT sql FROM sqlite_master
       WHERE type = 'view' AND name = 'artist_album_links'`).first();
     if (artistLinksView?.sql
-        && !/GROUP BY\s+t\.album_id\s*,\s*ta\.artist/i.test(artistLinksView.sql)) {
+        && (!/GROUP BY\s+t\.album_id\s*,\s*ta\.artist/i.test(artistLinksView.sql)
+          || !/\)\s*,\s*''\s*\)\s+AS\s+artist_sort/i.test(artistLinksView.sql))) {
       await env.DB.batch([
         env.DB.prepare("DROP VIEW IF EXISTS artist_album_links"),
         env.DB.prepare(`CREATE VIEW artist_album_links ${artistLinksBody}`),
@@ -845,7 +858,8 @@ app.get("/api/library", async (c) => {
       FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
       WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
       GROUP BY a.id
-      ORDER BY a.artist_sort, a.artist, a.year, a.title`).all(),
+      ORDER BY COALESCE(NULLIF(a.artist_sort, ''), a.artist),
+               a.artist, a.year, a.title`).all(),
     c.env.DB.prepare(`SELECT aa.album_id, aa.artist, aa.artist_sort
       FROM album_artists aa JOIN albums a ON a.id = aa.album_id
       WHERE ${showHidden ? "1=1" : "COALESCE(a.hidden,0)=0"}
@@ -905,7 +919,8 @@ app.get("/api/album/:id", async (c) => {
         WHERE t.album_id = ? ORDER BY ta.track_id, ta.position`).bind(id).all(),
     ]);
   const albumArtists = groupAlbumArtists(artistRows).get(id)
-    || [{ name: album.artist, sort: album.artist_sort || album.artist }];
+    || [{ name: album.artist,
+      sort: explicitArtistSort(album.artist, album.artist_sort) }];
   const trackArtistMap = groupTrackArtists(trackArtistRows);
   const out = albumOut({ ...album, albumArtists });
   out.tracks = tracks.map((track) => {
@@ -913,7 +928,8 @@ app.get("/api/album/:id", async (c) => {
     const artists = ownArtists.length ? ownArtists : albumArtists;
     return { ...track, titleOverride: !!track.titleOverride,
       artists, artist: artistCredit(artists),
-      artistSort: artists[0]?.sort || "", hasCustomArtists: !!ownArtists.length };
+      artistSort: explicitArtistSort(artists[0]?.name, artists[0]?.sort),
+      hasCustomArtists: !!ownArtists.length };
   });
   out.note = noteRow?.text || "";
   out.images = images.map((i) => i.id);
@@ -955,9 +971,11 @@ app.get("/api/tracks", async (c) => {
   const output = results.map((track) => {
     const ownArtists = trackArtistMap.get(track.id) || [];
     const artists = ownArtists.length ? ownArtists : artistMap.get(track.albumId)
-      || [{ name: track.artist, sort: track.artistSort || track.artist }];
+      || [{ name: track.artist,
+        sort: explicitArtistSort(track.artist, track.artistSort) }];
     return { ...track, artists, artist: artistCredit(artists),
-      artistSort: artists[0]?.sort || track.artistSort,
+      artistSort: explicitArtistSort(artists[0]?.name,
+        artists[0]?.sort ?? track.artistSort),
       hasCustomArtists: !!ownArtists.length };
   });
   return c.json(output, 200,
@@ -1055,7 +1073,7 @@ app.get("/api/artists", async (c) => {
   const vis = showHidden ? "1=1" : "COALESCE(a.hidden,0)=0";
   const { results } = await c.env.DB.prepare(`
     SELECT names.name AS name, ar.avatar_path AS avatar_path, n.text AS note,
-           COALESCE(s.text, names.album_sort, names.name) AS sort_name,
+           COALESCE(s.text, names.album_sort, '') AS sort_name,
            (b.id IS NOT NULL) AS has_bio,
            (SELECT COUNT(*) FROM track_artists ta
              JOIN tracks t ON t.id = ta.track_id
@@ -1086,7 +1104,7 @@ app.get("/api/artists", async (c) => {
     ORDER BY names.name COLLATE NOCASE`).all();
   return c.json(results.map((r) => ({
     name: r.name, hasAvatar: !!r.avatar_path, note: r.note || "",
-    hasBio: !!r.has_bio, sort: r.sort_name || r.name,
+    hasBio: !!r.has_bio, sort: explicitArtistSort(r.name, r.sort_name),
     featuredTrackCount: Number(r.featured_tracks) || 0,
     visibleFeaturedTrackCount: Number(r.visible_featured_tracks) || 0,
   })));
@@ -1236,7 +1254,7 @@ app.put("/api/artists", async (c) => {
     }
   }
   if (b.artistSort !== undefined) {
-    const sort = b.artistSort.trim().normalize("NFC");
+    const sort = explicitArtistSort(name, b.artistSort);
     const now = Date.now();
     const statements = [];
     if (sort && sort !== name) {
@@ -1250,9 +1268,9 @@ app.put("/api/artists", async (c) => {
         "DELETE FROM notes WHERE kind = 'artistsort' AND id = ?").bind(name));
     }
     statements.push(c.env.DB.prepare(`UPDATE album_artists
-      SET artist_sort = ? WHERE artist = ?`).bind(sort || name, name));
+      SET artist_sort = ? WHERE artist = ?`).bind(sort, name));
     statements.push(c.env.DB.prepare(`UPDATE track_artists
-      SET artist_sort = ? WHERE artist = ?`).bind(sort || name, name));
+      SET artist_sort = ? WHERE artist = ?`).bind(sort, name));
     statements.push(c.env.DB.prepare(`UPDATE albums
       SET artist_sort = COALESCE((SELECT aa.artist_sort FROM album_artists aa
         WHERE aa.album_id = albums.id ORDER BY aa.position LIMIT 1), artist_sort),
@@ -1422,7 +1440,8 @@ app.post("/api/album/:id/discogs-search", async (c) => {
     // sequence, then fall back to the release title alone. Do not use compatibility
     // display fields such as "A x B" as the Discogs artist query.
     const source = credits.length ? credits
-      : [{ name: al.artist, sort: al.artist_sort || al.artist }];
+      : [{ name: al.artist,
+        sort: explicitArtistSort(al.artist, al.artist_sort) }];
     const terms = [];
     const seen = new Set();
     const add = (value) => {
@@ -2461,9 +2480,9 @@ app.post("/api/albums", async (c) => {
     ? "" : boundedText(body.artist, 500, { allowEmpty: false });
   const title = boundedText(body.title, 1000, { allowEmpty: false });
   const artistSortInput = body.artistSort === undefined
-    ? legacyArtist : boundedText(body.artistSort, 500);
+    ? "" : boundedText(body.artistSort, 500);
   const incomingArtists = albumArtistsInput(
-    body.artists, legacyArtist, artistSortInput || legacyArtist);
+    body.artists, legacyArtist, artistSortInput);
   if (legacyArtist === INVALID_INPUT || incomingArtists === INVALID_INPUT
       || title === INVALID_INPUT
       || !Array.isArray(body.tracks) || !body.tracks.length
@@ -2506,7 +2525,8 @@ app.post("/api/albums", async (c) => {
   let albumArtists = existingArtists.length > 1 ? existingArtists : incomingArtists;
   albumArtists = await applyArtistSortOverrides(c.env.DB, albumArtists);
   const artist = artistCredit(albumArtists);
-  const artistSort = albumArtists[0]?.sort || albumArtists[0]?.name || artist;
+  const artistSort = explicitArtistSort(
+    albumArtists[0]?.name, albumArtists[0]?.sort);
   // New albums use the current write target. Existing albums retain storage_id
   // because ON CONFLICT does not overwrite it.
   const wt = await writeTarget(c.env);
@@ -2589,11 +2609,13 @@ app.post("/api/albums", async (c) => {
   const explicitArtists = normalizedTracks.flatMap((track) => track.artists || []);
   const resolvedArtists = await applyArtistSortOverrides(c.env.DB, explicitArtists);
   const resolvedSort = new Map(resolvedArtists.map((artist) =>
-    [artist.name, artist.sort || artist.name]));
+    [artist.name, explicitArtistSort(artist.name, artist.sort)]));
   for (const track of normalizedTracks) {
     if (!track.artists) continue;
     track.artists = track.artists.map((artist) => ({
-      ...artist, sort: resolvedSort.get(artist.name) || artist.sort || artist.name,
+      ...artist, sort: resolvedSort.has(artist.name)
+        ? resolvedSort.get(artist.name)
+        : explicitArtistSort(artist.name, artist.sort),
     }));
   }
   // A path or truncated-hash id collision with another album must fail before
@@ -2636,7 +2658,7 @@ app.post("/api/albums", async (c) => {
       INSERT INTO track_artist_imports
         (import_id, track_id, artist, artist_sort, position)
       VALUES (?,?,?,?,?)`).bind(importId, track.id, artist.name,
-        artist.sort || artist.name, position)));
+        explicitArtistSort(artist.name, artist.sort), position)));
   try {
     await runD1Batches(c.env.DB, stageStatements);
     await runD1Batches(c.env.DB, creditStageStatements);
@@ -2730,16 +2752,17 @@ app.patch("/api/album/:id", async (c) => {
     nextArtists = albumArtistsInput(b.artists);
   } else if ("artist" in b) {
     const name = boundedText(b.artist, 500, { allowEmpty: false });
-    const sort = "artistSort" in b ? boundedText(b.artistSort, 500) : name;
+    const sort = "artistSort" in b ? boundedText(b.artistSort, 500) : "";
     nextArtists = (name === INVALID_INPUT || sort === INVALID_INPUT)
-      ? INVALID_INPUT : albumArtistsInput(undefined, name, sort || name);
+      ? INVALID_INPUT : albumArtistsInput(undefined, name, sort);
   } else if ("artistSort" in b) {
     const sort = boundedText(b.artistSort, 500);
     if (sort !== INVALID_INPUT) {
       const base = currentArtists.length ? currentArtists
-        : [{ name: current.artist, sort: current.artist_sort || current.artist }];
+        : [{ name: current.artist,
+          sort: explicitArtistSort(current.artist, current.artist_sort) }];
       nextArtists = base.map((artist, index) => index === 0
-        ? { ...artist, sort: sort || artist.name } : artist);
+        ? { ...artist, sort: explicitArtistSort(artist.name, sort) } : artist);
     } else {
       nextArtists = INVALID_INPUT;
     }
@@ -2749,7 +2772,8 @@ app.patch("/api/album/:id", async (c) => {
   }
   if (nextArtists) {
     put("artist", artistCredit(nextArtists));
-    put("artist_sort", nextArtists[0].sort || nextArtists[0].name);
+    put("artist_sort", explicitArtistSort(
+      nextArtists[0].name, nextArtists[0].sort));
   }
   if ("title" in b) {
     const value = boundedText(b.title, 1000, { allowEmpty: false });
@@ -2887,7 +2911,8 @@ app.delete("/api/album/:id", async (c) => {
   ]);
   if (!album) return c.json({ error: "not found" }, 404);
   const albumArtists = relatedArtists.length ? relatedArtists
-    : [{ name: album.artist, sort: album.artist_sort || album.artist }];
+    : [{ name: album.artist,
+      sort: explicitArtistSort(album.artist, album.artist_sort) }];
   // Deletion removes database references for old public CDN URLs. Before deleting
   // the directory, confirm registered R2 mirrors are also removed so deleted or
   // private media cannot remain accessible through a known URL.
@@ -2966,7 +2991,8 @@ app.post("/api/album/:id/hide", async (c) => {
       }, 502);
     }
     const albumArtists = relatedArtists.length ? relatedArtists
-      : [{ name: album.artist, sort: album.artist_sort || album.artist }];
+      : [{ name: album.artist,
+        sort: explicitArtistSort(album.artist, album.artist_sort) }];
     for (const artist of albumArtists) {
       const anotherVisible = await c.env.DB.prepare(`
         SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
@@ -3160,7 +3186,8 @@ app.post("/api/album/:id/tracks", async (c) => {
   if (trackCredits) {
     trackCredits = await applyArtistSortOverrides(c.env.DB, trackCredits);
     const inherited = albumCredits.length ? albumCredits
-      : [{ name: album.artist, sort: album.artist_sort || album.artist }];
+      : [{ name: album.artist,
+        sort: explicitArtistSort(album.artist, album.artist_sort) }];
     if (sameArtistCredit(trackCredits, inherited)) trackCredits = [];
   }
   const disc = discInput ?? 1;
@@ -3228,7 +3255,8 @@ app.patch("/api/album/:id/tracks/:tid", async (c) => {
     }
     nextCredits = await applyArtistSortOverrides(c.env.DB, nextCredits);
     const inherited = inheritedCredits.length ? inheritedCredits
-      : [{ name: album.artist, sort: album.artist_sort || album.artist }];
+      : [{ name: album.artist,
+        sort: explicitArtistSort(album.artist, album.artist_sort) }];
     if (sameArtistCredit(nextCredits, inherited)) nextCredits = [];
     statements.push(c.env.DB.prepare(
       "DELETE FROM track_artists WHERE track_id = ?").bind(trackId));

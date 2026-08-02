@@ -62,6 +62,8 @@ El módulo fuente de Administrador lee los títulos y enlaces compatibles con RS
 
 En la página de un artista, los administradores pueden editar el nombre romanizado / inglés. Este valor a nivel de artista actualiza todos sus álbumes y se conserva en sincronizaciones posteriores del complemento.
 
+Déjalo vacío cuando el nombre original ya sea el adecuado para buscar y ordenar. Mihonban conserva el valor vacío y usa el nombre original solo como alternativa interna para la búsqueda y la ordenación, sin guardar un duplicado.
+
 La función Discogs de la página del artista busca candidatos automáticamente. Si no aparece el correcto, pega una URL oficial `discogs.com/artist/...` para cargarlo directamente; el diálogo permite revisar y elegir la foto y la biografía antes de importarlas. La vista de artistas ordena primero por número de álbumes y usa las colaboraciones en canciones solo para desempatar artistas con el mismo número de álbumes. Las colaboraciones aparecen en una segunda línea más discreta y no cuentan como álbumes.
 
 El editor del álbum define el crédito ordenado de artistas predeterminado para todo el lanzamiento. En la gestión de pistas, el botón de artista junto a una canción permite definir una colaboración propia de esa pista; desactiva la opción para volver a heredar los artistas del álbum. Estos créditos se usan en la búsqueda, el reproductor y la información multimedia del sistema. La página de un invitado muestra solo las canciones en las que participa y no le atribuye el álbum completo. El complemento lee valores múltiples reales de `artist` / `artistsort` sin intentar dividir nombres por comas o punto y coma.

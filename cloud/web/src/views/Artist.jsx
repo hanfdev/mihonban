@@ -597,7 +597,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
                    }} />
       )}
       {sortDlg && (
-        <ArtistSortDialog name={name} initialSort={artistSort}
+        <ArtistSortDialog name={name} initialSort={meta.sort || ''}
                           onClose={() => setSortDlg(false)}
                           onSaved={() => {
                             setSortDlg(false)

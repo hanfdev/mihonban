@@ -5,7 +5,7 @@ import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { jaCollator } from '../format.js'
-import { creditsOf } from '../artist-credit.jsx'
+import { creditsOf, effectiveArtistSort } from '../artist-credit.jsx'
 import { compareArtistActivity } from '../artist-ranking.js'
 
 export default function ArtistsPage({ albums, artists, q, avatarVer,
@@ -28,7 +28,7 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
   const noteBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, a.note])), [artists])
   const sortBy = useMemo(() =>
-    new Map((artists || []).map((a) => [a.name, a.sort || a.name])), [artists])
+    new Map((artists || []).map((a) => [a.name, effectiveArtistSort(a)])), [artists])
   // Add 'c' for a custom avatar so the browser cannot reuse a cached no-avatar 302 cover as the avatar.
   const avatarFlagBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, !!a.hasAvatar])), [artists])
@@ -39,7 +39,8 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
       if (a.hidden && !(isAdmin && showHidden)) continue
       for (const credit of creditsOf(a)) {
         const e = m.get(credit.name) || {
-          name: credit.name, sort: sortBy.get(credit.name) || credit.sort || credit.name,
+          name: credit.name, sort: sortBy.get(credit.name)
+            || effectiveArtistSort(credit),
           count: 0, trackCount: 0, hiddenCount: 0,
           genres: new Set(), latest: 0, years: [],
         }
@@ -55,7 +56,7 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
       const trackCount = isAdmin && showHidden
         ? artist.featuredTrackCount : artist.visibleFeaturedTrackCount
       const e = m.get(artist.name) || {
-        name: artist.name, sort: artist.sort || artist.name,
+        name: artist.name, sort: effectiveArtistSort(artist),
         count: 0, trackCount: 0, hiddenCount: 0,
         genres: new Set(), latest: 0, years: [],
       }

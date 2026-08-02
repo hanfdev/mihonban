@@ -21,6 +21,8 @@ The Admin JSON alone is not a catalog backup. A D1 SQL file alone does not conta
 
 Ordered album contributor credits are stored in `album_artists`. Optional song-specific credits are stored in `track_artists`; no rows for a track means it inherits the album credit. Both tables are included in logical SQL exports. On first use after an upgrade, Mihonban creates them and backfills each legacy album as one exact artist credit. It deliberately does not split old combined text on commas because commas are valid in artist and sort names. Use the album editor for a whole-release collaboration, or the artist control in Manage tracks for a guest who appears only on selected songs.
 
+`artist_sort` is optional: blank values are preserved in exports and imports, while search and ordering fall back to the original artist name at runtime.
+
 ## Before moving Node local storage to Cloudflare
 
 Cloudflare cannot read a Node `local` backend. While the old Node app is still available:

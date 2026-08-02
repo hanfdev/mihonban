@@ -178,7 +178,7 @@ test("genre mirror triggers follow direct album updates and deletes", async () =
     assert.equal(library.status, 200);
     const libraryBody = await library.json();
     assert.deepEqual(libraryBody[0].artists,
-      [{ name: "Artist", sort: "Artist" }]);
+      [{ name: "Artist", sort: "" }]);
     assert.deepEqual(
       db.prepare("SELECT genre FROM album_genres WHERE album_id = ? ORDER BY genre")
         .all("genre-direct").map((row) => row.genre),
@@ -277,9 +277,9 @@ test("track collaborations override album credits without claiming the whole alb
     VALUES ('main-store', 'Main', 'local', '{}', 1, 1)`).run();
   const env = companionEnv(db);
   const folder = "Music/Library/Main/[2001] Album";
-  const albumArtists = [{ name: "Main", sort: "Main" }];
+  const albumArtists = [{ name: "Main", sort: "" }];
   const collaboration = [
-    { name: "Main", sort: "Main" },
+    { name: "Main", sort: "" },
     { name: "Guest", sort: "Guest, The" },
   ];
   const tracks = [
@@ -350,7 +350,7 @@ test("track collaborations override album credits without claiming the whole alb
     duet = detail.tracks.find((track) => track.title === "Duet");
     assert.deepEqual(duet.artists, collaboration);
     assert.deepEqual(detail.artists,
-      [{ name: "Legacy combined value", sort: "Legacy combined value" }]);
+      [{ name: "Legacy combined value", sort: "" }]);
 
     // An empty list explicitly restores inheritance. Sending the inherited
     // credit itself is normalized to the same compact representation.
@@ -1499,10 +1499,20 @@ test("artist sort overrides update every album and survive companion sync", asyn
     assert.equal(cleared.status, 200, await cleared.clone().text());
     assert.equal(db.prepare(
       "SELECT artist_sort FROM albums WHERE artist = 'Artist'").get().artist_sort,
-    "Artist");
+    "");
+    assert.deepEqual(db.prepare(
+      "SELECT artist_sort FROM album_artists WHERE artist = 'Artist'").all(),
+    [{ artist_sort: "" }]);
     assert.equal(db.prepare(
       "SELECT 1 FROM notes WHERE kind = 'artistsort' AND id = 'Artist'").get(),
     undefined);
+
+    const clearedArtists = await companionRequest(env, "/api/artists");
+    assert.equal((await clearedArtists.json())[0].sort, "");
+    const library = await companionRequest(env, "/api/library");
+    const [album] = await library.json();
+    assert.equal(album.artistSort, "");
+    assert.deepEqual(album.artists, [{ name: "Artist", sort: "" }]);
   } finally {
     db.close();
   }
@@ -1543,7 +1553,7 @@ test("API input validation rejects corrupt metadata and preserves prior state", 
     assert.equal(renamed.status, 200);
     assert.deepEqual(db.prepare(
       "SELECT artist, artist_sort FROM albums WHERE id = 'album'").get(), {
-      artist: "Renamed Artist", artist_sort: "Renamed Artist",
+      artist: "Renamed Artist", artist_sort: "",
     });
     const romanized = await companionRequest(env, "/api/album/album", {
       method: "PATCH", ...jsonBody({

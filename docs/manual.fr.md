@@ -62,6 +62,8 @@ Le module source Admin lit les titres et liens RSS/Atom/Blogger pris en charge. 
 
 Sur une page artiste, les administrateurs peuvent modifier le nom romanisé / anglais. Cette valeur au niveau de l’artiste met à jour tous ses albums et reste conservée lors des synchronisations ultérieures du compagnon.
 
+Laissez ce champ vide lorsque le nom d’origine convient déjà à la recherche et au tri. Mihonban conserve la valeur vide et utilise le nom d’origine uniquement comme repli pour la recherche et le tri, sans stocker de doublon.
+
 La fonction Discogs de la page artiste recherche automatiquement des candidats. Si le bon artiste n’apparaît pas, collez une URL officielle `discogs.com/artist/...` pour le charger directement ; la boîte de dialogue permet de prévisualiser et de choisir la photo et la biographie avant l’importation. La vue Artistes trie d’abord par nombre d’albums et n’utilise les participations à des morceaux que pour départager les artistes ayant le même nombre d’albums. Les participations figurent sur une seconde ligne plus discrète et ne comptent pas comme des albums.
 
 L’éditeur d’album définit le crédit d’artiste ordonné par défaut de toute la parution. Dans la gestion des morceaux, le bouton artiste d’un titre permet de définir une collaboration propre à ce titre ; désactivez l’option pour hériter à nouveau des artistes de l’album. Ces crédits alimentent la recherche, le lecteur et les informations média du système. La page d’un invité ne répertorie que les morceaux auxquels il participe et ne lui attribue pas l’album entier. Le compagnon lit les vraies valeurs multiples `artist` / `artistsort` sans tenter de découper les noms aux virgules ou aux points-virgules.

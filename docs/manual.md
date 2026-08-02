@@ -62,6 +62,8 @@ The Admin source module reads supported RSS/Atom/Blogger titles and links. Cloud
 
 On an artist page, administrators can edit the Romanized / English name. This artist-level value updates every album by that artist and survives later companion synchronization.
 
+Leave this field blank when the original name is already the desired search and sort name. Mihonban preserves the empty value and falls back to the original name only for search and sorting instead of storing a duplicate.
+
 The artist-page Discogs action searches for matching candidates automatically. If the correct artist is missing, paste an official `discogs.com/artist/...` URL and fetch it directly; the dialog previews the available photo and biography before either is imported. The Artists overview ranks album count first and uses featured-track count only to break ties between artists with the same album count. Featured tracks appear on a quieter second metadata line rather than being counted as albums.
 
 Use the album editor for the default ordered artist credit of the whole release. In Manage tracks, the artist button beside a song can add a track-specific collaboration; leave that option off to inherit the album artists. Track credits are used by search, the player and system media metadata. A guest artist's page lists only the songs they joined under Featured tracks and does not claim the whole album. The companion reads genuine multi-value `artist` / `artistsort` tags without guessing splits from commas or semicolons.

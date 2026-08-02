@@ -152,7 +152,7 @@ CREATE VIEW IF NOT EXISTS artist_album_links AS
   SELECT album_id, artist, artist_sort FROM album_artists
   UNION ALL
   SELECT t.album_id, ta.artist,
-         COALESCE(MIN(NULLIF(TRIM(ta.artist_sort), '')), ta.artist) AS artist_sort
+         COALESCE(MIN(NULLIF(TRIM(ta.artist_sort), '')), '') AS artist_sort
   FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
   WHERE NOT EXISTS (
     SELECT 1 FROM album_artists aa
