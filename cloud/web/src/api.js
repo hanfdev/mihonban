@@ -104,6 +104,8 @@ export const api = {
   scanFolder: (folder, extra = {}) =>
     req("POST", "/api/scan", { folder, ...extra }),
   uploadSession: (path) => req("POST", "/api/upload/session", { path }),
+  verifyUpload: (path, storageId, size) =>
+    req("POST", "/api/upload/verify", { path, storageId, size }),
   uploadCover: (path, blob) =>
     req("POST", `/api/upload/cover?path=${encodeURIComponent(path)}`, blob),
   // Favorites: administrators write, everyone reads.
@@ -238,6 +240,55 @@ export function resumableOffset(status, rangeHeader, fallbackEnd, responseText =
   return null;
 }
 
+export function resumableStatusOffset(provider, status, rangeHeader,
+  responseText, total) {
+  if (provider === "gdrive") {
+    if (status === 200 || status === 201) return total;
+    if (status === 308) {
+      const offset = resumableOffset(status, rangeHeader, total, responseText);
+      return offset === null ? 0 : offset;
+    }
+    return null;
+  }
+  if (provider === "onedrive" && status >= 200 && status < 300) {
+    return resumableOffset(202, rangeHeader, total, responseText);
+  }
+  return null;
+}
+
+function resumableStatusOnce(uploadUrl, provider, total) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(provider === "gdrive" ? "PUT" : "GET", uploadUrl);
+    xhr.timeout = 30 * 1000;
+    if (provider === "gdrive") {
+      xhr.setRequestHeader("Content-Range", `bytes */${total}`);
+    }
+    xhr.onload = () => {
+      const offset = resumableStatusOffset(provider, xhr.status,
+        xhr.getResponseHeader("Range"), xhr.responseText, total);
+      if (Number.isFinite(offset)) {
+        resolve(offset);
+        return;
+      }
+      const error = new Error(`无法恢复上传进度 HTTP ${xhr.status}`);
+      error.status = xhr.status;
+      reject(error);
+    };
+    xhr.onerror = () => {
+      const error = new Error("恢复上传进度时网络中断");
+      error.status = 0;
+      reject(error);
+    };
+    xhr.ontimeout = () => {
+      const error = new Error("恢复上传进度超时");
+      error.status = 0;
+      reject(error);
+    };
+    xhr.send();
+  });
+}
+
 function chunkOnce(uploadUrl, blob, start, end, total, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -299,18 +350,116 @@ function chunkOnce(uploadUrl, blob, start, end, total, onProgress) {
   });
 }
 
-async function uploadChunk(uploadUrl, blob, start, end, total, onProgress) {
+async function uploadChunk(uploadUrl, provider, blob, start, end, total,
+  onProgress, isComplete) {
   const attempts = 5;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       return await chunkOnce(uploadUrl, blob, start, end, total, onProgress);
     } catch (error) {
-      if (!UPLOAD_RETRYABLE.has(error.status) || attempt === attempts - 1) throw error;
+      const recoverable = UPLOAD_RETRYABLE.has(error.status)
+        || error.status === 409 || error.status === 416;
+      if (!recoverable || attempt === attempts - 1) throw error;
+      try {
+        const resumeAt = await resumableStatusOnce(uploadUrl, provider, total);
+        if (resumeAt < start || resumeAt > end) {
+          throw new Error("上传服务端返回了不一致的恢复位置");
+        }
+        if (resumeAt > start) return { __status: 202, __resumeAt: resumeAt };
+      } catch (statusError) {
+        // A completed session may disappear before its final acknowledgement
+        // reaches the browser. In that case, verify the destination itself.
+        if (end === total && await isComplete().catch(() => false)) {
+          return { __status: 201, __resumeAt: total };
+        }
+        if (statusError.message.includes("不一致")) throw statusError;
+      }
       const delay = error.retryAfter ?? Math.min(700 * (2 ** attempt), 6000);
       await wait(delay);
     }
   }
   throw new Error("上传失败");
+}
+
+function proxyUploadOnce(sess, path, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT",
+      `/api/upload/proxy?path=${encodeURIComponent(path)}` +
+      `&storageId=${encodeURIComponent(sess.storageId || "")}` +
+      `&size=${encodeURIComponent(file.size)}`);
+    xhr.timeout = 15 * 60 * 1000;
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (e) =>
+      onProgress && e.lengthComputable && onProgress(e.loaded);
+    xhr.onload = () => {
+      if (xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText || "{}")); }
+        catch { resolve({ ok: true }); }
+        return;
+      }
+      let detail = "";
+      let problem = {};
+      try {
+        problem = JSON.parse(xhr.responseText || "{}");
+        detail = problem.error || "";
+      }
+      catch { detail = String(xhr.responseText || "").slice(0, 160); }
+      const error = new Error(
+        `上传失败 HTTP ${xhr.status}${detail ? `：${detail}` : ""}`);
+      error.status = xhr.status;
+      error.retryAfter = xhrRetryAfter(xhr);
+      error.retryable = xhr.status === 409
+        && Number.isSafeInteger(problem.expectedSize);
+      reject(error);
+    };
+    xhr.onerror = () => {
+      const error = new Error("上传时网络连接中断");
+      error.status = 0;
+      reject(error);
+    };
+    xhr.ontimeout = () => {
+      const error = new Error("上传超时");
+      error.status = 0;
+      reject(error);
+    };
+    xhr.send(file);
+  });
+}
+
+async function uploadProxyWithRetry(sess, path, file, onProgress) {
+  const attempts = 5;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await proxyUploadOnce(sess, path, file, onProgress);
+    } catch (error) {
+      if ((!UPLOAD_RETRYABLE.has(error.status) && !error.retryable)
+          || attempt === attempts - 1) {
+        throw error;
+      }
+      const delay = error.retryAfter ?? Math.min(700 * (2 ** attempt), 6000);
+      await wait(delay);
+    }
+  }
+  throw new Error("上传失败");
+}
+
+async function verifyUploadedFile(path, storageId, size) {
+  const attempts = 5;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await api.verifyUpload(path, storageId, size);
+    } catch (error) {
+      lastError = error;
+      const retryable = error.status === undefined || error.status === 0
+        || error.status === 408 || error.status === 409 || error.status === 429
+        || (error.status >= 500 && error.status < 600);
+      if (!retryable || attempt === attempts - 1) throw error;
+      await wait(Math.min(500 * (2 ** attempt), 4000));
+    }
+  }
+  throw lastError || new Error("无法校验上传文件");
 }
 
 /** Upload audio to the current write target:
@@ -323,35 +472,22 @@ export async function uploadFileToOneDrive(path, file, onProgress) {
   }
   const sess = await api.uploadSession(path);
   if (sess.proxy) {
-    // WebDAV and Local have no resumable session; stream the complete file through the proxy with progress.
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("PUT",
-        `/api/upload/proxy?path=${encodeURIComponent(path)}` +
-        `&storageId=${encodeURIComponent(sess.storageId || "")}`);
-      xhr.timeout = 5 * 60 * 1000;
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-      xhr.upload.onprogress = (e) =>
-        onProgress && e.lengthComputable && onProgress(e.loaded);
-      xhr.onload = () => {
-        if (xhr.status < 300) {
-          try { resolve(JSON.parse(xhr.responseText || "{}")); }
-          catch { resolve({ ok: true }); }
-        } else reject(new Error(`上传失败 HTTP ${xhr.status}`));
-      };
-      xhr.onerror = () => reject(new Error("网络错误"));
-      xhr.ontimeout = () => reject(new Error("上传超时"));
-      xhr.send(file);
-    });
+    // These backends cannot resume in the middle of a PUT. Retry the complete
+    // replacement and accept it only after the stored byte length matches.
+    const result = await uploadProxyWithRetry(sess, path, file, onProgress);
+    await verifyUploadedFile(path, sess.storageId, file.size);
+    return result;
   }
-  const { uploadUrl } = sess;
+  const { uploadUrl, provider, storageId } = sess;
   const CHUNK = 10 * 1024 * 1024; // 10 MiB = 320 KiB × 32, satisfying Graph's alignment requirement.
   let done = 0;
+  let finalItem = {};
   while (done < file.size) {
     const end = Math.min(done + CHUNK, file.size);
     const blob = file.slice(done, end);
-    const result = await uploadChunk(
-      uploadUrl, blob, done, end, file.size, onProgress);
+    const result = await uploadChunk(uploadUrl, provider, blob, done, end,
+      file.size, onProgress,
+      () => api.verifyUpload(path, storageId, file.size));
     const uploadResult = result && typeof result === "object" ? result : {};
     if ([200, 201].includes(uploadResult.__status) && end < file.size) {
       throw new Error("上传会话过早结束");
@@ -367,7 +503,10 @@ export async function uploadFileToOneDrive(path, file, onProgress) {
     }
     if (done >= file.size) {
       const { __status, __resumeAt, ...item } = uploadResult;
-      return item; // The final chunk returns item metadata.
+      finalItem = item;
+      break;
     }
   }
+  await verifyUploadedFile(path, storageId, file.size);
+  return finalItem;
 }

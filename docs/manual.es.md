@@ -60,6 +60,8 @@ El módulo fuente de Administrador lee los títulos y enlaces compatibles con RS
 4. Comienza la subida y espera a que terminen todas las pistas antes de salir de la página.
 5. Abre el álbum terminado, pon una pista y busca cerca del final.
 
+Una interrupción breve de la conexión no registra silenciosamente un audio parcial. OneDrive y Google Drive reanudan las sesiones por bloques con un número limitado de reintentos; las subidas mediante proxy, como WebDAV, vuelven a enviar el archivo completo. Mihonban comprueba el número exacto de bytes almacenados antes de registrar el álbum y muestra un error en lugar de aceptar un objeto ausente o truncado. Conserva el archivo original hasta que el álbum terminado supere la prueba de reproducción.
+
 En la página de un artista, los administradores pueden editar el nombre romanizado / inglés. Este valor a nivel de artista actualiza todos sus álbumes y se conserva en sincronizaciones posteriores del complemento.
 
 Déjalo vacío cuando el nombre original ya sea el adecuado para buscar y ordenar. Mihonban conserva el valor vacío y usa el nombre original solo como alternativa interna para la búsqueda y la ordenación, sin guardar un duplicado.
@@ -67,6 +69,8 @@ Déjalo vacío cuando el nombre original ya sea el adecuado para buscar y ordena
 La función Discogs de la página del artista busca candidatos automáticamente. Si no aparece el correcto, pega una URL oficial `discogs.com/artist/...` para cargarlo directamente; el diálogo permite revisar y elegir la foto y la biografía antes de importarlas. La vista de artistas ordena primero por número de álbumes y usa las colaboraciones en canciones solo para desempatar artistas con el mismo número de álbumes. Las colaboraciones aparecen en una segunda línea más discreta y no cuentan como álbumes.
 
 El editor del álbum define el crédito ordenado de artistas predeterminado para todo el lanzamiento. En la gestión de pistas, el botón de artista junto a una canción permite definir una colaboración propia de esa pista; desactiva la opción para volver a heredar los artistas del álbum. Estos créditos se usan en la búsqueda, el reproductor y la información multimedia del sistema. La página de un invitado muestra solo las canciones en las que participa y no le atribuye el álbum completo. El complemento lee valores múltiples reales de `artist` / `artistsort` sin intentar dividir nombres por comas o punto y coma.
+
+Las importaciones con varios discos conservan la identidad de cada disco y muestran un encabezado independiente. La numeración vuelve a empezar en 1 en cada disco; la gestión de pistas solo permite reordenar dentro del mismo disco y nunca convierte ese cambio de orden en una reasignación de disco.
 
 Usa `mihonban cloud pull` cuando la copia web deba regresar a la biblioteca local. Añade `--retag` solo cuando los metadatos en la nube deban actualizar las etiquetas locales existentes.
 
@@ -76,6 +80,8 @@ Antes de descargar cada álbum ausente, el compañero escribe un marcador persis
 
 Mihonban no automatiza las solicitudes a Rate Your Music. Guarda manualmente una página de lanzamiento en el navegador, importa el HTML guardado en la página del álbum y valora las críticas, el recuento de votos, géneros primarios/secundarios y descriptores antes de guardar. La CLI puede analizar, emparejar y escribir manualmente las páginas guardadas en bloque.
 
+La ordenación predeterminada por puntuación ajusta la confianza para que unas pocas valoraciones muy altas no superen a una obra de nota similar respaldada por muchas personas. Usa una media previa estable de 3,3 con el peso de 50 votos, sin modificar la media original de RYM guardada o mostrada. Elige **Puntuación (original)** cuando quieras ordenar por la media sin ajustar.
+
 ## Discogs
 
 Los administradores pueden buscar lanzamientos o artistas y previsualizar la importación de imágenes, géneros/estilos y biografías. En Cloudflare, el navegador administrador llama directamente a la API pública oficial de Discogs y guarda en caché local los metadatos públicos para evitar los límites de salida compartida del Worker. El token personal de Admin es opcional y solo se usa como respaldo del servidor; nunca se envía al navegador. Cuando una búsqueda no incluye portada, solo los candidatos visibles reutilizan bajo demanda los detalles del lanzamiento ya almacenados en caché para completarla. Las miniaturas de vista previa son imágenes públicas de Discogs cargadas por el navegador; los archivos que se importan realmente al almacenamiento configurado siguen pasando por el Worker autenticado y sus comprobaciones de host Discogs, tamaño y firma de archivo.
@@ -84,7 +90,7 @@ La importación de imágenes del álbum es idempotente. Al volver a importar las
 
 ## Favoritos y contenido oculto
 
-- Los administradores pueden añadir álbumes o pistas como favoritas y arrastrarlas para reordenarlas.
+- Los administradores pueden añadir álbumes o pistas como favoritas y arrastrarlas para reordenarlas. Los elementos recién añadidos aparecen al principio para encontrarlos de inmediato; después sigue mandando el orden manual.
 - Los oyentes pueden ver las páginas de favoritos seleccionados pero no pueden editarlas.
 - Los álbumes, temas, artistas, estilos ocultos que solo existen en contenido oculto, imágenes, búsquedas y entradas favoritas se excluyen de las respuestas de los oyentes.
 - “Mostrar ocultos” es un estado de vista exclusivo para administradores y compartido por las listas de álbumes, pistas y artistas.

@@ -6,7 +6,7 @@ import { clampMediaTime, freezeMediaSession, isIOSDevice,
          mediaSessionPlaybackState, resolvePendingMediaSeek, seekAudio,
          shouldDeferLockScreenPlayback,
          shouldPauseForBackgroundBuffering, storedVolume,
-         updateMediaPosition } from '../src/media.js'
+         updateMediaPosition, volumeIconLevel } from '../src/media.js'
 
 test('installed web apps are detected across iOS and display mode APIs', () => {
   assert.equal(isStandaloneWebApp(undefined, { standalone: true }), true)
@@ -60,6 +60,16 @@ test('a new origin starts audible while preserving an explicit zero volume', () 
   assert.equal(storedVolume('not-a-number'), 1)
   assert.equal(storedVolume('0'), 0)
   assert.equal(storedVolume('1.4'), 1)
+})
+
+test('volume icons follow four stable loudness bands', () => {
+  assert.equal(volumeIconLevel(0), 'muted')
+  assert.equal(volumeIconLevel(0.02), 'low')
+  assert.equal(volumeIconLevel(1 / 3), 'low')
+  assert.equal(volumeIconLevel(0.34), 'medium')
+  assert.equal(volumeIconLevel(2 / 3), 'medium')
+  assert.equal(volumeIconLevel(0.68), 'high')
+  assert.equal(volumeIconLevel(1), 'high')
 })
 
 test('library duration wins over Safari OGG duration estimates', () => {

@@ -60,6 +60,8 @@ Le module source Admin lit les titres et liens RSS/Atom/Blogger pris en charge. 
 4. Commencez le téléchargement et attendez que chaque morceau se termine avant de quitter la page.
 5. Ouvrez l’album terminé, jouez une piste et cherchez vers la fin.
 
+Une brève coupure de réseau n’enregistre pas silencieusement un fichier audio partiel. OneDrive et Google Drive reprennent les sessions segmentées avec un nombre limité de tentatives ; les téléversements relayés, comme WebDAV, renvoient le fichier complet. Mihonban vérifie la taille exacte stockée avant d’enregistrer l’album et signale une erreur plutôt que d’accepter un objet absent ou tronqué. Conservez le fichier source jusqu’à ce que l’album terminé ait passé le contrôle de lecture.
+
 Sur une page artiste, les administrateurs peuvent modifier le nom romanisé / anglais. Cette valeur au niveau de l’artiste met à jour tous ses albums et reste conservée lors des synchronisations ultérieures du compagnon.
 
 Laissez ce champ vide lorsque le nom d’origine convient déjà à la recherche et au tri. Mihonban conserve la valeur vide et utilise le nom d’origine uniquement comme repli pour la recherche et le tri, sans stocker de doublon.
@@ -67,6 +69,8 @@ Laissez ce champ vide lorsque le nom d’origine convient déjà à la recherche
 La fonction Discogs de la page artiste recherche automatiquement des candidats. Si le bon artiste n’apparaît pas, collez une URL officielle `discogs.com/artist/...` pour le charger directement ; la boîte de dialogue permet de prévisualiser et de choisir la photo et la biographie avant l’importation. La vue Artistes trie d’abord par nombre d’albums et n’utilise les participations à des morceaux que pour départager les artistes ayant le même nombre d’albums. Les participations figurent sur une seconde ligne plus discrète et ne comptent pas comme des albums.
 
 L’éditeur d’album définit le crédit d’artiste ordonné par défaut de toute la parution. Dans la gestion des morceaux, le bouton artiste d’un titre permet de définir une collaboration propre à ce titre ; désactivez l’option pour hériter à nouveau des artistes de l’album. Ces crédits alimentent la recherche, le lecteur et les informations média du système. La page d’un invité ne répertorie que les morceaux auxquels il participe et ne lui attribue pas l’album entier. Le compagnon lit les vraies valeurs multiples `artist` / `artistsort` sans tenter de découper les noms aux virgules ou aux points-virgules.
+
+Les imports multi-disques conservent l’identité de chaque disque et affichent un en-tête distinct. La numérotation reprend à 1 sur chaque disque ; la gestion des morceaux n’autorise le réordonnancement qu’au sein d’un même disque et ne transforme jamais ce geste en changement de disque.
 
 Utilisez `mihonban cloud pull` lorsque la copie web doit retourner dans la bibliothèque locale. Ajoutez `--retag` uniquement lorsque les métadonnées cloud doivent mettre à jour les balises locales existantes.
 
@@ -76,6 +80,8 @@ Avant de télécharger chaque album absent, le compagnon écrit un marqueur pers
 
 Mihonban n’automatise pas les requêtes à Rate Your Music. Sauvegardez manuellement une page de sortie dans le navigateur, importez le HTML sauvegardé sur la page de l’album, et évaluez la note, le nombre de votes, les genres primaires/secondaires et les descripteurs avant de sauvegarder. La CLI peut analyser, faire correspondre et écrire manuellement les pages sauvegardées en masse.
 
+Le tri par note utilise par défaut une pondération de confiance afin qu’une poignée de notes très élevées ne devance pas une parution presque aussi bien notée par un large public. Il emploie une moyenne a priori stable de 3,3, pondérée comme 50 votes, sans modifier la moyenne RYM enregistrée ou affichée. Choisissez **Note (brute)** pour trier strictement selon la moyenne non corrigée.
+
 ## Discogs
 
 Les administrateurs peuvent rechercher les sorties ou artistes et prévisualiser l’importation d’images, genres/styles et biographies. Sur Cloudflare, le navigateur administrateur appelle directement l’API publique officielle de Discogs et met les métadonnées publiques en cache local afin d’éviter les limites de sortie partagée du Worker. Le token personnel dans Admin est facultatif et réservé au repli côté serveur ; il n’est jamais envoyé au navigateur. Lorsqu’une recherche ne fournit pas de pochette, seuls les candidats visibles réutilisent à la demande les détails de sortie déjà mis en cache pour la compléter. Les vignettes d’aperçu sont des images publiques Discogs chargées par le navigateur ; les fichiers réellement importés dans le stockage configuré passent toujours par le Worker authentifié et ses contrôles d’hôte Discogs, de taille et de signature de fichier.
@@ -84,7 +90,7 @@ L’importation des images d’album est idempotente. Si les mêmes images d’u
 
 ## Favoris et contenus masqués
 
-- Les administrateurs peuvent ajouter des albums ou des morceaux aux favoris et les faire glisser pour les réordonner.
+- Les administrateurs peuvent ajouter des albums ou des morceaux aux favoris et les faire glisser pour les réordonner. Un nouvel élément est placé en tête pour rester immédiatement visible ; l’ordre manuel redevient ensuite prioritaire.
 - Les auditeurs peuvent consulter la sélection de favoris, mais pas la modifier.
 - Les albums, morceaux et artistes masqués, ainsi que les genres, images, résultats de recherche et favoris qui n’existent que dans du contenu masqué, sont exclus des réponses destinées aux auditeurs.
 - « Afficher les éléments masqués » est un état d’affichage réservé aux administrateurs et partagé entre les listes d’albums, de morceaux et d’artistes.

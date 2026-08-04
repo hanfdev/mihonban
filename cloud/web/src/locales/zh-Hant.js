@@ -39,6 +39,7 @@ export default {
     album: '音盤', title: '標題', note: '簡介', genres: '風格', primaryGenres: '主風格',
     secondaryGenres: '次風格', descriptors: '描述詞', unrated: '未評分', back: '返回',
     fav: '加入精選', unfav: '移出精選', faved: '已精選',
+    disc: (n) => `第 ${n} 碟`,
   },
   artistPage: {
     kicker: '藝人', readBio: '閱讀完整簡介', editBio: '編輯簡介', addBio: '新增簡介', changeAvatar: '更換頭像',
@@ -81,7 +82,8 @@ export default {
     viewGenre: (g) => `查看所有「${g}」音盤`,
   },
   library: {
-    sortRating: '評分 高→低', sortArtist: '藝人', sortTitle: '盤名',
+    sortRating: '評分（綜合）', sortRatingRaw: '評分（原始）',
+    sortArtist: '藝人', sortTitle: '盤名',
     sortYearNew: '年份 新→舊', sortYearOld: '年份 舊→新', sortAdded: '最近新增',
     filterRating: '評分', filterGenre: '風格', filterDecade: '年代', filterArtist: '藝人',
     anyRating: '全部評分', anyGenre: '全部風格', anyDecade: '全部年代', anyArtist: '全部藝人',
@@ -100,6 +102,7 @@ export default {
   },
   player: {
     next: '下一首', prev: '上一首', seek: '播放進度', volume: '音量',
+    mute: '靜音', unmute: '恢復聲音',
     repeatOff: '不循環', repeatAll: '清單循環', repeatOne: '單曲循環',
     collapse: '收起 (Esc)', viewAlbum: '查看音盤', shuffle: '隨機播放',
     noPlayable: '佇列中沒有此裝置可播放的格式',
@@ -141,9 +144,9 @@ export default {
     editArtists: (artists) => `編輯歌曲藝人：${artists}`,
     inheritedArtists: (artists) => `繼承專輯藝人：${artists}`,
     artistInvalid: '請至少填寫一位名稱有效且不重複的藝人。',
-    title: '管理曲目', hint: '拖曳列可調整順序（儲存後依新順序 1…n 重新編號）；點擊曲名可修改。由本機伴侶同步的音盤，下一次 cloud sync 仍以檔案 tag 為準。',
+    title: '管理曲目', hint: '僅可在同一碟內拖曳排序；儲存後各碟分別從 1 重新編號，並保留分碟結構。點擊曲名可修改。由本機伴侶同步的音盤，下一次 cloud sync 仍以檔案 tag 為準。',
     add: '新增歌曲：拖入音訊檔案，或點擊選擇', rescanned: '已依 OneDrive 目錄重建曲目表',
-    rescanFail: (m) => `重新掃描失敗：${m}`, rescan: '重新掃描目錄', orderSaved: '順序已儲存，依新順序 1…n 重新編號',
+    rescanFail: (m) => `重新掃描失敗：${m}`, rescan: '重新掃描目錄', orderSaved: '順序已儲存，各碟已分別從 1 重新編號',
     removed: '已從音盤移除（檔案保留）', removedFiles: '已刪除（OneDrive 檔案進回收筒）', noAudio: '沒有識別到音訊檔案',
     uploadFail: (name, m) => `「${name}」上傳失敗：${m}`, confirmDel: '再點一次確認', delWithFiles: '連同 OneDrive 檔案一起刪除',
     saveOrder: '儲存新順序', rescanTitle: '依 OneDrive 目錄中的實際檔案重建曲目表',

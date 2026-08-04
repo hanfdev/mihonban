@@ -21,6 +21,7 @@ import { adjacentQueuePosition } from './player-queue.js'
 import { sessionAfterLogout } from './session.js'
 import { visibleAlbumCount } from './visibility.js'
 import { isCurrentHash, scrollToTop } from './navigation.js'
+import { addFavoriteToFront } from './favorites.js'
 
 const parseHash = () => {
   const h = location.hash.replace(/^#\/?/, '')
@@ -264,7 +265,7 @@ export default function App() {
     const adding = !currentFavs[key].some((x) => x.id === id)
     applyFavs({
       ...currentFavs,
-      [key]: adding ? [...currentFavs[key], { id, ts: Date.now() }]
+      [key]: adding ? addFavoriteToFront(currentFavs[key], id, Date.now())
         : currentFavs[key].filter((x) => x.id !== id),
     })
     try { await (adding ? api.addFavorite(kind, id) : api.removeFavorite(kind, id)) }

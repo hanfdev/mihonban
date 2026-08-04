@@ -9,6 +9,14 @@ export function storedVolume(value, fallback = 1) {
   return Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : fallback
 }
 
+export function volumeIconLevel(value) {
+  const volume = storedVolume(value, 0)
+  if (volume === 0) return 'muted'
+  if (volume <= 1 / 3) return 'low'
+  if (volume <= 2 / 3) return 'medium'
+  return 'high'
+}
+
 /** Detect a home-screen or otherwise installed standalone web app. */
 export function isStandaloneWebApp(browserWindow = globalThis.window,
                                    browserNavigator = globalThis.navigator) {

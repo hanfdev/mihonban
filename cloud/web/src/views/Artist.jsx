@@ -7,6 +7,7 @@ import { AlbumCard, isPriorityCover } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
 import { preferredArtistSort } from '../aliases.js'
 import { hasArtist } from '../artist-credit.jsx'
+import { contentLanguage } from '../content-language.js'
 
 function BioDialog({ name, initialNote, onClose, onSaved }) {
   const { t } = useI18n()
@@ -476,7 +477,7 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
         </div>
         <div className="artist-info">
           <div className="hero-artist">{t('artistPage.kicker')}</div>
-          <h1 className="hero-title">{name}</h1>
+          <h1 className="hero-title" lang={contentLanguage(name)}>{name}</h1>
           {(artistSort || isAdmin) && (
             <div className="artist-sort-row">
               {artistSort && <span className="artist-sort-name">{artistSort}</span>}

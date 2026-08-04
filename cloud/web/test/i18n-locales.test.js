@@ -42,6 +42,8 @@ test('new accessibility and error strings are explicitly localized', () => {
     ['common', 'faved'],
     ['player', 'seek'],
     ['player', 'volume'],
+    ['player', 'mute'],
+    ['player', 'unmute'],
     ['gallery', 'noImage'],
   ]
   for (const [id, locale] of Object.entries(locales)) {
@@ -62,5 +64,23 @@ test('Discogs image results report imported and skipped counts in every locale',
     const message = locale.discogsAlbum.images(2, false, 3)
     assert.match(message, /2/, `${id} omits the imported count`)
     assert.match(message, /3/, `${id} omits the skipped count`)
+  }
+})
+
+test('disc headings are localized in every locale', () => {
+  for (const [id, locale] of Object.entries({ en, ...locales })) {
+    assert.equal(typeof locale.common.disc, 'function', `${id} has no disc formatter`)
+    assert.match(locale.common.disc(2), /2/, `${id} disc formatter omits the disc number`)
+  }
+})
+
+test('confidence-aware and raw rating sorts are explicit in every locale', () => {
+  for (const [id, locale] of Object.entries({ en, ...locales })) {
+    assert.equal(Object.hasOwn(locale.library, 'sortRating'), true,
+      `${id} has no confidence-aware rating label`)
+    assert.equal(Object.hasOwn(locale.library, 'sortRatingRaw'), true,
+      `${id} has no raw rating label`)
+    assert.notEqual(locale.library.sortRating, locale.library.sortRatingRaw,
+      `${id} does not distinguish weighted and raw ratings`)
   }
 })

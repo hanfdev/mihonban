@@ -1,6 +1,6 @@
-// mihonban cloud — Cloudflare Worker 配置
-// 部署向导 (tools/deploy-cloud.cmd) 会把 database_id / kv id 替换成真实值。
-// 本地开发 (wrangler dev) 用占位符即可，D1/KV 走本地模拟。
+// Mihonban Cloudflare Worker configuration.
+// The deployment helper (tools/deploy-cloud.cmd) replaces the D1 and KV placeholders.
+// Wrangler local development can keep the placeholders and use local emulation.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mihonban",
@@ -23,17 +23,19 @@
     { "binding": "KV", "id": "00000000000000000000000000000000" }
   ],
   "triggers": {
-    // 每 6 小时扫一次资源站新帖（UTC；只读 feed，不下载文件）
+    // Scan source feeds every six hours (UTC); this never downloads music.
     "crons": ["17 */6 * * *"]
   },
   "vars": {
-    // 所有命名存储共用的曲库相对根目录；凭据保存在 storages 表中。
-    "OD_ROOT": "Music/Library"
+    // Shared library-relative root for named storage; credentials live in storages.
+    "OD_ROOT": "Music/Library",
+    // Stable key prevents the compatibility migration from running per request.
+    "DB_SCHEMA_KEY": "mihonban"
   }
-  // Secrets (wrangler secret put …)：
-  //   APP_PASSWORD    听众初始口令
-  //   ADMIN_PASSWORD  管理员初始口令
-  //   SESSION_SECRET  会话签名密钥（随机 32+ 字节）
-  //   COMPANION_KEY   本地伴侣程序的 API key
-  //   STREAM_PROXY_SECRET  可选；与独立代理 Worker 的 PROXY_SECRET 相同
+  // Secrets (wrangler secret put ...):
+  //   APP_PASSWORD    Initial listener password
+  //   ADMIN_PASSWORD  Initial administrator password
+  //   SESSION_SECRET  Session signing key (at least 32 random bytes)
+  //   COMPANION_KEY   API key for the optional local companion
+  //   STREAM_PROXY_SECRET  Optional; must match the proxy Worker's PROXY_SECRET
 }

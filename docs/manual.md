@@ -60,6 +60,8 @@ The Admin source module reads supported RSS/Atom/Blogger titles and links. Cloud
 4. Start upload and wait for every track to finish before leaving the page.
 5. Open the completed album, play a track, and seek near the end.
 
+Brief connection loss does not silently register a partial audio file. OneDrive and Google Drive resume chunked sessions with bounded retries; proxy-style uploads such as WebDAV retry the complete file. Mihonban verifies the exact stored byte length before registering the album, and reports a failure instead of accepting a missing or truncated object. Keep the source file until the finished album has passed the playback check.
+
 On an artist page, administrators can edit the Romanized / English name. This artist-level value updates every album by that artist and survives later companion synchronization.
 
 Leave this field blank when the original name is already the desired search and sort name. Mihonban preserves the empty value and falls back to the original name only for search and sorting instead of storing a duplicate.
@@ -67,6 +69,8 @@ Leave this field blank when the original name is already the desired search and 
 The artist-page Discogs action searches for matching candidates automatically. If the correct artist is missing, paste an official `discogs.com/artist/...` URL and fetch it directly; the dialog previews the available photo and biography before either is imported. The Artists overview ranks album count first and uses featured-track count only to break ties between artists with the same album count. Featured tracks appear on a quieter second metadata line rather than being counted as albums.
 
 Use the album editor for the default ordered artist credit of the whole release. In Manage tracks, the artist button beside a song can add a track-specific collaboration; leave that option off to inherit the album artists. Track credits are used by search, the player and system media metadata. A guest artist's page lists only the songs they joined under Featured tracks and does not claim the whole album. The companion reads genuine multi-value `artist` / `artistsort` tags without guessing splits from commas or semicolons.
+
+Multi-disc imports keep each disc identity and display a separate heading. Track numbers restart at 1 for each disc; Manage tracks permits reordering only inside the same disc and never turns a reorder into a disc reassignment.
 
 Use `mihonban cloud pull` when the web copy must return to the local library. Add `--retag` only when cloud metadata should update existing local tags.
 
@@ -76,6 +80,8 @@ Before downloading each missing album, the companion writes a persistent marker 
 
 Mihonban does not automate requests to Rate Your Music. Save a release page manually in the browser, import the saved HTML on the album page, and review rating, vote count, primary/secondary genres, and descriptors before saving. The CLI can parse, match, and write manually saved pages in bulk.
 
+The default rating sort is confidence-weighted so a tiny number of very high ratings does not outrank a similarly rated release with broad support. It uses a stable 3.3 prior with the weight of 50 votes without changing the stored or displayed RYM average. Choose **Rating (raw)** when the unadjusted average is the intended order.
+
 ## Discogs
 
 Administrators can search releases or artists and preview an import of images, genres/styles, and biography text. On Cloudflare, the administrator browser calls the official public API directly and caches public metadata locally, avoiding shared Worker egress limits. The personal token in Admin is optional and is used only by the server-side fallback; it is never sent to the browser. When search results omit artwork, visible candidates lazily reuse the cached release details to fill it in. Preview thumbnails are public Discogs images loaded by the browser; files actually imported into configured storage still pass through the authenticated Worker and its Discogs-host, size, and file-signature checks.
@@ -84,7 +90,7 @@ Album-image imports are idempotent. Re-importing the same Discogs images skips t
 
 ## Favorites and hidden content
 
-- Administrators can favorite albums or tracks and drag to reorder them.
+- Administrators can favorite albums or tracks and drag to reorder them. A newly favorited item starts at the front so it is immediately findable; manual ordering remains authoritative afterward.
 - Listeners can view the curated favorites pages but cannot edit them.
 - Hidden albums, tracks, artists, styles that exist only on hidden content, images, searches, and favorite entries are excluded from listener responses.
 - The Show hidden toggle is an administrator-only view state shared by album, track, and artist lists.

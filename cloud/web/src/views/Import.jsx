@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { api, artUrl, uploadFileToOneDrive } from '../api.js'
-import { readTags } from '../tags.js'
+import { readTags, recognizedAudioFiles } from '../tags.js'
 import { sortOf, toJa } from '../aliases.js'
 import { CropDialog, I, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
 import { ArtistEditor, artistCreditText, creditsFromTags,
          sameArtistNames } from '../artist-credit.jsx'
+import { groupTracksByDisc } from '../track-disc.js'
 
 const clean = (s) => (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
 
@@ -43,13 +44,12 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
     [albums])
 
   const addFiles = async (fileList) => {
-    const files = [...fileList].filter((f) =>
-      /\.(mp3|flac|m4a|ogg|opus|wav)$/i.test(f.name))
+    const files = await recognizedAudioFiles(fileList)
     if (!files.length) { toast(t('importPage.noAudio'), 'err'); return }
     const parsed = []
     let failed = 0
-    for (const f of files) {
-      try { parsed.push(await readTags(f)) }
+    for (const { file, format } of files) {
+      try { parsed.push(await readTags(file, format)) }
       catch { failed++ }
     }
     if (failed) toast(t('importPage.fail', `${failed} file(s) could not be read`), 'err')
@@ -199,7 +199,7 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
             <I.upload size={30} />
             <div>{t('importPage.drop')}</div>
             <input type="file" multiple hidden
-                   accept=".mp3,.flac,.m4a,.ogg,.opus,.wav"
+                   accept=".mp3,.flac,.fla,.m4a,.ogg,.opus,.opu,.wav,audio/*"
                    onChange={(e) => addFiles(e.target.files)} />
           </label>
         )}
@@ -234,26 +234,35 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
             </div>
 
             <div className="upl-list">
-              {items.map((it) => (
-                <div key={it.filename} className="upl-row">
-                  <span style={{ color: 'var(--ink-faint)', textAlign: 'right' }}>
-                    {it.track ?? '–'}</span>
-                  <input value={it.title} disabled={phase !== 'edit'}
-                         onChange={(e) => setItems(items.map((x) =>
-                           x === it ? { ...x, title: e.target.value } : x))} />
-                  <div className="upl-prog">
-                    <i style={{ width: `${progress[it.filename]?.pct || 0}%` }} />
-                  </div>
-                  <span className={`upl-status ${
-                    progress[it.filename]?.status === t('importPage.done') ? 'ok' : ''}`}>
-                    {progress[it.filename]?.status ||
-                      `${(it.size / 1048576).toFixed(1)} MB`}
-                  </span>
-                  {phase === 'edit'
-                    ? <button className="upl-x" title={t('importPage.removeTrack')}
-                              onClick={() => removeItem(it)}><I.x size={13} /></button>
-                    : <span />}
-                </div>
+              {groupTracksByDisc(items).map((group) => (
+                <React.Fragment key={group.disc}>
+                  {group.multiDisc && (
+                    <div className="disc-heading upl-disc-heading">
+                      <span>{t('common.disc', group.disc)}</span>
+                    </div>
+                  )}
+                  {group.items.map(({ track: it, position }) => (
+                    <div key={it.filename} className="upl-row">
+                      <span style={{ color: 'var(--ink-faint)', textAlign: 'right' }}>
+                        {it.track ?? (group.multiDisc ? position : '–')}</span>
+                      <input value={it.title} disabled={phase !== 'edit'}
+                             onChange={(e) => setItems(items.map((x) =>
+                               x === it ? { ...x, title: e.target.value } : x))} />
+                      <div className="upl-prog">
+                        <i style={{ width: `${progress[it.filename]?.pct || 0}%` }} />
+                      </div>
+                      <span className={`upl-status ${
+                        progress[it.filename]?.status === t('importPage.done') ? 'ok' : ''}`}>
+                        {progress[it.filename]?.status ||
+                          `${(it.size / 1048576).toFixed(1)} MB`}
+                      </span>
+                      {phase === 'edit'
+                        ? <button className="upl-x" title={t('importPage.removeTrack')}
+                                  onClick={() => removeItem(it)}><I.x size={13} /></button>
+                        : <span />}
+                    </div>
+                  ))}
+                </React.Fragment>
               ))}
             </div>
 
@@ -268,7 +277,7 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
                      }}>
                 <I.plus size={15} /> {t('importPage.more')}
                 <input type="file" multiple hidden
-                       accept=".mp3,.flac,.m4a,.ogg,.opus,.wav"
+                       accept=".mp3,.flac,.fla,.m4a,.ogg,.opus,.opu,.wav,audio/*"
                        onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
               </label>
             )}

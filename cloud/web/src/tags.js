@@ -7,6 +7,60 @@ const fromFilename = (name) => {
   return { track: m ? Number(m[1]) : null, title: m ? m[2] : stem };
 };
 
+const AUDIO_EXTENSIONS = new Set(["mp3", "flac", "m4a", "ogg", "opus", "wav"]);
+
+const extensionOf = (name) => {
+  const match = /\.([^.]+)$/.exec(String(name || ""));
+  return match ? match[1].toLowerCase() : "";
+};
+
+const ascii = (bytes, start, length) => String.fromCharCode(
+  ...bytes.slice(start, start + length));
+
+function audioFormatFromHeader(bytes) {
+  if (bytes.length >= 4 && ascii(bytes, 0, 4) === "fLaC") return "flac";
+  if (bytes.length >= 12 && ascii(bytes, 0, 4) === "RIFF"
+      && ascii(bytes, 8, 4) === "WAVE") return "wav";
+  if (bytes.length >= 12 && ascii(bytes, 4, 4) === "ftyp") return "m4a";
+  if (bytes.length >= 4 && ascii(bytes, 0, 4) === "OggS") {
+    return ascii(bytes, 0, Math.min(bytes.length, 96)).includes("OpusHead")
+      ? "opus" : "ogg";
+  }
+  if (bytes.length >= 3 && ascii(bytes, 0, 3) === "ID3") return "mp3";
+  if (bytes.length >= 2 && bytes[0] === 0xff
+      && (bytes[1] & 0xe0) === 0xe0) return "mp3";
+  return "";
+}
+
+export async function audioFileFormat(file) {
+  const extension = extensionOf(file?.name);
+  if (AUDIO_EXTENSIONS.has(extension)) return extension;
+  if (!file || typeof file.slice !== "function") return "";
+  try {
+    const bytes = new Uint8Array(await file.slice(0, 96).arrayBuffer());
+    return audioFormatFromHeader(bytes);
+  } catch {
+    return "";
+  }
+}
+
+export function normalizedAudioFilename(name, format) {
+  const extension = extensionOf(name);
+  if ((extension === "fla" && format === "flac")
+      || (extension === "opu" && format === "opus")) {
+    return String(name).replace(/\.[^.]+$/, `.${format}`);
+  }
+  return String(name || "");
+}
+
+export async function recognizedAudioFiles(fileList) {
+  const checked = await Promise.all([...fileList].map(async (file) => ({
+    file,
+    format: await audioFileFormat(file),
+  })));
+  return checked.filter((entry) => entry.format);
+}
+
 const probeDuration = (file) => new Promise((resolve) => {
   let url = ""
   try { url = URL.createObjectURL(file) } catch { resolve(null); return }
@@ -27,13 +81,16 @@ const probeDuration = (file) => new Promise((resolve) => {
   a.src = url
 });
 
-export async function readTags(file) {
-  const fallback = fromFilename(file.name);
+export async function readTags(file, detectedFormat = "") {
+  const format = detectedFormat || await audioFileFormat(file);
+  if (!format) throw new Error("unsupported audio file");
+  const filename = normalizedAudioFilename(file.name, format);
+  const fallback = fromFilename(filename);
   const base = {
     file,
-    filename: file.name,
+    filename,
     size: file.size,
-    format: file.name.split(".").pop().toLowerCase(),
+    format,
     title: fallback.title,
     track: fallback.track,
     disc: 1,

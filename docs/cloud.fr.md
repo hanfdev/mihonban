@@ -70,6 +70,7 @@ Le JSON des paramètres d’administrateur exporte un sous-ensemble autorisé de
 - OneDrive utilise une session de téléversement et des URL de téléchargement temporaires.
 - WebDAV et Google Drive uploads/flux passent par l’API principale.
 - Node fichiers à dossier local sont diffusés uniquement par le Node runtime.
+- Un téléversement web n’est accepté que lorsque le stockage confirme exactement le nombre d’octets attendu. Les fournisseurs avec reprise récupèrent leur position validée après une panne passagère ; les fournisseurs relayés renvoient tout le corps de la requête.
 - Range et `Content-Range` comportements sont nécessaires pour une recherche fiable, en particulier sur iOS.
 
 ## Images
@@ -83,6 +84,14 @@ Les listes d’albums et les surfaces compactes utilisent des dérivés WebP de 
 Si une redirection vers le miroir public aboutit à un objet absent ou obsolète, l’application web réessaie depuis le stockage propriétaire. Le Worker valide les octets de l’image, revient de la miniature du fournisseur au fichier original si nécessaire, puis répare l’objet R2 et son index D1 versionné après une récupération réussie. Un ancien 404 mis en cache devient ainsi auto-réparable sans exposer les identifiants du stockage privé au navigateur.
 
 R2 n’est pas un backend audio et n’est pas la base de données du catalogue.
+
+## Schéma d’exécution et quotas D1
+
+Le Worker met à niveau un ancien catalogue avant de servir les requêtes API. Le modèle Wrangler public fournit un `DB_SCHEMA_KEY` stable et, après une mise à niveau réussie, enregistre la version d’exécution du code dans `settings.schema_version`. Les requêtes suivantes du même isolate utilisent la mémoire ; un isolate démarré à froid lit uniquement cette ligne de marqueur et ignore les DDL de compatibilité et les remplissages. Conservez `DB_SCHEMA_KEY` stable et ne supprimez pas ce marqueur lors d’un nettoyage courant. Lorsqu’une version ajoute une migration d’exécution, son mainteneur doit aussi avancer `RUNTIME_SCHEMA_VERSION`.
+
+Dans un même stockage nommé, l’identité des dossiers d’album et des chemins de morceau est insensible à la casse. Les artistes suivent la même règle dans tout le catalogue. Mihonban conserve la première graphie d’affichage enregistrée, mais refuse un doublon ultérieur qui ne diffère que par la casse.
+
+Sur Workers Free, D1 inclut actuellement 5 millions de lignes lues et 100 000 lignes écrites par jour, avec remise à zéro à 00:00 UTC. Un déploiement ou une correction ne peut pas soustraire l’usage déjà comptabilisé, et le tableau de bord peut continuer à afficher le total précédent après la reprise des requêtes. Vérifiez l’état actuel avec une requête API sans cache ou une requête D1 directe, puis consultez `meta.rows_read` / `meta.rows_written` pour chaque requête ; la barre du tableau de bord représente un historique, pas un verrou en temps réel. Si l’usage recommence à grimper rapidement, vérifiez que la configuration déployée contient toujours `DB_SCHEMA_KEY` et que `settings.schema_version` correspond au Worker actuel. Consultez la [tarification D1](https://developers.cloudflare.com/d1/platform/pricing/) pour les limites à jour.
 
 ## Tâches planifiées
 

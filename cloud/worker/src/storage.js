@@ -130,6 +130,27 @@ export async function listChildren(env, folder, storageId, options = {}) {
   return [];
 }
 
+/** Return the exact byte length of a stored file, or null when it is absent. */
+export async function fileSize(env, path, storageId) {
+  const parts = String(path || "").replace(/^\/+|\/+$/g, "").split("/");
+  const name = parts.pop();
+  if (!name) return null;
+  const folder = parts.join("/");
+  const children = await listChildren(env, folder, storageId, { strict: true });
+  const normalizedName = name.normalize("NFC");
+  const matches = children.filter((item) => item?.file
+    && String(item.name || "").normalize("NFC") === normalizedName);
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    throw new Error(`storage returned duplicate file names: ${path}`);
+  }
+  const size = Number(matches[0].size);
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new Error(`storage returned an invalid file size: ${path}`);
+  }
+  return size;
+}
+
 export async function putSmallFile(env, path, bytes, contentType, storageId) {
   const s = await requireStorage(env, storageId);
   if (s.kind === "onedrive") return graph.putSmallFileWith(env, s.config, path, bytes, contentType);

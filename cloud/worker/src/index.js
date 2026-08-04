@@ -212,6 +212,44 @@ function explicitArtistSort(name, sort) {
   return value && value !== artistName ? value : "";
 }
 
+const artistIdentityKey = (name) =>
+  String(name || "").normalize("NFC").toLocaleLowerCase();
+
+async function canonicalizeArtistCredits(db, artists) {
+  if (!artists.length) return artists;
+  const names = [...new Set(artists.map((artist) => artist.name))];
+  const exactNames = new Set();
+  const canonicalByKey = new Map();
+  for (let index = 0; index < names.length; index += 80) {
+    const chunk = names.slice(index, index + 80);
+    const marks = chunk.map(() => "?").join(",");
+    const { results } = await db.prepare(`
+      SELECT name FROM artists
+      WHERE name COLLATE NOCASE IN (${marks}) ORDER BY name`)
+      .bind(...chunk).all();
+    for (const row of results) {
+      exactNames.add(row.name);
+      const key = artistIdentityKey(row.name);
+      if (!canonicalByKey.has(key)) canonicalByKey.set(key, row.name);
+    }
+  }
+  return artists.map((artist) => {
+    const canonical = exactNames.has(artist.name)
+      ? artist.name : canonicalByKey.get(artistIdentityKey(artist.name));
+    if (!canonical || canonical === artist.name) return artist;
+    return {
+      ...artist,
+      name: canonical,
+      sort: explicitArtistSort(canonical, artist.sort),
+    };
+  });
+}
+
+async function canonicalArtistName(db, name) {
+  const [artist] = await canonicalizeArtistCredits(db, [{ name, sort: "" }]);
+  return artist.name;
+}
+
 function albumArtistsInput(value, fallbackName = "", fallbackSort = "") {
   const source = value === undefined
     ? [{ name: fallbackName, sort: fallbackSort }]
@@ -248,7 +286,8 @@ function trackArtistsInput(value) {
 }
 
 const sameArtistCredit = (left, right) => left.length === right.length
-  && left.every((artist, index) => artist.name === right[index]?.name);
+  && left.every((artist, index) =>
+    artistIdentityKey(artist.name) === artistIdentityKey(right[index]?.name));
 
 async function applyArtistSortOverrides(db, artists) {
   if (!artists.length) return artists;
@@ -380,6 +419,9 @@ async function ensureSingleWriteTarget(env) {
 // cap so large box sets and long favorite/image reorder lists do not turn into
 // opaque 500 errors. (Node's SQLite compatibility layer accepts all sizes.)
 const D1_BATCH_SIZE = 80;
+const RYM_RATING_PRIOR = 3.3;
+const RYM_RATING_PRIOR_VOTES = 50;
+const RYM_RATING_PRIOR_TOTAL = RYM_RATING_PRIOR * RYM_RATING_PRIOR_VOTES;
 async function runD1Batches(db, statements, size = D1_BATCH_SIZE) {
   for (let i = 0; i < statements.length; i += size) {
     await db.batch(statements.slice(i, i + size));
@@ -492,14 +534,46 @@ app.get("/api/me", async (c) => {
 app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
 
 // Lightweight startup migration adds newer columns to older databases. ALTER
-// errors when a column already exists, so ignore that case. Run once per isolate;
-// D1 lacks IF NOT EXISTS COLUMN, making try/catch the idempotency mechanism.
+// errors when a column already exists, so ignore that case. Production uses a
+// stable configuration key plus a persisted marker; without that, Cloudflare
+// may provide a fresh binding object on each request and repeat the whole check.
+const RUNTIME_SCHEMA_VERSION = "2026-08-05-1";
 const migratedDbs = new WeakSet();
 const migrationPromises = new WeakMap();
+const configuredMigrated = new Set();
+const configuredMigrationPromises = new Map();
+
+function configuredMigrationKey(env) {
+  const value = typeof env.DB_SCHEMA_KEY === "string"
+    ? env.DB_SCHEMA_KEY.trim() : "";
+  return value ? `configured:${value}` : null;
+}
+
 async function ensureMigrations(env) {
-  if (migratedDbs.has(env.DB)) return;
-  if (migrationPromises.has(env.DB)) return migrationPromises.get(env.DB);
+  const configuredKey = configuredMigrationKey(env);
+  if (configuredKey) {
+    if (configuredMigrated.has(configuredKey)) return;
+    if (configuredMigrationPromises.has(configuredKey)) {
+      return configuredMigrationPromises.get(configuredKey);
+    }
+  } else {
+    if (migratedDbs.has(env.DB)) return;
+    if (migrationPromises.has(env.DB)) return migrationPromises.get(env.DB);
+  }
+
   const migration = (async () => {
+    if (configuredKey) {
+      try {
+        const marker = await env.DB.prepare(
+          "SELECT v FROM settings WHERE k = 'schema_version'").first();
+        if (marker?.v === RUNTIME_SCHEMA_VERSION) return;
+      } catch (error) {
+        // The settings table is part of the supported schema. A missing table
+        // means this is an older database and the compatibility migration must run.
+        if (!/no such table/i.test(String(error?.message || error))) throw error;
+      }
+    }
+
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS artists (
       name TEXT PRIMARY KEY,
       avatar_path TEXT NOT NULL DEFAULT '',
@@ -586,6 +660,21 @@ async function ensureMigrations(env) {
     } else {
       await env.DB.prepare(artistLinksSql).run();
     }
+    // Some legacy catalogs have credit rows but no supplemental artist row.
+    // Backfill only the missing shell so case-insensitive identity resolution
+    // also covers those artists; existing spelling and metadata remain intact.
+    await env.DB.prepare(`INSERT OR IGNORE INTO artists (name, avatar_path)
+      SELECT credit.name, '' FROM (
+        SELECT MIN(name) AS name FROM (
+          SELECT artist AS name FROM album_artists
+          UNION ALL
+          SELECT artist AS name FROM track_artists
+        ) GROUP BY name COLLATE NOCASE
+      ) credit
+      WHERE NOT EXISTS (
+        SELECT 1 FROM artists existing
+        WHERE existing.name = credit.name COLLATE NOCASE
+      )`).run();
     // Older multi-storage builds inferred avatar storage from the first album
     // of the artist. Persist that same association once so future reads and
     // migrations are deterministic even when the artist spans several disks.
@@ -761,6 +850,44 @@ async function ensureMigrations(env) {
     } catch (e) {
       if (!/already exists/i.test(String(e?.message || e))) throw e;
     }
+    // Provider path rules differ, so the catalog uses a portable identity:
+    // within one backend, letter casing alone cannot create a second album or
+    // track. The triggers close the small race between the friendly API check
+    // and the final write without rewriting any existing records.
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS albums_path_case_guard
+      BEFORE INSERT ON albums
+      WHEN EXISTS (
+        SELECT 1 FROM albums existing
+        WHERE existing.storage_id = NEW.storage_id
+          AND existing.id != NEW.id
+          AND existing.folder = NEW.folder COLLATE NOCASE
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'case-equivalent album folder already exists');
+      END`).run();
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS tracks_path_case_guard
+      BEFORE INSERT ON tracks
+      WHEN EXISTS (
+        SELECT 1 FROM tracks existing
+        JOIN albums old_album ON old_album.id = existing.album_id
+        JOIN albums new_album ON new_album.id = NEW.album_id
+        WHERE old_album.storage_id = new_album.storage_id
+          AND existing.id != NEW.id
+          AND existing.path = NEW.path COLLATE NOCASE
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'case-equivalent track path already exists');
+      END`).run();
+    // Preserve the first stored display spelling while rejecting any later
+    // case-only identity. Exact INSERT OR IGNORE operations remain valid.
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS artists_name_case_guard
+      BEFORE INSERT ON artists
+      WHEN NOT EXISTS (SELECT 1 FROM artists WHERE name = NEW.name)
+        AND EXISTS (SELECT 1 FROM artists
+          WHERE name = NEW.name COLLATE NOCASE)
+      BEGIN
+        SELECT RAISE(ABORT, 'case-equivalent artist name already exists');
+      END`).run();
     // The normalized genre side table turns same-genre recommendations from a
     // full-table json_each scan into an indexed lookup. Triggers keep every writer
     // (API, direct SQL, or a restored database) consistent. Install them only
@@ -813,8 +940,32 @@ async function ensureMigrations(env) {
         FROM albums, json_each(CASE WHEN json_valid(albums.sec_genres)
           THEN albums.sec_genres ELSE '[]' END) j`).run();
     }
-    migratedDbs.add(env.DB);
-  })().finally(() => { migrationPromises.delete(env.DB); });
+    if (configuredKey) {
+      await env.DB.prepare(`
+        INSERT INTO settings (k, v) VALUES ('schema_version', ?)
+        ON CONFLICT(k) DO UPDATE SET v = excluded.v`)
+        .bind(RUNTIME_SCHEMA_VERSION).run();
+    } else {
+      migratedDbs.add(env.DB);
+    }
+  })().finally(() => {
+    // Keep the resolved configured promise in the map so a concurrent request
+    // cannot start a second migration between completion and marker caching.
+    if (!configuredKey) migrationPromises.delete(env.DB);
+  });
+
+  if (configuredKey) {
+    configuredMigrationPromises.set(configuredKey, migration);
+    try {
+      await migration;
+      configuredMigrated.add(configuredKey);
+    } catch (error) {
+      configuredMigrationPromises.delete(configuredKey);
+      throw error;
+    }
+    return;
+  }
+
   migrationPromises.set(env.DB, migration);
   return migration;
 }
@@ -901,15 +1052,24 @@ app.get("/api/album/:id", async (c) => {
       c.env.DB.prepare(`
         SELECT id FROM album_images WHERE album_id = ?
         ORDER BY sort, created_at`).bind(id).all(),
-      // Same-genre recommendations: other visible albums sharing a primary genre,
-      // sorted by rating descending. The album_genres side table replaces a
-      // full-table json_each scan with indexed lookups.
+      // Same-genre recommendations: other visible albums sharing a primary genre.
+      // Above-average scores are confidence-adjusted with the same stable prior
+      // as the library, so tiny samples cannot dominate broad consensus. The
+      // album_genres side table keeps the genre lookup indexed.
       main
         ? c.env.DB.prepare(`
-            SELECT a.id, a.artist, a.title, a.year, a.rym_rating
+            SELECT a.id, a.artist, a.title, a.year,
+                   a.rym_rating, a.rym_votes
             FROM album_genres g JOIN albums a ON a.id = g.album_id
             WHERE g.genre = lower(?) AND a.id != ? AND COALESCE(a.hidden,0)=0
-            ORDER BY a.rym_rating IS NULL, a.rym_rating DESC LIMIT 12`)
+            ORDER BY a.rym_rating IS NULL,
+              CASE WHEN a.rym_rating <= ${RYM_RATING_PRIOR} THEN a.rym_rating
+                ELSE ((a.rym_rating * COALESCE(a.rym_votes, 0))
+                  + ${RYM_RATING_PRIOR_TOTAL})
+                  / (COALESCE(a.rym_votes, 0) + ${RYM_RATING_PRIOR_VOTES})
+              END DESC,
+              COALESCE(a.rym_votes, 0) DESC, a.rym_rating DESC
+            LIMIT 12`)
           .bind(main, id).all()
         : null,
       c.env.DB.prepare(`SELECT album_id, artist, artist_sort
@@ -935,7 +1095,7 @@ app.get("/api/album/:id", async (c) => {
   out.images = images.map((i) => i.id);
   out.similar = (sim?.results || []).map((s) => ({
     id: s.id, artist: s.artist, title: s.title, year: s.year,
-    rating: s.rym_rating,
+    rating: s.rym_rating, votes: s.rym_votes,
   }));
   return c.json(out);
 });
@@ -985,8 +1145,8 @@ app.get("/api/tracks", async (c) => {
 /* ---------- Favorites (marked by admins, visible to everyone) ---------- */
 
 app.get("/api/favorites", async (c) => {
-  // Use ascending sort_order for manual drag order; NULL falls back to created_at
-  // descending, with the newest first.
+  // Manual order is ascending. Legacy NULL rows retain newest-first ordering,
+  // while every newly selected item receives a position ahead of the current minimum.
   const visible = canSeeHidden(c) ? "1=1" : `(
     (kind = 'album' AND EXISTS (
       SELECT 1 FROM albums a WHERE a.id = item_id AND COALESCE(a.hidden,0)=0
@@ -1047,9 +1207,13 @@ app.put("/api/favorites/:kind/:id", async (c) => {
     `SELECT 1 FROM ${table} WHERE id = ?`).bind(id).first();
   if (!exists) return c.json({ error: "not found" }, 404);
   await c.env.DB.prepare(`
-    INSERT INTO favorites (kind, item_id, created_at) VALUES (?, ?, ?)
+    INSERT INTO favorites (kind, item_id, created_at, sort_order)
+    VALUES (?, ?, ?, (
+      SELECT COALESCE(MIN(sort_order) - 1, 0)
+      FROM favorites WHERE kind = ?
+    ))
     ON CONFLICT DO NOTHING`)
-    .bind(kind, id, Date.now()).run();
+    .bind(kind, id, Date.now(), kind).run();
   return c.json({ ok: true });
 });
 
@@ -1111,7 +1275,7 @@ app.get("/api/artists", async (c) => {
 });
 
 app.get("/api/artists/:name/tracks", async (c) => {
-  const name = artistNameParam(c);
+  const name = await canonicalArtistName(c.env.DB, artistNameParam(c));
   const showHidden = c.req.query("hidden") === "1" && canSeeHidden(c);
   const visibility = showHidden ? "1=1" : "COALESCE(a.hidden,0)=0";
   const [{ results }, { results: creditRows }] = await Promise.all([
@@ -1145,7 +1309,7 @@ app.get("/api/artists/:name/tracks", async (c) => {
 
 // Fetch full Markdown bios separately because they may be too large for the list endpoint.
 app.get("/api/artist-bio/:name", async (c) => {
-  const name = artistNameParam(c);
+  const name = await canonicalArtistName(c.env.DB, artistNameParam(c));
   if (!canSeeHidden(c)) {
     const visible = await c.env.DB.prepare(
       `SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
@@ -1164,7 +1328,7 @@ app.put("/api/artists", async (c) => {
   if (!b) return c.json({ error: "请求 JSON 无效" }, 400);
   const rawName = boundedText(b.name, 500, { allowEmpty: false });
   if (rawName === INVALID_INPUT) return c.json({ error: "name 格式无效" }, 400);
-  const name = rawName.normalize("NFC");
+  const name = await canonicalArtistName(c.env.DB, rawName.normalize("NFC"));
   if ((b.note !== undefined &&
        (typeof b.note !== "string" || b.note.length > 20_000))
       || (b.bio !== undefined &&
@@ -1289,7 +1453,7 @@ function artistNameParam(c) {
 }
 
 app.get("/api/artist-art/:name", async (c) => {
-  const name = artistNameParam(c);
+  const name = await canonicalArtistName(c.env.DB, artistNameParam(c));
   const publiclyVisible = await c.env.DB.prepare(
     `SELECT 1 FROM artist_album_links aa JOIN albums a ON a.id = aa.album_id
      WHERE aa.artist = ? AND COALESCE(a.hidden,0)=0 LIMIT 1`)
@@ -1813,7 +1977,7 @@ app.post("/api/artist-discogs-detail", async (c) => {
 // Import an artist avatar and bio: upload the avatar under a unique filename in
 // the artist directory, then write the bio.
 app.post("/api/artists/:name/discogs-import", async (c) => {
-  const name = artistNameParam(c);
+  const name = await canonicalArtistName(c.env.DB, artistNameParam(c));
   const body = await requestObject(c);
   const { avatarUri, profile, setAvatar, setBio } = body || {};
   if ((avatarUri !== undefined &&
@@ -2516,13 +2680,18 @@ app.post("/api/albums", async (c) => {
   const genres = genreLists(primaryGenres, secondaryGenres);
   const id = await sha16(folder);
   const now = Date.now();
-  const previousContributors = await contributorsForAlbum(c.env.DB, id);
+  const [previousContributors, existingAlbum] = await Promise.all([
+    contributorsForAlbum(c.env.DB, id),
+    c.env.DB.prepare("SELECT storage_id FROM albums WHERE id = ?")
+      .bind(id).first(),
+  ]);
   // A legacy companion only knows the singular artist field. Once an album
   // has been explicitly edited to multiple credits, later rescans must not
   // collapse it back to one combined string.
   const existingArtists = body.artists === undefined
     ? await artistsForAlbum(c.env.DB, id) : [];
   let albumArtists = existingArtists.length > 1 ? existingArtists : incomingArtists;
+  albumArtists = await canonicalizeArtistCredits(c.env.DB, albumArtists);
   albumArtists = await applyArtistSortOverrides(c.env.DB, albumArtists);
   const artist = artistCredit(albumArtists);
   const artistSort = explicitArtistSort(
@@ -2531,6 +2700,17 @@ app.post("/api/albums", async (c) => {
   // because ON CONFLICT does not overwrite it.
   const wt = await writeTarget(c.env);
   if (!wt) return c.json({ error: "请先设置一个命名存储写入目标" }, 400);
+  const storageId = existingAlbum?.storage_id || wt.id;
+  const folderConflict = await c.env.DB.prepare(`
+    SELECT id, folder FROM albums
+    WHERE storage_id = ? AND id != ? AND folder = ? COLLATE NOCASE
+    LIMIT 1`).bind(storageId, id, folder).first();
+  if (folderConflict) {
+    return c.json({
+      error: "This storage folder is already registered with different letter casing",
+      conflictAlbumId: folderConflict.id,
+    }, 409);
+  }
   const albumStmt = c.env.DB.prepare(`
       INSERT INTO albums (id, artist, artist_sort, title, year, folder,
         cover_path, rym_rating, rym_votes, rym_rank, rym_url,
@@ -2557,7 +2737,7 @@ app.post("/api/albums", async (c) => {
       .bind(id, artist, artistSort, title, year, folder, coverPath,
         rymRating, rymVotes, rymRank, rymUrl, JSON.stringify(genres.primary),
         JSON.stringify(genres.secondary),
-        JSON.stringify(descriptors), wt?.id || null, now, now);
+        JSON.stringify(descriptors), storageId, now, now);
   const seenTrackPaths = new Set();
   const seenTrackIds = new Set();
   const normalizedTracks = [];
@@ -2569,10 +2749,11 @@ app.post("/api/albums", async (c) => {
     if (!path || !path.startsWith(folder + "/")) {
       return c.json({ error: `track path 必须在该专辑目录中: ${t.path}` }, 400);
     }
-    if (seenTrackPaths.has(path)) {
+    const pathKey = path.toLocaleLowerCase();
+    if (seenTrackPaths.has(pathKey)) {
       return c.json({ error: `曲目路径重复: ${path}` }, 400);
     }
-    seenTrackPaths.add(path);
+    seenTrackPaths.add(pathKey);
     const track = finiteInput(t.track, {
       integer: true, min: 1, max: Number.MAX_SAFE_INTEGER,
     });
@@ -2607,26 +2788,26 @@ app.post("/api/albums", async (c) => {
     });
   }
   const explicitArtists = normalizedTracks.flatMap((track) => track.artists || []);
-  const resolvedArtists = await applyArtistSortOverrides(c.env.DB, explicitArtists);
-  const resolvedSort = new Map(resolvedArtists.map((artist) =>
-    [artist.name, explicitArtistSort(artist.name, artist.sort)]));
+  const canonicalArtists = await canonicalizeArtistCredits(c.env.DB, explicitArtists);
+  const resolvedArtists = await applyArtistSortOverrides(c.env.DB, canonicalArtists);
+  const resolvedCredits = new Map(resolvedArtists.map((artist) =>
+    [artistIdentityKey(artist.name), artist]));
   for (const track of normalizedTracks) {
     if (!track.artists) continue;
-    track.artists = track.artists.map((artist) => ({
-      ...artist, sort: resolvedSort.has(artist.name)
-        ? resolvedSort.get(artist.name)
-        : explicitArtistSort(artist.name, artist.sort),
-    }));
+    track.artists = track.artists.map((artist) =>
+      resolvedCredits.get(artistIdentityKey(artist.name)) || artist);
   }
   // A path or truncated-hash id collision with another album must fail before
   // staging. A concurrent collision is still caught by the final UNIQUE write.
-  const paths = [...seenTrackPaths];
+  const paths = normalizedTracks.map((track) => track.path);
   for (let i = 0; i < paths.length; i += D1_BATCH_SIZE) {
     const chunk = paths.slice(i, i + D1_BATCH_SIZE);
     const marks = chunk.map(() => "?").join(",");
-    const { results: conflicts } = await c.env.DB.prepare(
-      `SELECT path, album_id FROM tracks WHERE path IN (${marks})`)
-      .bind(...chunk).all();
+    const { results: conflicts } = await c.env.DB.prepare(`
+      SELECT t.path, t.album_id FROM tracks t
+      JOIN albums a ON a.id = t.album_id
+      WHERE a.storage_id = ? AND t.path COLLATE NOCASE IN (${marks})`)
+      .bind(storageId, ...chunk).all();
     const foreign = conflicts.find((row) => row.album_id !== id);
     if (foreign) {
       return c.json({ error: `曲目已经登记在其他专辑: ${foreign.path}` }, 409);
@@ -2640,7 +2821,7 @@ app.post("/api/albums", async (c) => {
       `SELECT id, path, album_id FROM tracks WHERE id IN (${marks})`)
       .bind(...chunk).all();
     const foreign = conflicts.find((row) => row.album_id !== id
-      || !seenTrackPaths.has(row.path));
+      || !seenTrackPaths.has(row.path.toLocaleLowerCase()));
     if (foreign) {
       return c.json({ error: `曲目 ID 已经被其他路径占用: ${foreign.path}` }, 409);
     }
@@ -2771,6 +2952,7 @@ app.patch("/api/album/:id", async (c) => {
     return c.json({ error: "artists 格式无效、重复或过长" }, 400);
   }
   if (nextArtists) {
+    nextArtists = await canonicalizeArtistCredits(c.env.DB, nextArtists);
     put("artist", artistCredit(nextArtists));
     put("artist_sort", explicitArtistSort(
       nextArtists[0].name, nextArtists[0].sort));
@@ -2913,6 +3095,18 @@ app.delete("/api/album/:id", async (c) => {
   const albumArtists = relatedArtists.length ? relatedArtists
     : [{ name: album.artist,
       sort: explicitArtistSort(album.artist, album.artist_sort) }];
+  if (c.req.query("files") === "1") {
+    const sharedFolder = await c.env.DB.prepare(`
+      SELECT id FROM albums
+      WHERE storage_id = ? AND id != ? AND folder = ? COLLATE NOCASE
+      LIMIT 1`).bind(album.storage_id, id, album.folder).first();
+    if (sharedFolder) {
+      return c.json({
+        error: "Storage folder is still referenced by another album",
+        conflictAlbumId: sharedFolder.id,
+      }, 409);
+    }
+  }
   // Deletion removes database references for old public CDN URLs. Before deleting
   // the directory, confirm registered R2 mirrors are also removed so deleted or
   // private media cannot remain accessible through a known URL.
@@ -3087,6 +3281,15 @@ app.delete("/api/album/:id/images/:imgId", async (c) => {
     "JOIN albums a ON a.id = i.album_id WHERE i.id = ? AND i.album_id = ?")
     .bind(imgId, c.req.param("id")).first();
   if (!row) return c.json({ error: "not found" }, 404);
+  if (c.req.query("file") === "1") {
+    const sharedFile = await c.env.DB.prepare(`
+      SELECT i.id FROM album_images i JOIN albums a ON a.id = i.album_id
+      WHERE a.storage_id = ? AND i.id != ? AND i.path = ? COLLATE NOCASE
+      LIMIT 1`).bind(row.storage_id, imgId, row.path).first();
+    if (sharedFile) {
+      return c.json({ error: "Storage file is still referenced by another image" }, 409);
+    }
+  }
   if (!(await purgeR2Prefixes(c.env, [`img:${imgId}:`], true))) {
     return c.json({ error: "公开 R2 图片镜像删除失败，数据库未修改" }, 502);
   }
@@ -3149,7 +3352,8 @@ app.post("/api/album/:id/tracks", async (c) => {
   const id = c.req.param("id");
   const [album, albumCredits] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT folder, artist, artist_sort FROM albums WHERE id = ?").bind(id).first(),
+      "SELECT folder, artist, artist_sort, storage_id FROM albums WHERE id = ?")
+      .bind(id).first(),
     artistsForAlbum(c.env.DB, id),
   ]);
   if (!album) return c.json({ error: "not found" }, 404);
@@ -3170,6 +3374,15 @@ app.post("/api/album/:id/tracks", async (c) => {
   if (priorTrack && priorTrack.album_id !== id) {
     return c.json({ error: "该曲目路径已经登记在其他专辑" }, 409);
   }
+  const pathConflict = await c.env.DB.prepare(`
+    SELECT t.id FROM tracks t JOIN albums a ON a.id = t.album_id
+    WHERE a.storage_id = ? AND t.id != ? AND t.path = ? COLLATE NOCASE
+    LIMIT 1`).bind(album.storage_id, tid, p).first();
+  if (pathConflict) {
+    return c.json({
+      error: "This storage file is already registered with different letter casing",
+    }, 409);
+  }
   const discInput = finiteInput(b.disc, { integer: true, min: 1 });
   const track = finiteInput(b.track, { integer: true, min: 1 });
   const duration = finiteInput(b.duration, { min: 0 });
@@ -3184,6 +3397,7 @@ app.post("/api/album/:id/tracks", async (c) => {
     return c.json({ error: "曲目元数据格式无效" }, 400);
   }
   if (trackCredits) {
+    trackCredits = await canonicalizeArtistCredits(c.env.DB, trackCredits);
     trackCredits = await applyArtistSortOverrides(c.env.DB, trackCredits);
     const inherited = albumCredits.length ? albumCredits
       : [{ name: album.artist,
@@ -3253,6 +3467,7 @@ app.patch("/api/album/:id/tracks/:tid", async (c) => {
     if (nextCredits === INVALID_INPUT) {
       return c.json({ error: "artists 格式无效、重复或过长" }, 400);
     }
+    nextCredits = await canonicalizeArtistCredits(c.env.DB, nextCredits);
     nextCredits = await applyArtistSortOverrides(c.env.DB, nextCredits);
     const inherited = inheritedCredits.length ? inheritedCredits
       : [{ name: album.artist,
@@ -3282,6 +3497,13 @@ app.delete("/api/album/:id/tracks/:tid", async (c) => {
   if (!row) return c.json({ error: "not found" }, 404);
   let fileDeleted = false;
   if (c.req.query("file") === "1") {
+    const sharedFile = await c.env.DB.prepare(`
+      SELECT t.id FROM tracks t JOIN albums a ON a.id = t.album_id
+      WHERE a.storage_id = ? AND t.id != ? AND t.path = ? COLLATE NOCASE
+      LIMIT 1`).bind(row.storage_id, tid, row.path).first();
+    if (sharedFile) {
+      return c.json({ error: "Storage file is still referenced by another track" }, 409);
+    }
     try {
       fileDeleted = await storage.deleteItem(c.env, row.path, row.storage_id);
     } catch {
@@ -3303,8 +3525,8 @@ app.delete("/api/album/:id/tracks/:tid", async (c) => {
   return c.json({ ok: true, fileDeleted });
 });
 
-// Reorder by assigning track 1 through n in the supplied ID order. Normalize disc
-// to 1 so this becomes the sole authoritative sequence.
+// Reorder tracks within their existing discs. Each disc receives an independent
+// 1-through-n sequence, and disc assignments are never changed by this endpoint.
 app.put("/api/album/:id/tracks/order", async (c) => {
   const id = c.req.param("id");
   const b = await requestObject(c);
@@ -3314,20 +3536,28 @@ app.put("/api/album/:id/tracks/order", async (c) => {
     return c.json({ error: "ids 必填" }, 400);
   }
   const { results } = await c.env.DB.prepare(
-    "SELECT id FROM tracks WHERE album_id = ?").bind(id).all();
+    "SELECT id, disc FROM tracks WHERE album_id = ?").bind(id).all();
   const existing = new Set(results.map((r) => r.id));
   if (ids.length !== existing.size || new Set(ids).size !== ids.length
       || ids.some((x) => !existing.has(x))) {
     return c.json({ error: "ids 与专辑曲目不一致（先刷新页面）" }, 400);
   }
-  const ordered = JSON.stringify(ids);
+  const discs = new Map(results.map((row) => [row.id, row.disc]));
+  const nextPosition = new Map();
+  const ordered = JSON.stringify(ids.map((trackId) => {
+    const disc = discs.get(trackId);
+    const track = (nextPosition.get(disc) || 0) + 1;
+    nextPosition.set(disc, track);
+    return { id: trackId, track };
+  }));
   await c.env.DB.batch([
-    c.env.DB.prepare(`WITH ordered(id, position) AS (
-      SELECT CAST(value AS TEXT), CAST(key AS INTEGER) + 1 FROM json_each(?)
+    c.env.DB.prepare(`WITH ordered(id, track) AS (
+      SELECT CAST(json_extract(value, '$.id') AS TEXT),
+        CAST(json_extract(value, '$.track') AS INTEGER)
+      FROM json_each(?)
     )
     UPDATE tracks SET
-      track = (SELECT position FROM ordered WHERE ordered.id = tracks.id),
-      disc = 1
+      track = (SELECT track FROM ordered WHERE ordered.id = tracks.id)
     WHERE album_id = ? AND id IN (SELECT id FROM ordered)`)
       .bind(ordered, id),
     c.env.DB.prepare("UPDATE albums SET updated_at = ? WHERE id = ?")
@@ -3448,6 +3678,73 @@ app.post("/api/upload/session", async (c) => {
   }
 });
 
+async function uploadedFileSize(env, path, storageId, expectedSize = null) {
+  const delays = [0, 150, 350, 700];
+  let size = null;
+  let lastError = null;
+  let readSucceeded = false;
+  for (const delay of delays) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      size = await storage.fileSize(env, path, storageId);
+      readSucceeded = true;
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+    if (size !== null && (expectedSize === null || size === expectedSize)) {
+      return size;
+    }
+  }
+  if (!readSucceeded && lastError) throw lastError;
+  return size;
+}
+
+async function verifyUploadedFile(env, path, storageId, expectedSize) {
+  const actualSize = await uploadedFileSize(
+    env, path, storageId, expectedSize);
+  return {
+    ok: actualSize === expectedSize,
+    actualSize,
+    expectedSize,
+  };
+}
+
+app.post("/api/upload/verify", async (c) => {
+  const b = await requestObject(c);
+  const path = safePath(c.env, b?.path);
+  const storageId = boundedText(b?.storageId, 200, { allowEmpty: false });
+  const expectedSize = finiteInput(b?.size, {
+    integer: true, min: 1, max: Number.MAX_SAFE_INTEGER,
+  });
+  if (!path || storageId === INVALID_INPUT || expectedSize === INVALID_INPUT
+      || expectedSize === null) {
+    return c.json({ error: "上传校验参数无效" }, 400);
+  }
+  const target = await uploadTargetForPath(c.env, path);
+  if (!target || target.id !== storageId) {
+    return c.json({ error: "上传目标已变化，请重新开始上传" }, 409);
+  }
+  try {
+    const result = await verifyUploadedFile(
+      c.env, path, storageId, expectedSize);
+    if (!result.ok) {
+      return c.json({
+        error: result.actualSize === null
+          ? "上传后的文件不存在"
+          : "上传后的文件大小不完整，请重试",
+        ...result,
+      }, 409);
+    }
+    return c.json(result);
+  } catch (error) {
+    console.error("upload verification failed", error);
+    return c.json({
+      error: `无法校验上传文件：${String(error?.message || error)}`,
+    }, 502);
+  }
+});
+
 // Streaming upload for proxied storage: browser -> Worker -> WebDAV/local.
 app.put("/api/upload/proxy", async (c) => {
   const path = safePath(c.env, c.req.query("path") || "");
@@ -3460,12 +3757,29 @@ app.put("/api/upload/proxy", async (c) => {
   if (!wt || !["webdav", "local"].includes(wt.kind)) {
     return c.json({ error: "当前写入目标不是代理型存储" }, 400);
   }
+  const expectedSize = finiteInput(c.req.query("size"), {
+    integer: true, min: 1, max: Number.MAX_SAFE_INTEGER,
+  });
+  if (expectedSize === INVALID_INPUT || expectedSize === null) {
+    return c.json({ error: "缺少有效的上传文件大小" }, 400);
+  }
   const body = c.req.raw.body;
   if (!body) return c.json({ error: "上传内容为空" }, 400);
   try {
     const ok = await storage.putFile(c.env, path, body,
       c.req.header("Content-Type"), wt.id);
-    return ok ? c.json({ ok: true }) : c.json({ error: "上传失败" }, 502);
+    if (!ok) return c.json({ error: "上传失败" }, 502);
+    const verified = await verifyUploadedFile(
+      c.env, path, wt.id, expectedSize);
+    if (!verified.ok) {
+      return c.json({
+        error: verified.actualSize === null
+          ? "上传后的文件不存在"
+          : "上传后的文件大小不完整，请重试",
+        ...verified,
+      }, 409);
+    }
+    return c.json(verified);
   } catch (error) {
     console.error("streaming proxy upload failed", error);
     return c.json({ error: `上传失败：${String(error?.message || error)}` }, 502);

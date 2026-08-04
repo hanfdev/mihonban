@@ -70,6 +70,7 @@ The Admin settings JSON exports an allowlisted subset of settings plus named sto
 - OneDrive uses an upload session and temporary download URLs.
 - WebDAV and Google Drive uploads/streams pass through the main API.
 - Node local-folder files are streamed by the Node runtime only.
+- Completed web uploads are accepted only after the storage backend reports the exact expected byte length. Resumable providers recover their committed offset after transient failures; proxy-style providers retry the complete body.
 - Range and `Content-Range` behavior are required for reliable seeking, especially on iOS.
 
 ## Images
@@ -83,6 +84,14 @@ Album lists and compact artwork surfaces use 256 px or 640 px WebP derivatives g
 If a public mirror redirect resolves to a missing or stale object, the web app retries against the owning storage. The Worker validates the returned image bytes, falls back from a provider thumbnail to the original file when necessary, and repairs the R2 object plus its versioned D1 index after a successful recovery. This makes an old cached 404 self-healing without putting private storage credentials in the browser.
 
 R2 is not an audio backend and is not the catalog database.
+
+## Runtime schema and D1 quotas
+
+The Worker upgrades an older catalog before serving API requests. The public Wrangler template provides a stable `DB_SCHEMA_KEY`, and a successful upgrade records the code's runtime version in `settings.schema_version`. Later requests in the same isolate use memory; a cold isolate reads that one marker row and skips the compatibility DDL and backfills. Keep `DB_SCHEMA_KEY` stable and do not delete the marker as routine cleanup. When a release adds a runtime migration, its maintainer must also advance `RUNTIME_SCHEMA_VERSION`.
+
+Within one named storage backend, album folders and track paths use case-insensitive identity. Artist identities follow the same rule across the catalog. Mihonban preserves the first stored display spelling but rejects a later duplicate that differs only by letter case.
+
+On Workers Free, D1 currently includes 5 million rows read and 100,000 rows written per day, resetting at 00:00 UTC. A deployment or code fix cannot subtract usage already counted, and dashboard aggregation can continue showing the previous total after queries work again. Confirm current service state with an uncached API request or a direct D1 query and inspect each query's `meta.rows_read` / `meta.rows_written`; use the dashboard bar as historical usage, not as a live lock indicator. If usage starts rising sharply again, verify that the deployed config still has `DB_SCHEMA_KEY` and that `settings.schema_version` matches the current Worker. See [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) for current limits.
 
 ## Scheduled work
 

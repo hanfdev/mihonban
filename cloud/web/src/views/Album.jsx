@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { api, artUrl, imgUrl, uploadFileToOneDrive } from '../api.js'
 import { parseRymHtml } from '../rym.js'
 import { parseDiscogsHtml } from '../discogs.js'
-import { readTags } from '../tags.js'
+import { readTags, recognizedAudioFiles } from '../tags.js'
 import { I, CropDialog, Dialog, Heart, Md, NoteText, Rating, Reader,
          fmtDur, fmtTotal, goBack, navigate, usePointerReorder, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
@@ -12,6 +12,8 @@ import { albumPlaybackState } from '../album-playback.js'
 import { fmtBitrate } from '../format.js'
 import { ArtistCredit, ArtistEditor, artistCreditText, creditsFromTags,
          creditsOf, sameArtistNames } from '../artist-credit.jsx'
+import { canMoveTrackWithinDisc, groupTracksByDisc } from '../track-disc.js'
+import { contentLanguage } from '../content-language.js'
 
 const cleanName = (s) =>
   (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
@@ -1114,6 +1116,7 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
   const rescanInFlight = useRef(false)
   const deleteInFlight = useRef(new Set())
   const toast = useToast()
+  const discGroups = groupTracksByDisc(rows)
 
   const refresh = async () => {
     const d = await api.album(album.id)
@@ -1123,12 +1126,13 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
   }
 
   const move = (from, to) => {
-    if (to < 0 || to >= rows.length || from === to || from < 0) return
+    if (!canMoveTrackWithinDisc(rows, from, to)) return false
     const next = [...rows]
     const [x] = next.splice(from, 1)
     next.splice(to, 0, x)
     setRows(next)
     setOrderDirty(true)
+    return true
   }
 
   const saveOrder = async () => {
@@ -1173,15 +1177,14 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
 
   const addFiles = async (fileList) => {
     if (addFilesInFlight.current) return
-    const files = [...fileList].filter((f) =>
-      /\.(mp3|flac|m4a|ogg|opus|wav)$/i.test(f.name))
+    const files = await recognizedAudioFiles(fileList)
     if (!files.length) { toast(t('tracksManage.noAudio'), 'err'); return }
     addFilesInFlight.current = true
     const seen = new Set()
     try {
-      for (const f of files) {
+      for (const { file: f, format } of files) {
         try {
-          const meta = await readTags(f)
+          const meta = await readTags(f, format)
           const filename = cleanName(meta.filename)
           const path = `${album.folder}/${filename}`.normalize('NFC')
           const key = path.toLocaleLowerCase()
@@ -1240,44 +1243,59 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
       </div>
 
       <div className="td-list">
-        {rows.map((tr, i) => (
-          <div key={tr.id} className="td-row" draggable
-               onDragStart={(e) => {
-                 dragIdx.current = i
-                 e.dataTransfer.effectAllowed = 'move'
-               }}
-               onDragOver={(e) => {
-                 e.preventDefault()
-                 if (dragIdx.current !== i) { move(dragIdx.current, i); dragIdx.current = i }
-               }}
-               onDragEnd={() => { dragIdx.current = -1 }}>
-            <span className="td-grip"><I.grip size={14} /></span>
-            <span className="td-no">{i + 1}</span>
-            <input className="td-title" defaultValue={tr.title} key={tr.id + tr.title}
-                   onBlur={(e) => rename(tr, e.target.value)}
-                   onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
-            <span className="td-dur">{fmtDur(tr.duration)}</span>
-            <button type="button"
-                    className={`icon-btn xs td-artists${tr.hasCustomArtists ? ' on' : ''}`}
-                    title={tr.hasCustomArtists
-                      ? t('tracksManage.editArtists', artistCreditText(tr))
-                      : t('tracksManage.inheritedArtists', artistCreditText(album))}
-                    aria-label={t('tracksManage.editArtists', artistCreditText(tr))}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onClick={() => setCreditTrack(tr)}>
-              <I.user size={14} />
-            </button>
-            <span className="td-updown">
-              <button className="icon-btn xs" disabled={i === 0}
-                      onClick={() => move(i, i - 1)}><I.chevUp size={14} /></button>
-              <button className="icon-btn xs" disabled={i === rows.length - 1}
-                      onClick={() => move(i, i + 1)}><I.chevDown size={14} /></button>
-            </span>
-            <button className={`btn sm ${armed === tr.id ? 'danger arm' : ''}`}
-                    onClick={() => del(tr)}>
-              {armed === tr.id ? t('tracksManage.confirmDel') : <I.trash size={13} />}
-            </button>
-          </div>
+        {discGroups.map((group) => (
+          <React.Fragment key={group.disc}>
+            {group.multiDisc && (
+              <div className="disc-heading td-disc-heading">
+                <span>{t('common.disc', group.disc)}</span>
+              </div>
+            )}
+            {group.items.map(({ track: tr, index: i, position }) => (
+              <div key={tr.id} className="td-row" draggable
+                   onDragStart={(e) => {
+                     dragIdx.current = i
+                     e.dataTransfer.effectAllowed = 'move'
+                   }}
+                   onDragOver={(e) => {
+                     if (!canMoveTrackWithinDisc(rows, dragIdx.current, i)) {
+                       e.dataTransfer.dropEffect = 'none'
+                       return
+                     }
+                     e.preventDefault()
+                     if (move(dragIdx.current, i)) dragIdx.current = i
+                   }}
+                   onDragEnd={() => { dragIdx.current = -1 }}>
+                <span className="td-grip"><I.grip size={14} /></span>
+                <span className="td-no">{position}</span>
+                <input className="td-title" defaultValue={tr.title} key={tr.id + tr.title}
+                       onBlur={(e) => rename(tr, e.target.value)}
+                       onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+                <span className="td-dur">{fmtDur(tr.duration)}</span>
+                <button type="button"
+                        className={`icon-btn xs td-artists${tr.hasCustomArtists ? ' on' : ''}`}
+                        title={tr.hasCustomArtists
+                          ? t('tracksManage.editArtists', artistCreditText(tr))
+                          : t('tracksManage.inheritedArtists', artistCreditText(album))}
+                        aria-label={t('tracksManage.editArtists', artistCreditText(tr))}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={() => setCreditTrack(tr)}>
+                  <I.user size={14} />
+                </button>
+                <span className="td-updown">
+                  <button className="icon-btn xs"
+                          disabled={!canMoveTrackWithinDisc(rows, i, i - 1)}
+                          onClick={() => move(i, i - 1)}><I.chevUp size={14} /></button>
+                  <button className="icon-btn xs"
+                          disabled={!canMoveTrackWithinDisc(rows, i, i + 1)}
+                          onClick={() => move(i, i + 1)}><I.chevDown size={14} /></button>
+                </span>
+                <button className={`btn sm ${armed === tr.id ? 'danger arm' : ''}`}
+                        onClick={() => del(tr)}>
+                  {armed === tr.id ? t('tracksManage.confirmDel') : <I.trash size={13} />}
+                </button>
+              </div>
+            ))}
+          </React.Fragment>
         ))}
         {adding.map((a) => (
           <div key={a.name} className="td-row adding">
@@ -1300,7 +1318,8 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
                addFiles(e.dataTransfer.files)
              }}>
         <I.plus size={15} /> {t('tracksManage.add')}
-        <input type="file" multiple hidden accept=".mp3,.flac,.m4a,.ogg,.opus,.wav"
+        <input type="file" multiple hidden
+               accept=".mp3,.flac,.fla,.m4a,.ogg,.opus,.opu,.wav,audio/*"
                onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
       </label>
 
@@ -1340,7 +1359,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
                                     isAdmin, favAlbums, favTracks, toggleFav,
                                     onChanged, onOpen, onOpenArtist, onOpenGenre,
                                     onAuthError, artistOptions }) {
-  const { t } = useI18n()
+  const { lang, t } = useI18n()
   const [al, setAl] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [dlg, setDlg] = useState('') // '' | 'edit' | 'rym' | 'tracks' | 'del'
@@ -1458,7 +1477,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
           <div className="hero-identity">
             <ArtistCredit value={al} onOpen={onOpenArtist}
                           className="hero-artist" />
-            <h1 className="hero-title">{al.title}</h1>
+            <h1 className="hero-title" lang={contentLanguage(al.title)}>{al.title}</h1>
             <div className="hero-meta">
               {al.year && <span>{al.year}</span>}
               <span>·</span><span>{t('count.tracks', al.tracks.length)}</span>
@@ -1591,36 +1610,46 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       )}
 
       <div className="tracks">
-        {al.tracks.map((t, i) => (
-          <div key={t.id}
-               className={`trow ${currentId === t.id ? 'playing' : ''}`}
-               role="button" tabIndex={0} aria-label={t.title}
-               onClick={() => onPlay(al, al.tracks, i)}
-               onKeyDown={(e) => {
-                 if (e.target !== e.currentTarget) return
-                 if (e.key === 'Enter' || e.key === ' ') {
-                   e.preventDefault(); onPlay(al, al.tracks, i)
-                 }
-               }}>
-            <span className="num">
-              {currentId === t.id && playingId
-                ? <span className="eq"><i /><i /><i /></span>
-                : t.track ?? i + 1}
-            </span>
-            <span className="album-track-main">
-              <span className="t-title">{t.title}</span>
-              {t.hasCustomArtists && (
-                <ArtistCredit value={t} onOpen={onOpenArtist}
-                              className="album-track-artists" />
-              )}
-            </span>
-            <TrackFormat format={t.format} bitrate={t.bitrate} />
-            <span className="t-dur">{fmtDur(t.duration)}</span>
-            <span className="t-heart">
-              <Heart on={favTracks.has(t.id)} canEdit={isAdmin}
-                     onToggle={() => toggleFav('track', t.id)} />
-            </span>
-          </div>
+        {groupTracksByDisc(al.tracks).map((group) => (
+          <React.Fragment key={group.disc}>
+            {group.multiDisc && (
+              <div className="disc-heading album-disc-heading">
+                <span>{t('common.disc', group.disc)}</span>
+              </div>
+            )}
+            {group.items.map(({ track: trackItem, index: i, position }) => (
+              <div key={trackItem.id}
+                   className={`trow ${currentId === trackItem.id ? 'playing' : ''}`}
+                   role="button" tabIndex={0} aria-label={trackItem.title}
+                   onClick={() => onPlay(al, al.tracks, i)}
+                   onKeyDown={(e) => {
+                     if (e.target !== e.currentTarget) return
+                     if (e.key === 'Enter' || e.key === ' ') {
+                       e.preventDefault(); onPlay(al, al.tracks, i)
+                     }
+                   }}>
+                <span className="num">
+                  {currentId === trackItem.id && playingId
+                    ? <span className="eq"><i /><i /><i /></span>
+                    : trackItem.track ?? position}
+                </span>
+                <span className="album-track-main">
+                  <span className="t-title" lang={contentLanguage(trackItem.title)}>
+                    {trackItem.title}</span>
+                  {trackItem.hasCustomArtists && (
+                    <ArtistCredit value={trackItem} onOpen={onOpenArtist}
+                                  className="album-track-artists" />
+                  )}
+                </span>
+                <TrackFormat format={trackItem.format} bitrate={trackItem.bitrate} />
+                <span className="t-dur">{fmtDur(trackItem.duration)}</span>
+                <span className="t-heart">
+                  <Heart on={favTracks.has(trackItem.id)} canEdit={isAdmin}
+                         onToggle={() => toggleFav('track', trackItem.id)} />
+                </span>
+              </div>
+            ))}
+          </React.Fragment>
         ))}
       </div>
 
@@ -1634,8 +1663,10 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
               <div key={s.id} className="sim-card" onClick={() => onOpen(s.id)}>
                 <img loading="lazy" decoding="async"
                      src={artUrl(s.id, 300)} alt="" />
-                <div className="n">{s.title}</div>
-                <Rating value={s.rating} />
+                <div className="n" lang={contentLanguage(s.title)}>{s.title}</div>
+                <Rating value={s.rating} votes={s.votes}
+                        votesLabel={s.votes ? t('rym.votes', s.votes) : ''}
+                        locale={lang} />
               </div>
             ))}
           </div>

@@ -7,6 +7,7 @@ import { romajiOf } from '../aliases.js'
 import { jaCollator } from '../format.js'
 import { creditsOf, effectiveArtistSort } from '../artist-credit.jsx'
 import { compareArtistActivity } from '../artist-ranking.js'
+import { contentLanguage } from '../content-language.js'
 
 export default function ArtistsPage({ albums, artists, q, avatarVer,
                                       onOpenArtist, isAdmin,
@@ -182,7 +183,8 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
                   <I.eye size={11} /><b>{e.hiddenCount}</b>
                 </span>
               )}
-              <div className="acard-name" title={e.name}>{e.name}</div>
+              <div className="acard-name" lang={contentLanguage(e.name)}
+                   title={e.name}>{e.name}</div>
               <div className="acard-meta">
                 <div className="acard-sub" title={primary}>
                   <span>{primary}</span>

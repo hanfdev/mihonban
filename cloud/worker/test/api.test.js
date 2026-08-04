@@ -458,14 +458,20 @@ test("catalog writes preserve folder, image-order, search, and storage invariant
     }
 
     db.prepare(`INSERT INTO albums
-      (id, artist, title, folder, genres, storage_id, created_at, updated_at)
+      (id, artist, title, folder, genres, storage_id, rym_rating, rym_votes,
+       created_at, updated_at)
       VALUES ('hard-rock', 'Other', 'Hard', 'Music/Library/Other/Hard',
-        '["Hard Rock"]', 'main-store', 2, 2),
+        '["Hard Rock"]', 'main-store', NULL, NULL, 2, 2),
              ('exact-rock', 'Other', 'Exact', 'Music/Library/Other/Exact',
-        '["rock"]', 'main-store', 3, 3)`).run();
+        '["rock"]', 'main-store', 4.43, 5, 3, 3),
+             ('consensus-rock', 'Other', 'Consensus',
+        'Music/Library/Other/Consensus', '["rock"]', 'main-store',
+        4.40, 27207, 4, 4)`).run();
     const detail = await companionRequest(env, `/api/album/${albumId}`);
-    const similar = (await detail.json()).similar.map((item) => item.id);
-    assert.deepEqual(similar, ["exact-rock"]);
+    const similar = (await detail.json()).similar;
+    assert.deepEqual(similar.map((item) => item.id),
+      ["consensus-rock", "exact-rock"]);
+    assert.deepEqual(similar.map((item) => item.votes), [27207, 5]);
 
     const addImage = async (name) => {
       const response = await companionRequest(env, `/api/album/${albumId}/images`, {
@@ -2067,6 +2073,164 @@ test("album registration atomically preserves the previous catalog on failure", 
   }
 });
 
+test("album registration rejects case-only storage path aliases", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store', 'Store', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  const firstFolder = "Music/Library/advantage Lucy/[2000] Station";
+  const secondFolder = "Music/Library/Advantage Lucy/[2000] Station";
+  const register = (folder) => companionRequest(env, "/api/albums", {
+    method: "POST",
+    ...jsonBody({
+      folder, artist: "advantage Lucy", title: "Station",
+      tracks: [{ path: `${folder}/01.flac`, title: "Track" }],
+    }),
+  });
+
+  try {
+    const first = await register(firstFolder);
+    const firstBody = await first.json();
+    assert.equal(first.status, 200, firstBody.error);
+
+    const duplicate = await register(secondFolder);
+    const duplicateBody = await duplicate.json();
+    assert.equal(duplicate.status, 409);
+    assert.equal(duplicateBody.conflictAlbumId, firstBody.id);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM albums").get().n, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM tracks").get().n, 1);
+
+    assert.throws(() => db.prepare(`INSERT INTO albums
+      (id, artist, title, folder, storage_id, created_at, updated_at)
+      VALUES ('race', 'Artist', 'Station', ?, 'store', 2, 2)`)
+      .run(secondFolder), /case-equivalent album folder already exists/);
+  } finally {
+    db.close();
+  }
+});
+
+test("shared case-equivalent storage paths cannot be destructively deleted", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  const lower = "Music/Library/advantage Lucy/[2000] Station";
+  const upper = "Music/Library/Advantage Lucy/[2000] Station";
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store', 'Store', 'local', '{}', 1, 1)`).run();
+  const insertAlbum = db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES (?, 'advantage Lucy', 'Station', ?, 'store', 1, 1)`);
+  insertAlbum.run("lower", lower);
+  insertAlbum.run("upper", upper);
+  const deleted = [];
+  const env = companionEnv(db, { LOCAL_FS: {
+    async deleteItem(_config, path) { deleted.push(path); return true; },
+  } });
+
+  try {
+    const response = await companionRequest(env, "/api/album/upper?files=1", {
+      method: "DELETE",
+    });
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.conflictAlbumId, "lower");
+    assert.deepEqual(deleted, []);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM albums").get().n, 2);
+  } finally {
+    db.close();
+  }
+});
+
+test("legacy artist credits participate in case-insensitive identity matching", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store', 'Store', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES ('legacy', 'advantage Lucy', 'Legacy',
+      'Music/Library/advantage Lucy/Legacy', 'store', 1, 1)`).run();
+  const env = companionEnv(db);
+  const folder = "Music/Library/Advantage Lucy/New";
+
+  try {
+    const response = await companionRequest(env, "/api/albums", {
+      method: "POST",
+      ...jsonBody({
+        folder, artist: "ADVANTAGE LUCY", title: "New",
+        tracks: [{ path: `${folder}/01.flac`, title: "Track" }],
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, body.error);
+    assert.deepEqual(db.prepare(
+      "SELECT artist FROM album_artists WHERE album_id = ?").all(body.id),
+    [{ artist: "advantage Lucy" }]);
+    assert.deepEqual(db.prepare("SELECT name FROM artists").all(),
+      [{ name: "advantage Lucy" }]);
+  } finally {
+    db.close();
+  }
+});
+
+test("artist identity ignores casing while preserving its stored display name", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store', 'Store', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  const register = (folder, artist, title) => companionRequest(env, "/api/albums", {
+    method: "POST",
+    ...jsonBody({
+      folder, artist, title,
+      tracks: [{ path: `${folder}/01.flac`, title: "Track" }],
+    }),
+  });
+
+  try {
+    const first = await register(
+      "Music/Library/advantage Lucy/First", "advantage Lucy", "First");
+    assert.equal(first.status, 200, (await first.json()).error);
+    const second = await register(
+      "Music/Library/Advantage Lucy/Second", "Advantage Lucy", "Second");
+    const secondBody = await second.json();
+    assert.equal(second.status, 200, secondBody.error);
+
+    let detail = await (await companionRequest(
+      env, `/api/album/${secondBody.id}`)).json();
+    assert.deepEqual(detail.artists, [{ name: "advantage Lucy", sort: "" }]);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM artists").get().n, 1);
+
+    const edited = await companionRequest(env, `/api/album/${secondBody.id}`, {
+      method: "PATCH",
+      ...jsonBody({ artists: [{ name: "ADVANTAGE LUCY" }] }),
+    });
+    assert.equal(edited.status, 200, (await edited.json()).error);
+    detail = await (await companionRequest(
+      env, `/api/album/${secondBody.id}`)).json();
+    assert.deepEqual(detail.artists, [{ name: "advantage Lucy", sort: "" }]);
+
+    const saved = await companionRequest(env, "/api/artists", {
+      method: "PUT",
+      ...jsonBody({ name: "ADVANTAGE LUCY", bio: "Canonical biography" }),
+    });
+    assert.equal(saved.status, 200, (await saved.json()).error);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM artists").get().n, 1);
+    assert.equal(db.prepare(
+      "SELECT id FROM notes WHERE kind = 'artistbio'").get().id,
+    "advantage Lucy");
+    const biography = await (await companionRequest(
+      env, "/api/artist-bio/ADVANTAGE%20LUCY")).json();
+    assert.equal(biography.bio, "Canonical biography");
+
+    assert.throws(() => db.prepare(
+      "INSERT INTO artists (name, avatar_path) VALUES ('Advantage Lucy', '')")
+      .run(), /case-equivalent artist name already exists/);
+  } finally {
+    db.close();
+  }
+});
+
 test("large reorder operations never leave partially updated positions", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
@@ -2133,6 +2297,84 @@ test("large reorder operations never leave partially updated positions", async (
     ids.map((id, index) => ({ id, disc: 2, track: index + 1 })));
     assert.equal(db.prepare(
       "SELECT updated_at FROM albums WHERE id = 'album'").get().updated_at, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test("new favorites are inserted before a manually ordered selection", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store', 'Store', 'local', '{}', 1, 1)`).run();
+  const insertAlbum = db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES (?, 'Artist', ?, ?, 'store', 1, 1)`);
+  insertAlbum.run('old-first', 'Old First', 'Music/Library/Old First');
+  insertAlbum.run('old-second', 'Old Second', 'Music/Library/Old Second');
+  insertAlbum.run('new-pick', 'New Pick', 'Music/Library/New Pick');
+  db.prepare(`INSERT INTO favorites
+    (kind, item_id, created_at, sort_order) VALUES ('album', 'old-first', 1, 0)`).run();
+  db.prepare(`INSERT INTO favorites
+    (kind, item_id, created_at, sort_order) VALUES ('album', 'old-second', 2, 1)`).run();
+  const env = companionEnv(db);
+
+  try {
+    const response = await companionRequest(env, '/api/favorites/album/new-pick', {
+      method: 'PUT',
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(db.prepare(`SELECT item_id, sort_order FROM favorites
+      WHERE kind = 'album' ORDER BY sort_order`).all(), [
+      { item_id: 'new-pick', sort_order: -1 },
+      { item_id: 'old-first', sort_order: 0 },
+      { item_id: 'old-second', sort_order: 1 },
+    ]);
+    const favorites = await companionRequest(env, '/api/favorites');
+    assert.deepEqual((await favorites.json()).albums.map((item) => item.id),
+      ['new-pick', 'old-first', 'old-second']);
+  } finally {
+    db.close();
+  }
+});
+
+test("track reorder preserves disc groups and renumbers each disc independently", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('store', 'Store', 'local', '{}', 1, 1)`).run();
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, storage_id, created_at, updated_at)
+    VALUES ('album', 'Artist', 'Album', 'Music/Library/Artist/Album',
+      'store', 1, 1)`).run();
+  const insertTrack = db.prepare(`INSERT INTO tracks
+    (id, album_id, disc, track, title, path)
+    VALUES (?, 'album', ?, ?, ?, ?)`);
+  const tracks = [
+    ["d1-a", 1, 1], ["d1-b", 1, 2],
+    ["d2-a", 2, 1], ["d2-b", 2, 2], ["d2-c", 2, 3],
+  ];
+  for (const [id, disc, track] of tracks) {
+    insertTrack.run(id, disc, track, id,
+      `Music/Library/Artist/Album/${id}.flac`);
+  }
+  const env = companionEnv(db);
+
+  try {
+    const response = await companionRequest(
+      env, "/api/album/album/tracks/order", {
+        method: "PUT",
+        ...jsonBody({ ids: ["d2-c", "d1-b", "d2-a", "d1-a", "d2-b"] }),
+      });
+    assert.equal(response.status, 200, (await response.json()).error);
+    assert.deepEqual(db.prepare(
+      "SELECT id, disc, track FROM tracks ORDER BY id").all(), [
+      { id: "d1-a", disc: 1, track: 2 },
+      { id: "d1-b", disc: 1, track: 1 },
+      { id: "d2-a", disc: 2, track: 2 },
+      { id: "d2-b", disc: 2, track: 3 },
+      { id: "d2-c", disc: 2, track: 1 },
+    ]);
   } finally {
     db.close();
   }
@@ -2680,7 +2922,7 @@ test("cover storage lookup never uses LIKE and supports an artist parent folder"
     assert.equal((await newSession.json()).storageId, "cover-write-store");
 
     const proxyUpload = await companionRequest(env,
-      "/api/upload/proxy?path=Music%2FLibrary%2FArtist%2FExisting%2Fbonus.flac", {
+      "/api/upload/proxy?path=Music%2FLibrary%2FArtist%2FExisting%2Fbonus.flac&size=20", {
         method: "PUT",
         headers: { "Content-Type": "audio/flac" },
         body: "existing-album-audio",
@@ -2690,6 +2932,31 @@ test("cover storage lookup never uses LIKE and supports an artist parent folder"
       "utf8"), "existing-album-audio");
     assert.equal(existsSync(join(writeRoot, "Artist", "Existing", "bonus.flac")),
       false);
+
+    const verified = await companionRequest(env, "/api/upload/verify", {
+      method: "POST",
+      ...jsonBody({
+        path: "Music/Library/Artist/Existing/bonus.flac",
+        storageId: "cover-album-store",
+        size: 20,
+      }),
+    });
+    const verifiedBody = await verified.json();
+    assert.equal(verified.status, 200, JSON.stringify(verifiedBody));
+    assert.deepEqual(verifiedBody, {
+      ok: true, actualSize: 20, expectedSize: 20,
+    });
+
+    const mismatch = await companionRequest(env, "/api/upload/verify", {
+      method: "POST",
+      ...jsonBody({
+        path: "Music/Library/Artist/Existing/bonus.flac",
+        storageId: "cover-album-store",
+        size: 21,
+      }),
+    });
+    assert.equal(mismatch.status, 409);
+    assert.equal((await mismatch.json()).actualSize, 20);
 
     const nestedCover = await worker.fetch(new Request(
       "http://mihonban.test/api/upload/cover?path=" +

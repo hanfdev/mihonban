@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom'
 import { useI18n } from './i18n.jsx'
 import { fmtDur, fmtTotal } from './format.js'
 import { hashOf } from './navigation.js'
+import { contentLanguage } from './content-language.js'
+import { compactRatingVotes } from './rating-ranking.js'
 
 export { fmtDur, fmtTotal }
 
@@ -23,7 +25,17 @@ export const I = {
   prev: P(<><path d="M19 5v14l-9-7z" /><rect x="5" y="5" width="3" height="14" rx="1"/></>, { fill: true }),
   next: P(<><path d="M5 5v14l9-7z" /><rect x="16" y="5" width="3" height="14" rx="1"/></>, { fill: true }),
   search: P(<><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></>),
-  vol: P(<><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></>),
+  vol: ({ size = 18, level = 'high', ...rest }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+         strokeLinejoin="round" {...rest}>
+      <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" stroke="none" />
+      {level === 'muted' && <path d="m16 9 5 6m0-6-5 6" />}
+      {(level === 'medium' || level === 'high') &&
+        <path d="M15 9.5a3.5 3.5 0 0 1 0 5" />}
+      {level === 'high' && <path d="M18 7a7 7 0 0 1 0 10" />}
+    </svg>
+  ),
   upload: P(<><path d="M12 16V4m0 0 -4 4m4-4 4 4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></>),
   edit: P(<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>),
   trash: P(<><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/></>),
@@ -368,11 +380,17 @@ export const goBack = () => {
   }
 }
 
-export function Rating({ value, na, unratedLabel }) {
+export function Rating({ value, votes, votesLabel, locale, na, unratedLabel }) {
   if (value == null) {
     return na ? <span className="rating-pill na">{unratedLabel || '—'}</span> : null
   }
-  return <span className="rating-pill">{value.toFixed(2)}</span>
+  const count = compactRatingVotes(votes, locale)
+  return (
+    <span className="rating-pill" title={votesLabel || undefined}>
+      <span>{value.toFixed(2)}</span>
+      {count && <span className="rating-votes" aria-label={votesLabel}>· {count}</span>}
+    </span>
+  )
 }
 
 /** Favorite heart: administrators can toggle it; listeners see it only as a marker when active. */
@@ -490,7 +508,7 @@ export const mdToHtml = (src) => {
 }
 
 export const Md = ({ text, className = "" }) => (
-  <div className={`md ${className}`}
+  <div className={`md ${className}`} lang={contentLanguage(text)}
        dangerouslySetInnerHTML={{ __html: mdToHtml(text) }} />
 )
 
@@ -526,7 +544,7 @@ export function Reader({ kicker, title, avatar, square, onClose, children }) {
                           src={avatar} alt="" />}
           <div className="reader-id">
             {kicker && <div className="reader-kicker">{kicker}</div>}
-            <h2>{title}</h2>
+            <h2 lang={contentLanguage(title)}>{title}</h2>
           </div>
           <button className="icon-btn" title={t('reader.close')} onClick={close}>
             <I.x size={20} />

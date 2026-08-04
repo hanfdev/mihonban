@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import { artUrl } from './api.js'
 import { I, Heart, Marquee, fmtDur } from './ui.jsx'
 import { useI18n } from './i18n.jsx'
-import { clampMediaTime, mediaDuration, seekAudio, storedVolume } from './media.js'
+import { clampMediaTime, mediaDuration, seekAudio, storedVolume,
+         volumeIconLevel } from './media.js'
 import { playbackControlState } from './player-control.js'
 import { ArtistCredit } from './artist-credit.jsx'
+import { contentLanguage } from './content-language.js'
 
 /* Progress bar with click and drag scrubbing. While dragging, update only the preview;
  * on release, onSeek jumps immediately and the UI updates without waiting for buffering.
@@ -127,6 +129,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
     try { saved = localStorage.getItem('mihonban_volume') } catch { /* storage unavailable */ }
     return storedVolume(saved)
   })
+  const lastAudibleVolume = useRef(vol > 0 ? vol : 1)
   const [closing, setClosing] = useState(false) // Now Playing is running its slide-out animation.
   const npHistoryRef = useRef(null)
   const pendingSheetNav = useRef(null)
@@ -292,14 +295,24 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
                  onToggle, onStep, onShuffle, onRepeat }
 
   const setVolume = (v) => {
+    if (v > 0) lastAudibleVolume.current = v
     setVol(v)
     try { localStorage.setItem('mihonban_volume', String(v)) } catch { /* storage unavailable */ }
   }
-  const volSlider = (
-    <input type="range" min="0" max="1" step="0.02" value={vol}
-           aria-label={__('player.volume')}
-           style={{ '--fill': `${vol * 100}%` }}
-           onChange={(e) => setVolume(Number(e.target.value))} />
+  const toggleMute = () => setVolume(vol > 0 ? 0 : lastAudibleVolume.current)
+  const renderVolumeControl = (size) => (
+    <>
+      <button type="button" className="volume-toggle"
+              title={__(vol > 0 ? 'player.mute' : 'player.unmute')}
+              aria-label={__(vol > 0 ? 'player.mute' : 'player.unmute')}
+              aria-pressed={vol === 0} onClick={toggleMute}>
+        <I.vol size={size} level={volumeIconLevel(vol)} />
+      </button>
+      <input type="range" min="0" max="1" step="0.02" value={vol}
+             aria-label={__('player.volume')}
+             style={{ '--fill': `${vol * 100}%` }}
+             onChange={(e) => setVolume(Number(e.target.value))} />
+    </>
   )
   const leaveSheetFor = (action) => {
     const token = npHistoryRef.current
@@ -408,7 +421,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
                onError={(event) => retryArtFromOrigin(event, 120)} />
         </button>
         <div className="p-info" onClick={blankBarClick}>
-          <button type="button" className="p-title"
+          <button type="button" className="p-title language-content"
+                  lang={contentLanguage(current.title)}
                   title={__('player.viewAlbum')} onClick={onOpenAlbum}>
             <Marquee text={current.title} />
           </button>
@@ -442,8 +456,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
         </div>
         <SeekBar t={t} dur={dur} onSeek={doSeek} />
         <div className="p-vol">
-          <I.vol size={16} />
-          {volSlider}
+          {renderVolumeControl(16)}
         </div>
       </footer>
 
@@ -460,7 +473,8 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
             <button className="icon-btn" title={__('player.collapse')}
                     onClick={closeSheet}>
               <I.chevDown size={24} /></button>
-            <button type="button" className="np-from"
+            <button type="button" className="np-from language-content"
+                    lang={contentLanguage(current.albumTitle)}
                     onClick={goAlbum}>{current.albumTitle}</button>
             <span className="np-top-pad" />
           </div>
@@ -473,6 +487,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
               <div className="np-meta">
                 <div className="np-names">
                   <button type="button" className="np-title link"
+                          lang={contentLanguage(current.title)}
                           title={__('player.viewAlbum')}
                           onClick={goAlbum}><Marquee text={current.title} /></button>
                   <ArtistCredit value={current}
@@ -485,8 +500,7 @@ export default function Player({ audioRef, current, playing, shuffle, repeat,
               <SeekBar t={t} dur={dur} big onSeek={doSeek} />
               <Controls {...ctrl} big />
               <div className="np-vol">
-                <I.vol size={15} />
-                {volSlider}
+                {renderVolumeControl(15)}
               </div>
             </div>
           </div>

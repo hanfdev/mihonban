@@ -7,11 +7,12 @@ import { romajiOf } from '../aliases.js'
 import { defaultCollator, jaCollator } from '../format.js'
 import { locateTrackRow } from '../track-locate.js'
 import { ArtistCredit, artistSearchText, creditsOf } from '../artist-credit.jsx'
+import { contentLanguage } from '../content-language.js'
 
 function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
                          onToggleFav, onPlay, onOpen, onOpenArtist, showAlbum = true }) {
   return (
-    <div className={`trow flat ${t.hidden ? 'is-hidden' : ''} ${currentId === t.id ? 'playing' : ''}`}
+    <div className={`trow flat ${isAdmin ? 'with-heart' : ''} ${t.hidden ? 'is-hidden' : ''} ${currentId === t.id ? 'playing' : ''}`}
          data-tid={t.id} role="button" tabIndex={0}
          aria-label={`${t.title} — ${t.artist}`}
          onClick={() => onPlay(i)}
@@ -25,7 +26,7 @@ function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
            src={artUrl(t.albumId, 120)} alt=""
            onClick={(e) => { e.stopPropagation(); onOpen(t.albumId) }} />
       <span className="t-main">
-        <span className="t-title">
+        <span className="t-title" lang={contentLanguage(t.title)}>
           {currentId === t.id && playingId
             ? <span className="eq" style={{ marginRight: 7 }}><i /><i /><i /></span>
             : null}
@@ -38,7 +39,7 @@ function TrackRowInner({ t, i, currentId, playingId, isAdmin, fav,
         </span>
       </span>
       {showAlbum && (
-        <span className="t-album"
+        <span className="t-album" lang={contentLanguage(t.albumTitle)}
               onClick={(e) => { e.stopPropagation(); onOpen(t.albumId) }}>
           {t.albumTitle}{t.year ? ` · ${t.year}` : ''}
         </span>

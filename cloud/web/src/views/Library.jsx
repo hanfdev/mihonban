@@ -9,6 +9,8 @@ import { defaultCollator, jaCollator } from '../format.js'
 import { currentCoverLoadingProfile } from '../cover-loading.js'
 import { ArtistCredit, artistCreditText, artistSearchText, creditsOf,
          hasArtist } from '../artist-credit.jsx'
+import { contentLanguage } from '../content-language.js'
+import { compareRawRym, compareWeightedRym } from '../rating-ranking.js'
 
 const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 
@@ -108,6 +110,7 @@ function AlbumCardInner({ a, onOpen, onOpenArtist, onPlay,
       </div>
       <div className="card-meta">
         <div className="card-title" role="button" tabIndex={0}
+             lang={contentLanguage(a.title)}
              onKeyDown={openAlbumWithKey}
              onClick={() => onOpen(a.id)} title={a.title}>{a.title}</div>
         <div className="card-sub">
@@ -153,7 +156,8 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     albums?.filter((album) => album.hidden).length || 0, [albums])
   const SORTS = useMemo(() => ({
     rating: { label: t('library.sortRating'),
-      fn: (a, b) => (b.rym?.rating ?? -1) - (a.rym?.rating ?? -1) },
+      fn: compareWeightedRym },
+    ratingRaw: { label: t('library.sortRatingRaw'), fn: compareRawRym },
     artist: { label: t('library.sortArtist'),
       fn: (a, b) => defaultCollator.compare(
         a.artistSort || a.artist, b.artistSort || b.artist)

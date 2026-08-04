@@ -70,6 +70,7 @@ El JSON de configuración de administrador exporta un subconjunto de configuraci
 - OneDrive utiliza una sesión de subida y URLs de descarga temporales.
 - WebDAV y Google Drive subidas/streams pasan por la API principal.
 - Node archivos de carpeta local son transmitidos solo por la Node runtime.
+- Una carga web solo se acepta cuando el almacenamiento confirma exactamente el número de bytes esperado. Los proveedores reanudables recuperan su posición confirmada tras un fallo transitorio; los proveedores mediante proxy vuelven a enviar todo el cuerpo de la solicitud.
 - El comportamiento de Range y `Content-Range` son necesarios para una búsqueda fiable, especialmente en iOS.
 
 ## Imágenes
@@ -83,6 +84,14 @@ Las listas de álbumes y las superficies de carátula compactas usan derivados W
 Si una redirección al espejo público termina en un objeto ausente u obsoleto, la aplicación web vuelve a intentarlo desde el almacenamiento propietario. El Worker valida los bytes de la imagen, recurre del thumbnail del proveedor al archivo original cuando es necesario y, tras recuperarlo, repara el objeto R2 y su índice D1 versionado. Así, un 404 antiguo almacenado en caché se repara automáticamente sin exponer al navegador las credenciales del almacenamiento privado.
 
 R2 no es un backend de audio ni la base de datos del catálogo.
+
+## Esquema de ejecución y cuotas de D1
+
+El Worker actualiza un catálogo antiguo antes de atender solicitudes de la API. La plantilla pública de Wrangler proporciona un `DB_SCHEMA_KEY` estable y, tras una actualización correcta, guarda la versión de ejecución del código en `settings.schema_version`. Las siguientes solicitudes del mismo isolate usan memoria; un isolate recién iniciado solo lee esa fila y omite el DDL de compatibilidad y los rellenos. Mantén estable `DB_SCHEMA_KEY` y no borres el marcador durante una limpieza rutinaria. Cuando una versión añada una migración en tiempo de ejecución, quien la mantenga también debe avanzar `RUNTIME_SCHEMA_VERSION`.
+
+Dentro de un mismo almacenamiento con nombre, la identidad de las carpetas de álbum y las rutas de pista no distingue mayúsculas y minúsculas. Los artistas siguen la misma regla en todo el catálogo. Mihonban conserva la primera grafía guardada para mostrarla, pero rechaza un duplicado posterior que solo cambie las mayúsculas.
+
+En Workers Free, D1 incluye actualmente 5 millones de filas leídas y 100 000 escritas por día, y se reinicia a las 00:00 UTC. Un despliegue o una corrección no puede restar el uso ya contabilizado, y el panel puede seguir mostrando el total anterior después de que las consultas vuelvan a funcionar. Confirma el estado actual con una solicitud de API sin caché o una consulta directa a D1 y revisa `meta.rows_read` / `meta.rows_written` en cada consulta; la barra del panel es un historial de uso, no un bloqueo en tiempo real. Si el uso vuelve a crecer con rapidez, comprueba que la configuración desplegada conserve `DB_SCHEMA_KEY` y que `settings.schema_version` coincida con el Worker actual. Consulta los límites vigentes en [precios de D1](https://developers.cloudflare.com/d1/platform/pricing/).
 
 ## Tareas programadas
 

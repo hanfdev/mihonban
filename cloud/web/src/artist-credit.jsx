@@ -1,6 +1,7 @@
 import React, { useId } from 'react'
 import { I } from './ui.jsx'
 import { creditsOf } from './artist-credit.js'
+import { contentLanguage } from './content-language.js'
 
 export * from './artist-credit.js'
 
@@ -17,13 +18,14 @@ export function ArtistCredit({ value, artists, artist, artistSort, onOpen,
             {separator}</span>}
           {onOpen ? (
             <button type="button" className={`artist-credit-link ${linkClassName}`.trim()}
+                    lang={contentLanguage(credit.name)}
                     onClick={(event) => {
                       if (stopPropagation) event.stopPropagation()
                       onOpen(credit.name)
                     }}>
               {credit.name}
             </button>
-          ) : <span>{credit.name}</span>}
+          ) : <span lang={contentLanguage(credit.name)}>{credit.name}</span>}
         </React.Fragment>
       ))}
     </span>

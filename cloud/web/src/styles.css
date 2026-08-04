@@ -1,4 +1,19 @@
-/* 見本盤 — 非売品・MIHONBAN design system */
+/* Mihonban design system */
+
+@font-face {
+  font-family: "GenRyu Mincho Fallback";
+  src: url("/fonts/genryu-mincho-shippori-fallback.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "GenRyu Mincho Fallback";
+  src: url("/fonts/genryu-mincho-shippori-fallback-bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
 
 :root {
   --bg0: #0d0b09;
@@ -19,8 +34,16 @@
   --accent-line: rgba(232, 84, 47, 0.45);
   --gold: #e3b34c;
   --gold-dim: #a5813a;
-  --serif: "Shippori Mincho", "Noto Serif JP", serif;
-  --sans: "Inter", "Noto Sans JP", system-ui, sans-serif;
+  --serif-ja: "Shippori Mincho", "GenRyu Mincho Fallback", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --serif-zh-hans: "Shippori Mincho", "GenRyu Mincho Fallback", "Songti SC", STSong, "Noto Serif CJK SC", "Source Han Serif SC", SimSun, serif;
+  --serif-zh-hant: "Shippori Mincho", "GenRyu Mincho Fallback", "Songti TC", "Noto Serif CJK TC", "Source Han Serif TC", PMingLiU, serif;
+  --serif-ko: "Noto Serif KR", Batang, AppleMyungjo, serif;
+  --sans-ja: "Inter", "Noto Sans JP", system-ui, sans-serif;
+  --sans-zh-hans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --sans-zh-hant: "Inter", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --sans-ko: "Inter", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --serif: var(--serif-ja);
+  --sans: var(--sans-ja);
   --shadow-card: 0 10px 30px -12px rgba(0, 0, 0, 0.7);
   --shadow-pop: 0 24px 80px -20px rgba(0, 0, 0, 0.85);
   --r-lg: 14px;
@@ -136,7 +159,7 @@ img { display: block; }
 }
 
 .logo {
-  font-family: var(--serif);
+  font-family: var(--serif-ja);
   font-weight: 700;
   font-size: 21px;
   letter-spacing: 0.04em;
@@ -154,7 +177,7 @@ img { display: block; }
   font-style: normal;
   font-size: 11px;
   color: var(--ink-faint);
-  font-family: var(--sans);
+  font-family: var(--sans-ja);
   font-weight: 400;
   letter-spacing: 0.1em;
   margin-top: 6px;
@@ -231,6 +254,15 @@ img { display: block; }
   position: relative;
   display: inline-flex;
   color: var(--ink-faint);
+}
+
+:lang(ja) { --serif: var(--serif-ja); --sans: var(--sans-ja); }
+:lang(zh-Hans) { --serif: var(--serif-zh-hans); --sans: var(--sans-zh-hans); }
+:lang(zh-Hant) { --serif: var(--serif-zh-hant); --sans: var(--sans-zh-hant); }
+:lang(ko) { --serif: var(--serif-ko); --sans: var(--sans-ko); }
+:lang(en), :lang(fr), :lang(es) {
+  --serif: var(--serif-ja);
+  --sans: var(--sans-ja);
 }
 .lang-wrap::after {
   content: "";
@@ -581,6 +613,12 @@ select option { background-color: var(--bg2); color: var(--ink); }
 }
 .rating-pill.na { color: var(--ink-faint); font-weight: 400; }
 .rating-pill.na::before { content: "☆"; }
+.rating-votes {
+  color: var(--ink-faint);
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
 
 /* skeleton */
 @keyframes shimmer { 0% { background-position: -300px 0; } 100% { background-position: 300px 0; } }
@@ -905,6 +943,24 @@ select option { background-color: var(--bg2); color: var(--ink); }
 }
 .trow .t-dur { text-align: right; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink-faint); }
 
+.disc-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-faint);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.disc-heading::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line-soft);
+}
+.album-disc-heading { margin: 20px 14px 8px; padding-left: 46px; }
+.album-disc-heading:first-child { margin-top: 6px; }
+
 .eq { display: inline-flex; gap: 2.5px; align-items: flex-end; height: 13px; }
 .eq i { width: 3px; background: var(--accent-hi); animation: eq 0.9s infinite ease-in-out; border-radius: 1px; }
 .eq i:nth-child(2) { animation-delay: 0.25s; }
@@ -1056,9 +1112,33 @@ select option { background-color: var(--bg2); color: var(--ink); }
 @media (hover: hover) { .p-bar:hover .dot { opacity: 1; } }
 
 .p-vol { display: flex; align-items: center; gap: 8px; width: 130px; }
+.volume-toggle {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: color 0.14s, background 0.14s;
+}
+.volume-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .volume-toggle:hover { color: var(--ink); background: var(--bg2); }
+}
 .p-vol input[type="range"] {
   -webkit-appearance: none;
-  flex: 1;
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  margin: 0;
   height: 3px;
   border-radius: 2px;
   background: linear-gradient(to right, var(--ink-dim) var(--fill, 80%), var(--bg3) var(--fill, 80%));
@@ -1189,6 +1269,8 @@ select option { background-color: var(--bg2); color: var(--ink); }
 .tin:focus { border-color: #55492f; }
 
 .upl-list { margin-top: 16px; display: grid; gap: 6px; }
+.upl-disc-heading { margin: 12px 10px 2px; }
+.upl-disc-heading:first-child { margin-top: 2px; }
 .upl-row {
   display: grid;
   grid-template-columns: 30px 1fr 200px 90px 26px;
@@ -1537,13 +1619,20 @@ select.tin { appearance: auto; }
 .flat-list { padding: 6px 26px 30px; max-width: 1360px; margin: 0 auto; }
 
 .trow.flat {
-  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 52px 34px;
+  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 52px;
   padding: 7px 12px;
   /* The full library renders every track at once, so skip layout and paint for
      offscreen rows without changing the DOM. The estimated height must match
      the final 60px row height or long-distance jumps accumulate position error. */
   content-visibility: auto;
   contain-intrinsic-size: auto 60px;
+}
+.trow.flat.with-heart {
+  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 52px 34px;
+}
+.flat-list.track-locate-materialized .trow.flat {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
 }
 .t-art {
   width: 42px; height: 42px;
@@ -2103,7 +2192,10 @@ body.lb-lock { overflow: hidden; }
   }
   .np-vol input[type="range"] {
     -webkit-appearance: none;
-    flex: 1;
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    margin: 0;
     height: 3px;
     border-radius: 2px;
     background: linear-gradient(to right, var(--ink-dim) var(--fill, 80%), var(--bg3) var(--fill, 80%));
@@ -2271,7 +2363,8 @@ body.lb-lock { overflow: hidden; }
   .trow .t-heart .heart-btn { opacity: 1; }  /* Touchscreens have no hover. */
 
   .flat-list { padding: 4px 10px 24px; }
-  .trow.flat { grid-template-columns: 44px minmax(0, 1fr) 46px 34px; }
+  .trow.flat { grid-template-columns: 44px minmax(0, 1fr) 46px; }
+  .trow.flat.with-heart { grid-template-columns: 44px minmax(0, 1fr) 46px 34px; }
   .trow.flat .t-album { display: none; }
 
   .similar, .gallery { padding-inline: 16px; }
@@ -2335,6 +2428,8 @@ body.lb-lock { overflow: hidden; }
 /* ---------- Track-management dialog ---------- */
 
 .td-list { display: grid; gap: 4px; max-height: 46vh; overflow-y: auto; padding: 2px; }
+.td-disc-heading { margin: 12px 8px 4px; }
+.td-disc-heading:first-child { margin-top: 4px; }
 .td-row {
   display: grid;
   grid-template-columns: 22px 26px 1fr 46px 28px auto auto;
@@ -2414,6 +2509,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .td-delfiles input { accent-color: var(--accent); }
 
 @media (max-width: 720px) {
+  .album-disc-heading { margin-inline: 8px; padding-left: 40px; }
   .td-row { grid-template-columns: 22px 1fr 46px 28px auto auto; }
   .td-row .td-no { display: none; }
   .td-list { max-height: 52vh; }
@@ -3702,6 +3798,18 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
   .p-title, .p-sub { width: fit-content; max-width: 100%; }
   .p-title .mq, .p-sub { width: max-content; max-width: 100%; }
 }
+
+/* Content-level lang attributes can override the interface locale. Re-resolve
+   the font variable at the marked node instead of inheriting a computed font. */
+.language-content,
+.artist-credit-link,
+.artist-credit > span,
+.t-title,
+.t-album,
+.sim-card .n {
+  font-family: var(--sans);
+}
+.md { font-family: var(--serif); }
 
 /* Tablet-width filter bars stay a single, scrollable tool rail. Admin-only
    visibility controls must not push sorting onto a detached second line. */
