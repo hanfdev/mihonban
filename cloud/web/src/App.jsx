@@ -14,7 +14,7 @@ import Player from './Player.jsx'
 import Login from './views/Login.jsx'
 import { freezeMediaSession, isStandaloneWebApp, loadAudioUntilPlayable,
          mediaSessionPlaybackState, resolvePendingMediaSeek, seekAudio,
-         shouldDeferLockScreenPlayback, shouldPauseForBackgroundBuffering,
+         shouldDeferLockScreenPlayback, shouldPauseForIOSBuffering,
          updateMediaPosition } from './media.js'
 import { installTrackMediaSessionHandlers } from './media-session.js'
 import { adjacentQueuePosition } from './player-queue.js'
@@ -495,12 +495,11 @@ export default function App() {
   const cycleRepeat = useCallback(() =>
     setRepeat((r) => (r === 'off' ? 'all' : r === 'all' ? 'one' : 'off')), [])
 
-  const pauseSilentBackgroundClock = useCallback((audio) => {
+  const pauseSilentIOSClock = useCallback((audio) => {
     const systemSeekPending = pendingSystemSeekRef.current?.sourceId
       === sourceRef.current.id
-    if (!audio || !shouldPauseForBackgroundBuffering(
+    if (!audio || !shouldPauseForIOSBuffering(
       deferLockScreenPlaybackRef.current,
-      document.visibilityState,
       audio.paused,
       audio.ended,
       systemSeekPending,
@@ -924,7 +923,7 @@ export default function App() {
                  setPlaying(true)
                }}
                onWaiting={(event) => {
-                 pauseSilentBackgroundClock(event.currentTarget)
+                 pauseSilentIOSClock(event.currentTarget)
                }}
                onCanPlay={(event) => {
                  resumeBufferedBackgroundAudio(event.currentTarget)

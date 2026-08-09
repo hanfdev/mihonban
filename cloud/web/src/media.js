@@ -45,12 +45,11 @@ export function shouldDeferLockScreenPlayback(
     && !isStandaloneWebApp(browserWindow, browserNavigator)
 }
 
-/** Pause a silent iOS browser clock only when playback stalls in the background. */
-export function shouldPauseForBackgroundBuffering(
-  eligible, visibilityState, audioPaused, audioEnded, systemSeekPending = false,
+/** Pause the native iOS browser clock whenever active playback runs out of buffered audio. */
+export function shouldPauseForIOSBuffering(
+  eligible, audioPaused, audioEnded, systemSeekPending = false,
 ) {
-  return !!eligible && visibilityState === 'hidden'
-    && !audioPaused && !audioEnded && !systemSeekPending
+  return !!eligible && !audioPaused && !audioEnded && !systemSeekPending
 }
 
 /**

@@ -29,11 +29,11 @@ Passwords saved in Admin override environment bootstrap values. Changing either 
 
 - Primary navigation always opens its destination at the top. Click the active logo or navigation item again to scroll smoothly back to the top; the Albums and Tracks tabs inside Favorites follow the same rule.
 - Volume, language, and sort preferences are local to each browser origin. Opening a new hostname or custom domain starts with fresh preferences; an unset volume starts at 100%.
-- Playback is initiated inside the originating tap/click so Android Chrome can establish audible playback and a system media session. The lock-screen/notification controls expose play, pause, previous, next, and seeking where the browser supports them.
+- Playback is initiated inside the originating tap/click so Android Chrome can establish audible playback and a system media session. The lock-screen/notification controls expose play, pause, previous, next, and seeking where the browser supports them. If iOS Safari runs out of buffered audio, Mihonban freezes the native media timeline and resumes it only after audio is playable again, preventing silent progress from getting ahead of the sound.
 - On mobile, tap the cover or the empty part of the mini-player, or swipe the mini-player upward, to open Now Playing. Album and artist links remain independently tappable.
 - The compact mobile transport keeps previous, play/pause, and next visible in that order. Shuffle and repeat remain available in the full Now Playing view.
 - Gallery images show a loading state while switching; swipe horizontally to move between pages on touch devices.
-- Album grids preload covers ahead of the viewport and keep a restrained placeholder visible until decoding completes. On fine-pointer desktop library screens, covers are slightly toned down at rest and return to their original color on hover, keyboard focus, or current playback. Track bitrates at or above 1000 kbps use compact `M` notation; hover the value to see the exact kbps.
+- Album grids preload covers ahead of the viewport and keep a restrained placeholder visible until decoding completes. Successfully decoded covers stay ready while filtering or sorting, and transient image failures use a small number of delayed retries. On fine-pointer desktop library screens, covers are slightly toned down at rest and return to their original color on hover, keyboard focus, or current playback. Track bitrates at or above 1000 kbps use compact `M` notation; hover the value to see the exact kbps.
 
 ## Inbox folders and archives
 

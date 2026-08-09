@@ -17,6 +17,15 @@ const decadeOf = (y) => (y ? `${Math.floor(y / 10) * 10}s` : null)
 const coverPreloadCallbacks = new WeakMap()
 let coverPreloadObserver = null
 const coverLoading = currentCoverLoadingProfile()
+const COVER_RETRY_LIMIT = 3
+
+const retryUrl = (src, attempt) => {
+  if (!attempt) return src
+  const separator = src.includes('?') ? '&' : '?'
+  return `${src}${separator}retry=${attempt}`
+}
+
+const retryDelay = (attempt) => 700 + attempt * 1100
 
 export const isPriorityCover = (index) => index < coverLoading.priorityCount
 
@@ -46,27 +55,67 @@ function observeCoverAhead(element, onEnter) {
 
 function AheadCoverImage({ src, alt, priority = false }) {
   const imageRef = useRef(null)
+  const retryTimer = useRef(null)
+  const currentSrc = useRef(src)
   const [shouldLoad, setShouldLoad] = useState(priority)
   const [ready, setReady] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    setReady(false)
-    if (priority) {
+    // Keep a successfully loaded cover across filtering and sorting changes.
+    // The card keeps its stable album key, so priority can change without
+    // requiring the same image to be fetched and decoded again.
+    const sourceChanged = currentSrc.current !== src
+    if (sourceChanged) {
+      currentSrc.current = src
+      setReady(false)
+      setAttempt(0)
+      setShouldLoad(priority)
+    } else if (priority) {
       setShouldLoad(true)
-      return undefined
     }
-    setShouldLoad(false)
-    return observeCoverAhead(imageRef.current, () => setShouldLoad(true))
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current)
+      retryTimer.current = null
+    }
+    const stopObserving = priority ? () => {} : observeCoverAhead(
+      imageRef.current, () => setShouldLoad(true))
+    return () => {
+      stopObserving()
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+      retryTimer.current = null
+    }
   }, [priority, src])
+
+  useEffect(() => () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current)
+  }, [])
+
+  const onLoad = () => {
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current)
+      retryTimer.current = null
+    }
+    setReady(true)
+  }
+
+  const onError = () => {
+    setReady(false)
+    if (!shouldLoad || attempt >= COVER_RETRY_LIMIT || retryTimer.current) return
+    retryTimer.current = setTimeout(() => {
+      retryTimer.current = null
+      setAttempt((value) => value + 1)
+    }, retryDelay(attempt))
+  }
 
   return (
     <>
       <span className="cover-placeholder" aria-hidden="true"><I.disc size={26} /></span>
       <img ref={imageRef} className={`cover-img ${ready ? 'is-ready' : ''}`}
            loading="eager" decoding="async"
-           fetchPriority={priority ? 'high' : 'auto'}
-           src={shouldLoad ? src : undefined} alt={alt}
-           onLoad={() => setReady(true)} onError={() => setReady(false)} />
+           fetchPriority="auto"
+           src={shouldLoad ? retryUrl(src, attempt) : undefined} alt={alt}
+           onLoad={onLoad} onError={onError} />
     </>
   )
 }

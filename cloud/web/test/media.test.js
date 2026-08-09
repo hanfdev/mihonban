@@ -5,7 +5,7 @@ import { clampMediaTime, freezeMediaSession, isIOSDevice,
          isStandaloneWebApp, loadAudioUntilPlayable, mediaDuration,
          mediaSessionPlaybackState, resolvePendingMediaSeek, seekAudio,
          shouldDeferLockScreenPlayback,
-         shouldPauseForBackgroundBuffering, storedVolume,
+         shouldPauseForIOSBuffering, storedVolume,
          updateMediaPosition, volumeIconLevel } from '../src/media.js'
 
 test('installed web apps are detected across iOS and display mode APIs', () => {
@@ -31,14 +31,13 @@ test('iPadOS browser playback defers system track starts outside standalone mode
   }), false)
 })
 
-test('only active hidden playback is paused when iOS runs out of buffered audio', () => {
-  assert.equal(shouldPauseForBackgroundBuffering(true, 'hidden', false, false), true)
-  assert.equal(shouldPauseForBackgroundBuffering(true, 'visible', false, false), false)
-  assert.equal(shouldPauseForBackgroundBuffering(true, 'hidden', true, false), false)
-  assert.equal(shouldPauseForBackgroundBuffering(true, 'hidden', false, true), false)
-  assert.equal(shouldPauseForBackgroundBuffering(false, 'hidden', false, false), false)
+test('active iOS browser playback pauses its native clock whenever buffering starts', () => {
+  assert.equal(shouldPauseForIOSBuffering(true, false, false), true)
+  assert.equal(shouldPauseForIOSBuffering(true, true, false), false)
+  assert.equal(shouldPauseForIOSBuffering(true, false, true), false)
+  assert.equal(shouldPauseForIOSBuffering(false, false, false), false)
   assert.equal(
-    shouldPauseForBackgroundBuffering(true, 'hidden', false, false, true),
+    shouldPauseForIOSBuffering(true, false, false, true),
     false,
   )
 })
