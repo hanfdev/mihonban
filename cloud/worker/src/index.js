@@ -198,6 +198,18 @@ function genreLists(primary, secondary) {
   return { primary: unique(primary), secondary: unique(secondary) };
 }
 
+function mergeStringLists(existing, incoming) {
+  const seen = new Set();
+  const merged = [];
+  for (const value of [...stringList(existing), ...stringList(incoming)]) {
+    const key = value.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(value);
+  }
+  return merged;
+}
+
 const MAX_ALBUM_ARTISTS = 24;
 
 function artistCredit(artists) {
@@ -2677,14 +2689,31 @@ app.post("/api/albums", async (c) => {
   if (body.coverPath && (!coverPath || !coverPath.startsWith(folder + "/"))) {
     return c.json({ error: "coverPath 必须在该专辑目录下" }, 400);
   }
-  const genres = genreLists(primaryGenres, secondaryGenres);
   const id = await sha16(folder);
   const now = Date.now();
   const [previousContributors, existingAlbum] = await Promise.all([
     contributorsForAlbum(c.env.DB, id),
-    c.env.DB.prepare("SELECT storage_id FROM albums WHERE id = ?")
+    c.env.DB.prepare(`SELECT storage_id, genres, sec_genres, descriptors
+      FROM albums WHERE id = ?`)
       .bind(id).first(),
   ]);
+  // Existing curated metadata stays authoritative; companion metadata only
+  // appends new values and never changes an established list placement.
+  const currentPrimary = stringList(J(existingAlbum?.genres));
+  const currentSecondary = stringList(J(existingAlbum?.sec_genres));
+  const existingGenreKeys = new Set([
+    ...currentPrimary, ...currentSecondary,
+  ].map((value) => value.toLocaleLowerCase()));
+  const genres = genreLists(
+    [...currentPrimary,
+      ...primaryGenres.filter((value) => !existingGenreKeys.has(
+        value.toLocaleLowerCase()))],
+    [...currentSecondary,
+      ...secondaryGenres.filter((value) => !existingGenreKeys.has(
+        value.toLocaleLowerCase()))],
+  );
+  const descriptorsToStore = mergeStringLists(
+    J(existingAlbum?.descriptors), descriptors);
   // A legacy companion only knows the singular artist field. Once an album
   // has been explicitly edited to multiple credits, later rescans must not
   // collapse it back to one combined string.
@@ -2737,7 +2766,7 @@ app.post("/api/albums", async (c) => {
       .bind(id, artist, artistSort, title, year, folder, coverPath,
         rymRating, rymVotes, rymRank, rymUrl, JSON.stringify(genres.primary),
         JSON.stringify(genres.secondary),
-        JSON.stringify(descriptors), storageId, now, now);
+        JSON.stringify(descriptorsToStore), storageId, now, now);
   const seenTrackPaths = new Set();
   const seenTrackIds = new Set();
   const normalizedTracks = [];

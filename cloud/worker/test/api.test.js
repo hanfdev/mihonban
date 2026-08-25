@@ -256,6 +256,70 @@ test("rym re-import merges curated taxonomy instead of replacing it", async () =
   }
 });
 
+test("album rescans merge curated taxonomy instead of replacing it", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
+    VALUES ('main-store', 'Main', 'local', '{}', 1, 1)`).run();
+  const env = companionEnv(db);
+  const folder = "Music/Library/Artist/Curated Album";
+  const path = `${folder}/01.flac`;
+  const register = (metadata) => companionRequest(env, "/api/albums", {
+    method: "POST",
+    ...jsonBody({
+      folder, artist: "Artist", title: "Curated Album",
+      tracks: [{ path, title: "Track", track: 1 }],
+      ...metadata,
+    }),
+  });
+
+  try {
+    const first = await register({
+      genres: ["Shibuya-kei", "Manual Tag"],
+      secondaryGenres: ["City Pop"],
+      descriptors: ["warm"],
+    });
+    assert.equal(first.status, 200, (await first.json()).error);
+
+    const secondPayload = {
+      genres: ["shibuya-KEI", "Indie Pop", "City Pop"],
+      secondaryGenres: ["J-Pop", "manual tag"],
+      descriptors: ["Warm", "summer"],
+    };
+    const second = await register(secondPayload);
+    assert.equal(second.status, 200, (await second.json()).error);
+    const albumId = await testSha16(folder);
+    const merged = db.prepare(`SELECT genres, sec_genres, descriptors
+      FROM albums WHERE id = ?`).get(albumId);
+    assert.deepEqual(JSON.parse(merged.genres),
+      ["Shibuya-kei", "Manual Tag", "Indie Pop"]);
+    assert.deepEqual(JSON.parse(merged.sec_genres), ["City Pop", "J-Pop"]);
+    assert.deepEqual(JSON.parse(merged.descriptors), ["warm", "summer"]);
+
+    const emptyRescan = await register({
+      genres: [], secondaryGenres: [], descriptors: [],
+    });
+    assert.equal(emptyRescan.status, 200, (await emptyRescan.json()).error);
+    const afterEmpty = db.prepare(`SELECT genres, sec_genres, descriptors
+      FROM albums WHERE id = ?`).get(albumId);
+    assert.deepEqual(JSON.parse(afterEmpty.genres),
+      ["Shibuya-kei", "Manual Tag", "Indie Pop"]);
+    assert.deepEqual(JSON.parse(afterEmpty.sec_genres), ["City Pop", "J-Pop"]);
+    assert.deepEqual(JSON.parse(afterEmpty.descriptors), ["warm", "summer"]);
+
+    const repeated = await register(secondPayload);
+    assert.equal(repeated.status, 200, (await repeated.json()).error);
+    const stable = db.prepare(`SELECT genres, sec_genres, descriptors
+      FROM albums WHERE id = ?`).get(albumId);
+    assert.deepEqual(JSON.parse(stable.genres),
+      ["Shibuya-kei", "Manual Tag", "Indie Pop"]);
+    assert.deepEqual(JSON.parse(stable.sec_genres), ["City Pop", "J-Pop"]);
+    assert.deepEqual(JSON.parse(stable.descriptors), ["warm", "summer"]);
+  } finally {
+    db.close();
+  }
+});
+
 test("multi-artist credits are ordered, searchable, and survive legacy rescans", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
