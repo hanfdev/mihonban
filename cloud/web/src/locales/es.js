@@ -197,6 +197,7 @@ export default {
     noPlayable: 'No hay formato reproducible en la cola para este dispositivo',
     skipFormat: (fmt, title) => `Este dispositivo no puede reproducir ${fmt}; se omitió «${title}»`,
     playFail: (title) => `No se pudo reproducir «${title}» — inténtalo de nuevo más tarde`,
+    skipCodec: (title) => `Este navegador no puede decodificar el audio de «${title}»; omitido`,
   },
   importPage: {
     ...en.importPage,

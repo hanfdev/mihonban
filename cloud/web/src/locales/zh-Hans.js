@@ -73,6 +73,7 @@ export default {
     noPlayable: '队列里没有此设备能播放的格式',
     skipFormat: (fmt, title) => `此设备不支持 ${fmt}，已跳过「${title}」`,
     playFail: (title) => `无法播放「${title}」，请稍后重试`,
+    skipCodec: (title) => `此浏览器无法解码「${title}」的音频编码，已跳过`,
   },
   artistPage: {
     kicker: '艺人',

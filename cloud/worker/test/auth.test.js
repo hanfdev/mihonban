@@ -9,6 +9,14 @@ test("password hashes round-trip and reject a wrong password", async () => {
   assert.equal(await verifyPassword("wrong", hash), false);
 });
 
+test("new hashes stay at the Workers PBKDF2 iteration ceiling", async () => {
+  // workerd rejects PBKDF2 above 100k iterations, so a larger constant makes
+  // POST /api/admin/password fail with a 500 on Cloudflare even though Node
+  // accepts it and every Node-based test stays green.
+  const iterations = Number((await hashPassword("x")).split("$")[1]);
+  assert.equal(iterations, 100_000);
+});
+
 test("malformed password hashes fail closed without throwing", async () => {
   const malformed = [
     "", "pbkdf2", "pbkdf2$nope$00$00",

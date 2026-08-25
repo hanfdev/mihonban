@@ -977,7 +977,9 @@ select option { background-color: var(--bg2); color: var(--ink); }
   border-radius: var(--r-sm);
   object-fit: cover;
 }
-.sim-card .n { font-size: 12.5px; margin-top: 7px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* One line with an ellipsis keeps every card the same height; the full title
+   is a hover tooltip away on desktop and one tap away everywhere. */
+.sim-card .n { font-size: 12.5px; margin-top: 7px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- player bar ---------- */
 
@@ -3859,9 +3861,18 @@ input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
     padding: 13px 16px 5px;
     scroll-padding-inline: 16px;
     scroll-snap-type: x proximity;
+    /* Async items (visibility toggle, clear action) mount into the rail;
+       scroll anchoring must never shift a toolbar in response. */
+    overflow-anchor: none;
   }
-  .filters > * { scroll-snap-align: start; }
-  .favs-page .filters.center { overflow-anchor: none; }
+  /* The library rail groups its items in display:contents wrappers, which
+     generate no boxes: with a child selector alone the sort control would be
+     the rail's only snap area, so proximity snapping pins the rail to its
+     right edge and the leading filters become unreachable. Give every real
+     item a snap position instead. */
+  .filters > *,
+  .library-filter-main > *,
+  .filter-tail > * { scroll-snap-align: start; }
   .fsel, .sort-sel, .chip { min-height: 40px; }
   .visibility-toggle { height: 40px; }
   /* On touch, clearing must be discoverable without panning the filter rail.

@@ -95,7 +95,8 @@ export async function readTags(file, detectedFormat = "") {
     track: fallback.track,
     disc: 1,
     duration: null,
-    artist: "", artists: [], albumArtist: "",
+    artist: "", artists: [], artistIds: [], hasStructuredArtists: false,
+    albumArtist: "", albumArtists: [],
     artistSort: "", artistSorts: [], albumArtistSort: "",
     album: "", year: null,
     picture: null, // {blob, type}
@@ -108,10 +109,21 @@ export async function readTags(file, detectedFormat = "") {
     base.track = c.track?.no ?? base.track;
     base.disc = c.disk?.no ?? 1;
     base.artist = c.artist || "";
-    base.artists = (Array.isArray(c.artists) && c.artists.length
+    const nativeArtistValues = Object.values(meta.native || {}).flat()
+      .filter((tag) => String(tag?.id || '').toUpperCase() === 'ARTISTS');
+    base.hasStructuredArtists = nativeArtistValues.length > 0
+      || (Array.isArray(c.artists) && c.artists.length > 1);
+    base.artists = (base.hasStructuredArtists
       ? c.artists : (c.artist ? [c.artist] : []))
       .map((value) => String(value || '').trim()).filter(Boolean);
+    base.artistIds = (Array.isArray(c.musicbrainz_artistid)
+      ? c.musicbrainz_artistid
+      : (c.musicbrainz_artistid ? [c.musicbrainz_artistid] : []))
+      .map((value) => String(value || '').trim()).filter(Boolean);
     base.albumArtist = c.albumartist || c.artist || "";
+    base.albumArtists = (Array.isArray(c.albumartists) && c.albumartists.length
+      ? c.albumartists : (base.albumArtist ? [base.albumArtist] : []))
+      .map((value) => String(value || '').trim()).filter(Boolean);
     base.artistSort = c.artistsort || "";
     base.artistSorts = (Array.isArray(c.artistsort)
       ? c.artistsort : (c.artistsort ? [c.artistsort] : []))

@@ -3571,8 +3571,9 @@ app.put("/api/album/:id/tracks/order", async (c) => {
 app.post("/api/album/:id/rym", async (c) => {
   const b = await requestObject(c);
   if (!b) return c.json({ error: "请求 JSON 无效" }, 400);
-  const album = await c.env.DB.prepare(
-    "SELECT id FROM albums WHERE id = ?").bind(c.req.param("id")).first();
+  const album = await c.env.DB.prepare(`
+    SELECT genres, sec_genres, descriptors FROM albums WHERE id = ?`)
+    .bind(c.req.param("id")).first();
   if (!album) return c.json({ error: "not found" }, 404);
   const rating = finiteInput(b.rating, { min: 0, max: 5 });
   const votes = finiteInput(b.votes, {
@@ -3589,13 +3590,28 @@ app.post("/api/album/:id/rym", async (c) => {
     .includes(INVALID_INPUT)) {
     return c.json({ error: "RYM 数据格式无效" }, 400);
   }
-  const genres = genreLists(primary, secondary);
+  // Ratings are refreshed by re-importing a newer RYM page, but the stored
+  // taxonomy usually mixes RYM, Discogs, and manual edits by then. Merge like
+  // the Discogs importer instead of replacing: existing placement wins (a tag
+  // curated as secondary is not re-added as primary), only new values append,
+  // so repeating an import never changes the curated lists.
+  const lower = (value) => String(value).toLocaleLowerCase();
+  const currentPrimary = stringList(J(album.genres));
+  const currentSecondary = stringList(J(album.sec_genres));
+  const currentDescriptors = stringList(J(album.descriptors));
+  const taken = new Set([...currentPrimary, ...currentSecondary].map(lower));
+  const genres = genreLists(
+    [...currentPrimary, ...primary.filter((g) => !taken.has(lower(g)))],
+    [...currentSecondary, ...secondary.filter((g) => !taken.has(lower(g)))]);
+  const seenDescriptors = new Set(currentDescriptors.map(lower));
+  const mergedDescriptors = [...currentDescriptors,
+    ...descriptors.filter((d) => !seenDescriptors.has(lower(d)))];
   await c.env.DB.prepare(`
     UPDATE albums SET rym_rating=?, rym_votes=?, rym_rank=?, rym_url=?,
       genres=?, sec_genres=?, descriptors=?, updated_at=? WHERE id=?`)
     .bind(rating, votes, rank, rymUrl,
       JSON.stringify(genres.primary), JSON.stringify(genres.secondary),
-      JSON.stringify(descriptors),
+      JSON.stringify(mergedDescriptors),
       Date.now(), c.req.param("id")).run();
   return c.json({ ok: true });
 });

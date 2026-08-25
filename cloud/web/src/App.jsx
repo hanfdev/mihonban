@@ -287,6 +287,10 @@ export default function App() {
 
   // ---- Playback controls ----
   const skipRun = useRef(0) // Consecutive auto-skip count; prevents a loop when no track in the queue is playable.
+  // Tracks whose bytes arrive but whose codec no decoder here accepts. The
+  // container-level pre-check clears skipRun for them (audio/mp4 answers
+  // "maybe" even when the stream is ALAC), so completion is tracked per track.
+  const undecodableRef = useRef(new Set())
   // iOS can suspend a home-screen app before a redirected media request has
   // established native playback. Keep installed-app audio on one origin so
   // the media process can continue the same Range request while UI JavaScript sleeps.
@@ -332,6 +336,7 @@ export default function App() {
   // opts.shuffle forces shuffle (the tracks-page random button) and switches the player into that mode.
   const playTracks = useCallback((list, index, opts) => {
     if (!list?.length) return
+    undecodableRef.current.clear() // A new queue re-earns the benefit of the doubt.
     const useShuffle = opts?.shuffle ?? shuffle
     if (useShuffle !== shuffle) setShuffle(useShuffle)
     const start = index ?? (useShuffle ? Math.floor(Math.random() * list.length) : 0)
@@ -920,6 +925,7 @@ export default function App() {
                onPlay={() => setPlaying(true)}
                onPlaying={() => {
                  pendingBufferResumeRef.current = null
+                 undecodableRef.current.delete(current?.id)
                  setPlaying(true)
                }}
                onWaiting={(event) => {
@@ -938,8 +944,15 @@ export default function App() {
                const a = audioRef.current
                const source = sourceRef.current
                if (!current || source.id !== current.id) return
+               // MEDIA_ERR_DECODE and MEDIA_ERR_SRC_NOT_SUPPORTED mean the bytes
+               // arrived but no decoder accepts them. Re-fetching through the
+               // Range proxy or "later" cannot change that verdict, so a track
+               // already known to be undecodable skips the retry entirely.
+               const undecodable = a?.error?.code === MediaError.MEDIA_ERR_DECODE
+                 || a?.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
                 // If the Microsoft direct/CDN link fails, retry this track once through the local Range proxy.
-                if (a && !source.proxy) {
+                if (a && !source.proxy
+                    && !(undecodable && undecodableRef.current.has(current.id))) {
                   const keepWarming = pendingStartRef.current === current.id
                   sourceRef.current = { id: current.id, proxy: true }
                   a.src = streamUrl(current.id, { proxy: true })
@@ -957,7 +970,17 @@ export default function App() {
                 pendingBufferResumeRef.current = null
                 pendingSystemSeekRef.current = null
                 setPlaying(false)
-               if (current) toast(t('player.playFail', current.title), 'err')
+               if (undecodable) {
+                 undecodableRef.current.add(current.id)
+                 if (undecodableRef.current.size < queueRef.current.list.length) {
+                   toast(t('player.skipCodec', current.title), 'err')
+                   step(1)
+                 } else {
+                   toast(t('player.noPlayable'), 'err')
+                 }
+                 return
+               }
+               toast(t('player.playFail', current.title), 'err')
              }} />
     </div>
   )

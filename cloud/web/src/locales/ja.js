@@ -197,6 +197,7 @@ export default {
     noPlayable: 'この端末で再生できる形式がキューにありません',
     skipFormat: (fmt, title) => `この端末は ${fmt} を再生できません。「${title}」をスキップしました`,
     playFail: (title) => `「${title}」を再生できません — しばらくしてからお試しください`,
+    skipCodec: (title) => `このブラウザは「${title}」の音声コーデックをデコードできません。スキップしました`,
   },
   importPage: {
     ...en.importPage,

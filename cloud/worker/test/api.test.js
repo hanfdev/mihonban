@@ -204,6 +204,58 @@ test("genre mirror triggers follow direct album updates and deletes", async () =
   }
 });
 
+test("rym re-import merges curated taxonomy instead of replacing it", async () => {
+  const db = new Database(":memory:");
+  db.exec(schema);
+  db.prepare(`INSERT INTO albums
+    (id, artist, title, folder, genres, sec_genres, descriptors,
+     storage_id, created_at, updated_at)
+    VALUES ('rym-merge', 'Artist', 'Title', 'Music/Library/Artist/Title',
+      '["Shibuya-kei", "My Custom Tag"]', '["City Pop"]', '["warm"]',
+      'main-store', 1, 1)`).run();
+  const env = companionEnv(db);
+
+  try {
+    const payload = {
+      rating: 3.9, votes: 120, rank: "#12",
+      rymUrl: "https://rateyourmusic.com/release/album/artist/title/",
+      // Duplicates in any case, a tag the curator moved to secondary, and a
+      // manual tag echoed back as secondary must all leave the lists alone.
+      genres: ["shibuya-KEI", "Indie Pop", "City Pop"],
+      secondaryGenres: ["J-Pop", "my custom tag"],
+      descriptors: ["Warm", "summer"],
+    };
+    const first = await companionRequest(env, "/api/album/rym-merge/rym", {
+      method: "POST", ...jsonBody(payload),
+    });
+    assert.equal(first.status, 200);
+    const merged = db.prepare(`SELECT genres, sec_genres, descriptors,
+      rym_rating FROM albums WHERE id = 'rym-merge'`).get();
+    assert.deepEqual(JSON.parse(merged.genres),
+      ["Shibuya-kei", "My Custom Tag", "Indie Pop"]);
+    assert.deepEqual(JSON.parse(merged.sec_genres), ["City Pop", "J-Pop"]);
+    assert.deepEqual(JSON.parse(merged.descriptors), ["warm", "summer"]);
+    assert.equal(merged.rym_rating, 3.9);
+
+    // A periodic refresh with the same page still updates the rating while
+    // leaving the curated taxonomy untouched.
+    const again = await companionRequest(env, "/api/album/rym-merge/rym", {
+      method: "POST", ...jsonBody({ ...payload, rating: 4.05, votes: 150 }),
+    });
+    assert.equal(again.status, 200);
+    const stable = db.prepare(`SELECT genres, sec_genres, descriptors,
+      rym_rating, rym_votes FROM albums WHERE id = 'rym-merge'`).get();
+    assert.deepEqual(JSON.parse(stable.genres),
+      ["Shibuya-kei", "My Custom Tag", "Indie Pop"]);
+    assert.deepEqual(JSON.parse(stable.sec_genres), ["City Pop", "J-Pop"]);
+    assert.deepEqual(JSON.parse(stable.descriptors), ["warm", "summer"]);
+    assert.equal(stable.rym_rating, 4.05);
+    assert.equal(stable.rym_votes, 150);
+  } finally {
+    db.close();
+  }
+});
+
 test("multi-artist credits are ordered, searchable, and survive legacy rescans", async () => {
   const db = new Database(":memory:");
   db.exec(schema);

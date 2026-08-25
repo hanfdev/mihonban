@@ -8,7 +8,12 @@
 const COOKIE = "mihonban_session";
 const DAY = 86400_000;
 const MIN_SESSION_SECRET_LENGTH = 32;
-const PBKDF2_ITERS = 210_000; // OWASP 2023 recommendation for PBKDF2-HMAC-SHA256
+// Cloudflare Workers caps WebCrypto PBKDF2 at 100,000 iterations; deriveBits
+// throws above that, which turned every password change into a 500 in
+// production while Node-based tests kept passing. Verification reads the
+// per-hash count, so hashes minted elsewhere keep working where the runtime
+// allows them; new hashes must stay at the platform ceiling.
+const PBKDF2_ITERS = 100_000;
 const MAX_FAILURES = 6;       // Failure limit per IP, tightened from 8
 const LOCKOUT_TTL = 900;      // Lockout window in seconds (15 minutes)
 

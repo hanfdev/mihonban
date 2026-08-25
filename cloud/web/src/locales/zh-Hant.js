@@ -108,6 +108,7 @@ export default {
     noPlayable: '佇列中沒有此裝置可播放的格式',
     skipFormat: (fmt, title) => `此裝置不支援 ${fmt}，已跳過「${title}」`,
     playFail: (title) => `無法播放「${title}」，請稍後重試`,
+    skipCodec: (title) => `此瀏覽器無法解碼「${title}」的音訊編碼，已跳過`,
   },
   rym: {
     title: '匯入 RYM 頁面', drop: '拖入已儲存的 RYM 專輯頁 HTML，或點擊選擇',

@@ -191,6 +191,51 @@ def test_payload_uses_track_artist_values_only_for_collaboration_overrides(
     ]
 
 
+def test_structured_artists_override_display_joiners_and_stale_sort_text(
+        cloud_cfg, monkeypatch):
+    album_dir = cloud_cfg.music_root / "Various Artists" / "Compilation"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01.flac").write_bytes(b"audio")
+
+    def fake_mutagen(_path, easy=False):
+        return SimpleNamespace(
+            tags={
+                "title": ["WINDY AFTERNOON"],
+                "albumartist": ["Various Artists"],
+                "artist": ["microtone feat. Nakamura Megumi"],
+                "artists": ["microtone", "Nakamura Megumi"],
+                "artistsort": [
+                    "microtone & Fujiiwa, Satoko", "Nakamura Megumi",
+                ],
+                "musicbrainz_artistid": ["one", "two"],
+                "album": ["Compilation"], "tracknumber": ["1"],
+            },
+            info=SimpleNamespace(length=10.0, bitrate=320_000),
+        )
+
+    monkeypatch.setattr(cloud.mutagen, "File", fake_mutagen)
+    monkeypatch.setattr(cloud, "resolve_sort_name",
+                        lambda name, cache: name)
+    payload = cloud.payload_for_album(cloud_cfg, album_dir)
+
+    assert payload["tracks"][0]["artists"] == [
+        {"name": "microtone", "sort": "microtone"},
+        {"name": "Nakamura Megumi", "sort": "Nakamura Megumi"},
+    ]
+
+
+def test_artist_text_splits_only_with_explicit_or_identity_backed_evidence():
+    assert cloud._split_artist_text(
+        "GROOVE UNCHANT feat. pecombo") == ["GROOVE UNCHANT", "pecombo"]
+    assert cloud._split_artist_text(
+        "yellow mellow kite town, yummy & Shun", 3,
+    ) == ["yellow mellow kite town", "yummy", "Shun"]
+    assert cloud._split_artist_text("Neil & Iraiza", 1) == ["Neil & Iraiza"]
+    assert cloud._split_artist_text(
+        "Round Table Featuring Nino", 0, allow_explicit=False,
+    ) == ["Round Table Featuring Nino"]
+
+
 def test_desired_tags_keep_album_credit_and_write_track_credit_separately():
     album = {
         "artists": [{"name": "山下達郎", "sort": "Yamashita, Tatsuro"}],

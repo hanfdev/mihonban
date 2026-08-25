@@ -197,6 +197,7 @@ export default {
     noPlayable: 'Aucun format lisible sur cet appareil dans la file',
     skipFormat: (fmt, title) => `Cet appareil ne peut pas lire le ${fmt} ; « ${title} » ignoré`,
     playFail: (title) => `Impossible de lire « ${title} » — réessayez plus tard`,
+    skipCodec: (title) => `Ce navigateur ne peut pas décoder l’audio de « ${title} » ; ignoré`,
   },
   importPage: {
     ...en.importPage,

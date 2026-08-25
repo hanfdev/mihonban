@@ -139,6 +139,7 @@ export const en = {
     noPlayable: 'No playable format in the queue for this device',
     skipFormat: (fmt, title) => `This device can’t play ${fmt}; skipped “${title}”`,
     playFail: (title) => `Couldn’t play “${title}” — try again later`,
+    skipCodec: (title) => `This browser can’t decode the audio in “${title}”; skipped`,
   },
   artistPage: {
     kicker: 'Artist',

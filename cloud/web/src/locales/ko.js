@@ -197,6 +197,7 @@ export default {
     noPlayable: '이 기기에서 재생 가능한 형식이 큐에 없습니다',
     skipFormat: (fmt, title) => `이 기기는 ${fmt} 형식을 재생할 수 없습니다. 「${title}」 건너뜀`,
     playFail: (title) => `「${title}」을(를) 재생할 수 없습니다 — 나중에 다시 시도하세요`,
+    skipCodec: (title) => `이 브라우저는 「${title}」의 오디오 코덱을 디코딩할 수 없어 건너뛰었습니다`,
   },
   importPage: {
     ...en.importPage,

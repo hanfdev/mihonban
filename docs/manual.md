@@ -68,7 +68,7 @@ Leave this field blank when the original name is already the desired search and 
 
 The artist-page Discogs action searches for matching candidates automatically. If the correct artist is missing, paste an official `discogs.com/artist/...` URL and fetch it directly; the dialog previews the available photo and biography before either is imported. The Artists overview ranks album count first and uses featured-track count only to break ties between artists with the same album count. Featured tracks appear on a quieter second metadata line rather than being counted as albums.
 
-Use the album editor for the default ordered artist credit of the whole release. In Manage tracks, the artist button beside a song can add a track-specific collaboration; leave that option off to inherit the album artists. Track credits are used by search, the player and system media metadata. A guest artist's page lists only the songs they joined under Featured tracks and does not claim the whole album. The companion reads genuine multi-value `artist` / `artistsort` tags without guessing splits from commas or semicolons.
+Use the album editor for the default ordered artist credit of the whole release. In Manage tracks, the artist button beside a song can add a track-specific collaboration; leave that option off to inherit the album artists. Track credits are used by search, the player and system media metadata. A guest artist's page lists only the songs they joined under Featured tracks and does not claim the whole album. The companion and browser uploader prefer structured `ARTISTS` / `ALBUMARTISTS` values. With display text only, explicit `feat.` / `ft.` / `featuring` joins can be split; commas and `&` are split only when multiple MusicBrainz artist IDs confirm the same number of credits. Ambiguous formal names such as `Neil & Iraiza` remain intact.
 
 Multi-disc imports keep each disc identity and display a separate heading. Track numbers restart at 1 for each disc; Manage tracks permits reordering only inside the same disc and never turns a reorder into a disc reassignment.
 
@@ -78,7 +78,7 @@ Before downloading each missing album, the companion writes a persistent marker 
 
 ## RYM metadata
 
-Mihonban does not automate requests to Rate Your Music. Save a release page manually in the browser, import the saved HTML on the album page, and review rating, vote count, primary/secondary genres, and descriptors before saving. The CLI can parse, match, and write manually saved pages in bulk.
+Mihonban does not automate requests to Rate Your Music. Save a release page manually in the browser, import the saved HTML on the album page, and review rating, vote count, primary/secondary genres, and descriptors before saving. The CLI can parse, match, and write manually saved pages in bulk. Re-importing a newer page refreshes the rating, vote count, and rank, while genres and descriptors merge into the existing lists with case-insensitive deduplication: tags curated by hand or imported from Discogs are never removed, and repeating an import leaves the curated lists unchanged.
 
 The default rating sort is confidence-weighted so a tiny number of very high ratings does not outrank a similarly rated release with broad support. It uses a stable 3.3 prior with the weight of 50 votes without changing the stored or displayed RYM average. Choose **Rating (raw)** when the unadjusted average is the intended order.
 

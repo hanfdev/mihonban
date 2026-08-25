@@ -1663,7 +1663,8 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
               <div key={s.id} className="sim-card" onClick={() => onOpen(s.id)}>
                 <img loading="lazy" decoding="async"
                      src={artUrl(s.id, 300)} alt="" />
-                <div className="n" lang={contentLanguage(s.title)}>{s.title}</div>
+                <div className="n" lang={contentLanguage(s.title)}
+                     title={s.title}>{s.title}</div>
                 <Rating value={s.rating} votes={s.votes}
                         votesLabel={s.votes ? t('rym.votes', s.votes) : ''}
                         locale={lang} />

@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import re
 import subprocess
 import sys
 import unicodedata
@@ -277,13 +278,14 @@ def _first(tags: dict, *keys) -> str:
     return ""
 
 
-def _tag_values(tags: dict, *keys) -> list[str]:
-    """Return one tag's distinct values without guessing delimiters.
+_FEATURE_SEPARATOR = re.compile(r"\s+(?:feat(?:uring)?|ft)\.?\s+", re.I)
+_LIST_SEPARATOR = re.compile(
+    r"\s*(?:,|&)\s*|\s+(?:feat(?:uring)?|ft)\.?\s+", re.I)
+_COMPOUND_SORT = re.compile(r"(?:&|\bfeat(?:uring)?\.?\b|\bft\.?\b)", re.I)
 
-    Mutagen exposes a real multi-artist credit as multiple values. Commas and
-    semicolons are also valid inside artist names, so a single value is never
-    split heuristically.
-    """
+
+def _tag_values(tags: dict, *keys) -> list[str]:
+    """Return one tag's distinct values while preserving provider ordering."""
     for key in keys:
         value = tags.get(key)
         if not value:
@@ -300,6 +302,45 @@ def _tag_values(tags: dict, *keys) -> list[str]:
         if out:
             return out
     return []
+
+
+def _split_artist_text(value: str, identity_count: int = 0,
+                       allow_explicit: bool = True) -> list[str]:
+    """Split only explicit or identity-backed artist collaboration text."""
+    text = unicodedata.normalize("NFC", str(value or "").strip())
+    if not text:
+        return []
+    explicit = allow_explicit and _FEATURE_SEPARATOR.search(text)
+    if not explicit and identity_count <= 1:
+        return [text]
+    parts = [part.strip() for part in _LIST_SEPARATOR.split(text) if part.strip()]
+    if len(parts) > 1 and (identity_count <= 1 or len(parts) == identity_count):
+        return parts
+    return [text]
+
+
+def _artist_values(tags: dict, structured_key: str, display_key: str,
+                   identity_key: str, allow_explicit: bool = True) -> list[str]:
+    """Prefer structured credits; use IDs to validate fallback delimiter splits."""
+    structured = _tag_values(tags, structured_key)
+    if len(structured) > 1:
+        return structured
+    display = _tag_values(tags, display_key)
+    if len(display) > 1:
+        return display
+    candidate = structured or display
+    if not candidate:
+        return []
+    identity_count = len(_tag_values(tags, identity_key))
+    return _split_artist_text(candidate[0], identity_count, allow_explicit)
+
+
+def _artist_sort(value: str, name: str) -> str:
+    """Discard a stale combined sort value assigned to one structured credit."""
+    text = str(value or "").strip()
+    if text and _COMPOUND_SORT.search(text) and not _COMPOUND_SORT.search(name):
+        return ""
+    return text
 
 
 def _tag_year(tags: dict) -> str:
@@ -371,10 +412,24 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
         title = (_first(t, "title") or f.stem).strip() or f.stem
         tno = _first(t, "tracknumber").split("/")[0]
         dno = _first(t, "discnumber").split("/")[0]
-        album_names = _tag_values(t, "albumartist") or _tag_values(t, "artist")
+        album_names = _artist_values(
+            t, "albumartists", "albumartist", "musicbrainz_albumartistid",
+            allow_explicit=False,
+        ) or _artist_values(
+            t, "artists", "artist", "musicbrainz_artistid",
+            allow_explicit=False,
+        )
         album_sorts = (_tag_values(t, "albumartistsort")
                        or _tag_values(t, "artistsort"))
-        track_names = _tag_values(t, "artist") or album_names
+        album_display = _first(t, "albumartist").strip().casefold()
+        track_display = _first(t, "artist").strip().casefold()
+        tagged_track_names = (_tag_values(t, "artists")
+                              or _tag_values(t, "artist"))
+        track_names = (album_names if len(tagged_track_names) <= 1
+                       and album_display and album_display == track_display
+                       else _artist_values(
+                           t, "artists", "artist", "musicbrainz_artistid",
+                       ) or album_names)
         track_sorts = _tag_values(t, "artistsort") or album_sorts
         if not genres:
             g = t.get("genre")
@@ -452,7 +507,9 @@ def payload_for_album(cfg: Config, album_dir: Path) -> dict | None:
     def artist_credits(names: list[str], sorts: list[str]) -> list[dict]:
         credits: list[dict] = []
         for index, name in enumerate(names):
-            artist_sort = sorts[index] if len(sorts) == len(names) else ""
+            artist_sort = _artist_sort(
+                sorts[index] if len(sorts) == len(names) else "", name,
+            )
             if not artist_sort:
                 try:
                     artist_sort = resolve_sort_name(name, cache=cache)
