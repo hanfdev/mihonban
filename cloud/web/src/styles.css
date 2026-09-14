@@ -1819,7 +1819,8 @@ body.reordering * { -webkit-touch-callout: none !important; }
 .artist-info { flex: 1; min-width: 240px; }
 .artist-name-row {
   display: flex;
-  align-items: center;
+  /* Anchor the action to the title's lower edge for optical alignment. */
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: 8px 12px;
   margin-bottom: 8px;
@@ -2854,7 +2855,7 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   .bio-read:hover { border-color: var(--gold-dim); background: var(--bg2); }
 }
 @media (max-width: 720px) {
-  .artist-name-row { justify-content: center; }
+  .artist-name-row { align-items: center; justify-content: center; }
   .artist-name-edit { min-height: 44px; }
   .artist-sort-row { justify-content: center; }
   .artist-hero .bio-short { margin-inline: auto; }
