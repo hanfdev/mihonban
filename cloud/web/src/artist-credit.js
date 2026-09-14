@@ -20,6 +20,35 @@ export function creditsOf(value) {
 export const effectiveArtistSort = (artist) =>
   String(artist?.sort || '').trim() || String(artist?.name || '').trim()
 
+export const artistIdentityKey = (name) =>
+  String(name || '').trim().normalize('NFC').toLocaleLowerCase()
+
+export function artistCasingChanges(previous, next) {
+  const names = new Map((previous || []).map((artist) =>
+    [artistIdentityKey(artist.name), artist.name.trim().normalize('NFC')]))
+  return (next || []).flatMap((artist) => {
+    const to = artist.name.trim().normalize('NFC')
+    const from = names.get(artistIdentityKey(to))
+    return from && from !== to ? [{ from, to }] : []
+  })
+}
+
+export function renameArtistCredits(value, renames) {
+  if (!renames?.length) return value
+  const byName = new Map(renames.map((change) =>
+    [artistIdentityKey(change.from), change.to]))
+  let changed = false
+  const artists = creditsOf(value).map((artist) => {
+    const name = byName.get(artistIdentityKey(artist.name))
+    if (!name || name === artist.name) return artist
+    changed = true
+    return { ...artist, name, sort: explicitArtistSort(name, artist.sort) }
+  })
+  if (!changed) return value
+  return { ...value, artists, artist: artistCreditText({ artists }),
+    artistSort: artists[0]?.sort || '' }
+}
+
 const featureSeparator = /\s+(?:feat(?:uring)?|ft)\.?\s+/i
 const listSeparator = /\s*(?:,|&)\s*|\s+(?:feat(?:uring)?|ft)\.?\s+/i
 const compoundSort = /(?:&|\bfeat(?:uring)?\.?\b|\bft\.?\b)/i
@@ -34,7 +63,8 @@ export function splitArtistCreditText(value, identityCount = 0) {
 }
 
 export const hasArtist = (album, name) =>
-  creditsOf(album).some((artist) => artist.name === name)
+  creditsOf(album).some((artist) =>
+    artistIdentityKey(artist.name) === artistIdentityKey(name))
 
 export function artistCreditText(value) {
   const names = creditsOf(value).map((artist) => artist.name)

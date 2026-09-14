@@ -2289,7 +2289,7 @@ test("legacy artist credits participate in case-insensitive identity matching", 
   }
 });
 
-test("artist identity ignores casing while preserving its stored display name", async () => {
+test("imports preserve artist casing while manual edits can correct it", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
   db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
@@ -2324,7 +2324,9 @@ test("artist identity ignores casing while preserving its stored display name", 
     assert.equal(edited.status, 200, (await edited.json()).error);
     detail = await (await companionRequest(
       env, `/api/album/${secondBody.id}`)).json();
-    assert.deepEqual(detail.artists, [{ name: "advantage Lucy", sort: "" }]);
+    assert.deepEqual(detail.artists, [{ name: "ADVANTAGE LUCY", sort: "" }]);
+    assert.deepEqual(db.prepare("SELECT DISTINCT artist FROM albums").all(),
+      [{ artist: "ADVANTAGE LUCY" }]);
 
     const saved = await companionRequest(env, "/api/artists", {
       method: "PUT",
@@ -2334,7 +2336,7 @@ test("artist identity ignores casing while preserving its stored display name", 
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM artists").get().n, 1);
     assert.equal(db.prepare(
       "SELECT id FROM notes WHERE kind = 'artistbio'").get().id,
-    "advantage Lucy");
+    "ADVANTAGE LUCY");
     const biography = await (await companionRequest(
       env, "/api/artist-bio/ADVANTAGE%20LUCY")).json();
     assert.equal(biography.bio, "Canonical biography");

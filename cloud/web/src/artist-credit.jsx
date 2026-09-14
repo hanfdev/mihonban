@@ -1,6 +1,6 @@
 import React, { useId } from 'react'
 import { I } from './ui.jsx'
-import { creditsOf } from './artist-credit.js'
+import { artistCasingChanges, creditsOf } from './artist-credit.js'
 import { contentLanguage } from './content-language.js'
 
 export * from './artist-credit.js'
@@ -33,9 +33,10 @@ export function ArtistCredit({ value, artists, artist, artistSort, onOpen,
 }
 
 export function ArtistEditor({ value, onChange, disabled = false,
-                               suggestions = [], t }) {
+                               suggestions = [], previous = [], t }) {
   const listId = useId().replaceAll(':', '')
   const rows = value?.length ? value : [{ name: '', sort: '' }]
+  const casingChanged = artistCasingChanges(previous, rows).length > 0
   const options = new Map((suggestions || []).map((item) => [item.name, item]))
   const update = (index, patch) => onChange(rows.map((row, rowIndex) =>
     rowIndex === index ? { ...row, ...patch } : row))
@@ -59,6 +60,8 @@ export function ArtistEditor({ value, onChange, disabled = false,
           <span className="artist-editor-order">{index + 1}</span>
           <input className="tin" value={row.name} disabled={disabled}
                  list={`${listId}-names`}
+                 aria-label={t('albumPage.artistName')}
+                 aria-describedby={casingChanged ? `${listId}-casing` : undefined}
                  placeholder={t('albumPage.artistNamePh')}
                  onChange={(event) => {
                    const name = event.target.value
@@ -68,6 +71,7 @@ export function ArtistEditor({ value, onChange, disabled = false,
                        : (!row.sort || row.sort === row.name ? '' : row.sort) })
                  }} />
           <input className="tin" value={row.sort || ''} disabled={disabled}
+                 aria-label={t('albumPage.artistSort')}
                  placeholder={t('albumPage.artistSortPh')}
                  onChange={(event) => update(index, { sort: event.target.value })} />
           <div className="artist-editor-actions">
@@ -93,6 +97,11 @@ export function ArtistEditor({ value, onChange, disabled = false,
       <datalist id={`${listId}-names`}>
         {(suggestions || []).map((item) => <option key={item.name} value={item.name} />)}
       </datalist>
+      {casingChanged && (
+        <div id={`${listId}-casing`} className="artist-editor-hint" role="status">
+          {t('albumPage.artistCasingHint')}
+        </div>
+      )}
       <button type="button" className="artist-editor-add" disabled={disabled}
               onClick={() => onChange([...rows, { name: '', sort: '' }])}>
         <I.plus size={14} /> {t('albumPage.addArtist')}

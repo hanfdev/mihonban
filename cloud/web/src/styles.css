@@ -1212,6 +1212,12 @@ select option { background-color: var(--bg2); color: var(--ink); }
 .artist-editor-field { align-items: start; }
 .artist-editor-field > label { padding-top: 12px; }
 .artist-editor { display: grid; gap: 7px; min-width: 0; }
+.artist-editor-hint {
+  margin-left: 31px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .artist-editor-head,
 .artist-editor-row {
   display: grid;

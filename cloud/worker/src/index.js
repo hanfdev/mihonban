@@ -245,6 +245,20 @@ async function canonicalizeArtistCredits(db, artists) {
       if (!canonicalByKey.has(key)) canonicalByKey.set(key, row.name);
     }
   }
+  // SQLite NOCASE only folds ASCII. Resolve otherwise-unmatched Unicode names
+  // with the same identity key used by credit validation and manual edits.
+  const unresolved = new Set(names.map(artistIdentityKey)
+    .filter((key) => !canonicalByKey.has(key) && /[^\x00-\x7f]/.test(key)));
+  if (unresolved.size) {
+    const { results } = await db.prepare(
+      "SELECT name FROM artists WHERE name GLOB '*[^ -~]*' ORDER BY name").all();
+    for (const row of results) {
+      const key = artistIdentityKey(row.name);
+      if (unresolved.has(key) && !canonicalByKey.has(key)) {
+        canonicalByKey.set(key, row.name);
+      }
+    }
+  }
   return artists.map((artist) => {
     const canonical = exactNames.has(artist.name)
       ? artist.name : canonicalByKey.get(artistIdentityKey(artist.name));
@@ -319,6 +333,90 @@ async function applyArtistSortOverrides(db, artists) {
       ? explicitArtistSort(artist.name, overrides.get(artist.name))
       : explicitArtistSort(artist.name, artist.sort),
   }));
+}
+
+async function planArtistCreditEdit(db, incoming, previous, { sortOverrides = false } = {}) {
+  const previousByKey = new Map(previous.map((artist) =>
+    [artistIdentityKey(artist.name), artist]));
+  // Only changing an existing credit's spelling expresses a rename. Adding an
+  // existing artist still adopts that artist's saved spelling, just like imports.
+  const editedFrom = incoming.map((artist) => {
+    const before = previousByKey.get(artistIdentityKey(artist.name));
+    return before && before.name !== artist.name ? before.name : null;
+  });
+  let resolved = await canonicalizeArtistCredits(db, incoming.map((artist, index) => ({
+    ...artist,
+    name: editedFrom[index] || artist.name,
+    sort: explicitArtistSort(editedFrom[index] || artist.name, artist.sort),
+  })));
+  if (sortOverrides) resolved = await applyArtistSortOverrides(db, resolved);
+  const renames = [];
+  const artists = resolved.map((artist, index) => {
+    const name = incoming[index].name;
+    if (!editedFrom[index] || artist.name === name) return artist;
+    renames.push({ from: artist.name, to: name });
+    return { ...artist, name,
+      sort: explicitArtistSort(name, explicitArtistSort(artist.name, artist.sort)) };
+  });
+  if (!renames.length) return { artists, renames };
+  // Legacy catalogs can contain two profiles that differ only in case. Never
+  // silently merge their biographies, avatars, or credit rows during an edit.
+  const conflict = await db.prepare(`
+    SELECT 1 FROM json_each(?) change
+    WHERE EXISTS (
+      SELECT 1 FROM artists ar
+      WHERE ar.name = json_extract(change.value, '$.to') COLLATE NOCASE
+        AND ar.name != json_extract(change.value, '$.from')
+    ) OR EXISTS (
+      SELECT 1 FROM notes n
+      WHERE n.kind IN ('artist', 'artistbio', 'artistsort')
+        AND n.id = json_extract(change.value, '$.to')
+        AND n.id != json_extract(change.value, '$.from')
+    ) LIMIT 1`).bind(JSON.stringify(renames)).first();
+  return { artists, renames, conflict: !!conflict };
+}
+
+function artistCaseRenameStatements(db, renames) {
+  if (!renames.length) return [];
+  const json = JSON.stringify(renames);
+  const cte = `WITH renames AS (
+    SELECT json_extract(value, '$.from') AS old_name,
+           json_extract(value, '$.to') AS new_name FROM json_each(?)
+  )`;
+  const nextName = (column) =>
+    `(SELECT new_name FROM renames WHERE old_name = ${column})`;
+  // Keep all references in the caller's transaction. A JSON mapping also keeps
+  // the batch bounded when all 24 credits are corrected in one save.
+  return [
+    db.prepare(`${cte} UPDATE artists SET name = ${nextName("name")}
+      WHERE name IN (SELECT old_name FROM renames)`).bind(json),
+    db.prepare(`${cte} DELETE FROM notes
+      WHERE kind = 'artistsort' AND id IN (SELECT old_name FROM renames)
+        AND (text = id OR text = ${nextName("id")})`).bind(json),
+    db.prepare(`${cte} UPDATE notes SET id = ${nextName("id")}
+      WHERE kind IN ('artist', 'artistbio', 'artistsort')
+        AND id IN (SELECT old_name FROM renames)`).bind(json),
+    ...["album_artists", "track_artists", "track_artist_imports"].map((table) =>
+      db.prepare(`${cte} UPDATE ${table}
+        SET artist_sort = CASE
+              WHEN artist_sort = artist OR artist_sort = ${nextName("artist")}
+              THEN '' ELSE artist_sort END,
+            artist = ${nextName("artist")}
+        WHERE artist IN (SELECT old_name FROM renames)`).bind(json)),
+    db.prepare(`${cte} UPDATE albums SET
+      artist = COALESCE((
+        SELECT GROUP_CONCAT(artist, CASE WHEN (
+          SELECT COUNT(*) FROM album_artists WHERE album_id = albums.id
+        ) = 2 THEN ' × ' ELSE ', ' END)
+        FROM (SELECT artist FROM album_artists
+          WHERE album_id = albums.id ORDER BY position)
+      ), artist),
+      artist_sort = COALESCE((SELECT artist_sort FROM album_artists
+        WHERE album_id = albums.id ORDER BY position LIMIT 1), artist_sort),
+      updated_at = ?
+      WHERE id IN (SELECT album_id FROM artist_album_links
+        WHERE artist IN (SELECT new_name FROM renames))`).bind(json, Date.now()),
+  ];
 }
 
 function groupAlbumArtists(rows) {
@@ -890,8 +988,8 @@ async function ensureMigrations(env) {
       BEGIN
         SELECT RAISE(ABORT, 'case-equivalent track path already exists');
       END`).run();
-    // Preserve the first stored display spelling while rejecting any later
-    // case-only identity. Exact INSERT OR IGNORE operations remain valid.
+    // Imports reuse one case-insensitive identity. Manual casing corrections
+    // update that row; exact INSERT OR IGNORE operations remain valid.
     await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS artists_name_case_guard
       BEFORE INSERT ON artists
       WHEN NOT EXISTS (SELECT 1 FROM artists WHERE name = NEW.name)
@@ -2958,6 +3056,7 @@ app.patch("/api/album/:id", async (c) => {
   const sets = [], vals = [];
   const put = (column, value) => { sets.push(`${column} = ?`); vals.push(value); };
   let nextArtists = null;
+  let artistRenames = [];
   if ("artists" in b) {
     nextArtists = albumArtistsInput(b.artists);
   } else if ("artist" in b) {
@@ -2981,7 +3080,14 @@ app.patch("/api/album/:id", async (c) => {
     return c.json({ error: "artists 格式无效、重复或过长" }, 400);
   }
   if (nextArtists) {
-    nextArtists = await canonicalizeArtistCredits(c.env.DB, nextArtists);
+    const edit = await planArtistCreditEdit(c.env.DB, nextArtists,
+      currentArtists.length ? currentArtists
+        : [{ name: current.artist, sort: current.artist_sort }]);
+    if (edit.conflict) {
+      return c.json({ error: "Artist name conflicts with existing artist data" }, 409);
+    }
+    nextArtists = edit.artists;
+    artistRenames = edit.renames;
     put("artist", artistCredit(nextArtists));
     put("artist_sort", explicitArtistSort(
       nextArtists[0].name, nextArtists[0].sort));
@@ -3064,7 +3170,7 @@ app.patch("/api/album/:id", async (c) => {
   if (!sets.length && !("note" in b)) {
     return c.json({ error: "没有可更新字段" }, 400);
   }
-  const statements = [];
+  const statements = artistCaseRenameStatements(c.env.DB, artistRenames);
   if (sets.length) {
     sets.push("updated_at = ?"); vals.push(Date.now(), id);
     statements.push(c.env.DB.prepare(
@@ -3094,8 +3200,9 @@ app.patch("/api/album/:id", async (c) => {
     await invalidateR2(c.env, `art:${id}:`); // Clear R2 mirrors after a cover change.
   }
   if (nextArtists) {
-    const kept = new Set(nextArtists.map((artist) => artist.name));
-    for (const removed of currentArtists.filter((artist) => !kept.has(artist.name))) {
+    const kept = new Set(nextArtists.map((artist) => artistIdentityKey(artist.name)));
+    for (const removed of currentArtists.filter((artist) =>
+      !kept.has(artistIdentityKey(artist.name)))) {
       const left = await c.env.DB.prepare(
         "SELECT 1 FROM artist_album_links WHERE artist = ? LIMIT 1")
         .bind(removed.name).first();
@@ -3109,7 +3216,7 @@ app.patch("/api/album/:id", async (c) => {
       ]);
     }
   }
-  return c.json({ ok: true });
+  return c.json({ ok: true, ...(artistRenames.length ? { artistRenames } : {}) });
 });
 
 app.delete("/api/album/:id", async (c) => {
@@ -3491,16 +3598,23 @@ app.patch("/api/album/:id/tracks/:tid", async (c) => {
       .bind(title, trackId, albumId));
   }
   let nextCredits = null;
+  let artistRenames = [];
   if ("artists" in b) {
     nextCredits = trackArtistsInput(b.artists);
     if (nextCredits === INVALID_INPUT) {
       return c.json({ error: "artists 格式无效、重复或过长" }, 400);
     }
-    nextCredits = await canonicalizeArtistCredits(c.env.DB, nextCredits);
-    nextCredits = await applyArtistSortOverrides(c.env.DB, nextCredits);
     const inherited = inheritedCredits.length ? inheritedCredits
       : [{ name: album.artist,
         sort: explicitArtistSort(album.artist, album.artist_sort) }];
+    const edit = await planArtistCreditEdit(c.env.DB, nextCredits,
+      previousCredits.length ? previousCredits : inherited, { sortOverrides: true });
+    if (edit.conflict) {
+      return c.json({ error: "Artist name conflicts with existing artist data" }, 409);
+    }
+    nextCredits = edit.artists;
+    artistRenames = edit.renames;
+    statements.push(...artistCaseRenameStatements(c.env.DB, artistRenames));
     if (sameArtistCredit(nextCredits, inherited)) nextCredits = [];
     statements.push(c.env.DB.prepare(
       "DELETE FROM track_artists WHERE track_id = ?").bind(trackId));
@@ -3510,8 +3624,12 @@ app.patch("/api/album/:id/tracks/:tid", async (c) => {
   statements.push(c.env.DB.prepare(
     "UPDATE albums SET updated_at = ? WHERE id = ?").bind(Date.now(), albumId));
   await c.env.DB.batch(statements);
-  if ("artists" in b) await cleanupOrphanArtists(c.env, previousCredits);
-  return c.json({ ok: true });
+  if ("artists" in b) {
+    const renamed = new Set(artistRenames.map((change) => change.from));
+    await cleanupOrphanArtists(c.env,
+      previousCredits.filter((artist) => !renamed.has(artist.name)));
+  }
+  return c.json({ ok: true, ...(artistRenames.length ? { artistRenames } : {}) });
 });
 
 app.delete("/api/album/:id/tracks/:tid", async (c) => {

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { artistCreditText, artistSearchText, creditsFromTags, creditsOf,
-         effectiveArtistSort, hasArtist, sameArtistNames,
+import { artistCasingChanges, artistCreditText, artistSearchText, creditsFromTags, creditsOf,
+         effectiveArtistSort, hasArtist, renameArtistCredits, sameArtistNames,
          splitArtistCreditText } from '../src/artist-credit.js'
 
 test('track credits fall back to the legacy singular artist shape', () => {
@@ -10,6 +10,49 @@ test('track credits fall back to the legacy singular artist shape', () => {
     { name: '流線形', sort: 'Ryusenkei' },
   ])
   assert.equal(hasArtist({ artist: '流線形' }, '流線形'), true)
+})
+
+test('only casing edits to existing credits need the shared-name notice', () => {
+  const previous = [{ name: 'roly poly rag bear' }, { name: 'Guest' }]
+  assert.deepEqual(artistCasingChanges(previous, [
+    { name: 'Guest' }, { name: ' Roly Poly Rag Bear ' },
+  ]), [{ from: 'roly poly rag bear', to: 'Roly Poly Rag Bear' }])
+  assert.deepEqual(artistCasingChanges(previous, [
+    { name: 'Guest' }, { name: 'Another Artist' },
+  ]), [])
+  assert.deepEqual(artistCasingChanges([], [{ name: 'Roly Poly Rag Bear' }]), [])
+  assert.deepEqual(artistCasingChanges([{ name: 'Björk' }], [{ name: 'BJÖRK' }]),
+    [{ from: 'Björk', to: 'BJÖRK' }])
+})
+
+test('old artist links still match after capitalization changes', () => {
+  assert.equal(hasArtist({ artists: [{ name: 'Roly Poly Rag Bear' }] },
+    'roly poly rag bear'), true)
+  assert.equal(hasArtist({ artists: [{ name: 'BJÖRK' }] }, 'Björk'), true)
+  assert.equal(hasArtist({ artists: [{ name: 'Roly Poly Rag Bear' }] },
+    'Roly Poly'), false)
+})
+
+test('renaming queued credits preserves playback identity, order and metadata', () => {
+  const track = { id: 'track-1', albumId: 'album-1', albumTitle: 'First',
+    title: 'Song', duration: 200, path: 'Music/Library/roly poly rag bear/01.flac',
+    artists: [{ name: 'roly poly rag bear', sort: 'Rag Bear, Roly Poly' },
+      { name: 'Guest', sort: '' }],
+    artist: 'roly poly rag bear × Guest', artistSort: 'Rag Bear, Roly Poly' }
+  const renames = [{ from: 'roly poly rag bear', to: 'Roly Poly Rag Bear' }]
+  const updated = renameArtistCredits(track, renames)
+  assert.deepEqual(updated, { ...track,
+    artists: [{ name: 'Roly Poly Rag Bear', sort: 'Rag Bear, Roly Poly' },
+      { name: 'Guest', sort: '' }],
+    artist: 'Roly Poly Rag Bear × Guest' })
+  assert.equal(track.artists[0].name, 'roly poly rag bear')
+  const unrelated = { id: 'track-2', artist: 'Guest' }
+  assert.equal(renameArtistCredits(unrelated, renames), unrelated)
+  assert.deepEqual(renameArtistCredits({ artist: 'roly poly rag bear',
+    artistSort: 'roly poly rag bear' }, renames), {
+    artist: 'Roly Poly Rag Bear', artistSort: '',
+    artists: [{ name: 'Roly Poly Rag Bear', sort: '' }],
+  })
 })
 
 test('blank or redundant sort names stay empty while comparisons use the original name', () => {

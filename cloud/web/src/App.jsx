@@ -22,6 +22,7 @@ import { sessionAfterLogout } from './session.js'
 import { visibleAlbumCount } from './visibility.js'
 import { isCurrentHash, scrollToTop } from './navigation.js'
 import { addFavoriteToFront } from './favorites.js'
+import { renameArtistCredits } from './artist-credit.js'
 
 const parseHash = () => {
   const h = location.hash.replace(/^#\/?/, '')
@@ -197,6 +198,16 @@ export default function App() {
       else noteLoadError('artists', e.message)
     }
   }, [role, clearLoadError, noteLoadError])
+
+  const refreshCatalog = useCallback((result) => {
+    if (result?.artistRenames?.length) {
+      setQueue((previous) => ({
+        ...previous,
+        list: previous.list.map((track) => renameArtistCredits(track, result.artistRenames)),
+      }))
+    }
+    return Promise.all([refreshLibrary(), refreshArtists()])
+  }, [refreshLibrary, refreshArtists])
 
   useEffect(() => { favsRef.current = favs }, [favs])
   const applyFavs = useCallback((next) => {
@@ -427,7 +438,12 @@ export default function App() {
     // not issue a second asynchronous play request while that promise is in
     // flight: Android can treat the later call as detached from the gesture.
     if (!alreadyStarted && !cancelWarmStart) playAudio(a, sourceId)
-    if ('mediaSession' in navigator) {
+    return () => cancelWarmStart?.()
+  }, [current?.id, playAudio])
+
+  // Metadata edits update the system player without reloading its audio source.
+  useEffect(() => {
+    if (current && 'mediaSession' in navigator) {
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: current.title,
@@ -437,8 +453,7 @@ export default function App() {
         })
       } catch { /* partial Media Session implementations */ }
     }
-    return () => cancelWarmStart?.()
-  }, [current?.id, playAudio])
+  }, [current?.id, current?.title, current?.artist, current?.albumTitle, current?.albumId])
 
   useEffect(() => {
     const a = audioRef.current
@@ -881,14 +896,14 @@ export default function App() {
                      isAdmin={isAdmin}
                      favAlbums={favAlbums} favTracks={favTracks}
                      toggleFav={toggleFav}
-                     onChanged={refreshLibrary}
+                     onChanged={refreshCatalog}
                      artistOptions={artists}
                      onOpen={openAlbum} onOpenArtist={openArtist}
                      onOpenGenre={openGenre} />
         )}
         {route.view === 'import' && isAdmin && (
           <ImportPage albums={albums} artistOptions={artists}
-                      onDone={refreshLibrary} onOpen={openAlbum} />
+                      onDone={refreshCatalog} onOpen={openAlbum} />
         )}
         {route.view === 'admin' && isAdmin && (
           <AdminPage onOpen={openAlbum} />

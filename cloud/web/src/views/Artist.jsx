@@ -6,7 +6,7 @@ import { useI18n } from '../i18n.jsx'
 import { AlbumCard, isPriorityCover } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
 import { preferredArtistSort } from '../aliases.js'
-import { hasArtist } from '../artist-credit.jsx'
+import { artistIdentityKey, hasArtist } from '../artist-credit.jsx'
 import { contentLanguage } from '../content-language.js'
 
 function BioDialog({ name, initialNote, onClose, onSaved }) {
@@ -331,7 +331,7 @@ function ArtistDiscogsDialog({ name, onClose, onImported }) {
   )
 }
 
-export default function ArtistPage({ name, albums, artists, avatarVer,
+export default function ArtistPage({ name: requestedName, albums, artists, avatarVer,
                                      onAvatarChanged, onArtistChanged, isAdmin,
                                      onOpen, onOpenArtist, onOpenGenre, onPlay,
                                      onPlayTracks, favTracks, toggleFav, currentId,
@@ -350,7 +350,11 @@ export default function ArtistPage({ name, albums, artists, avatarVer,
   const toast = useToast()
 
   const meta = useMemo(() =>
-    (artists || []).find((a) => a.name === name) || {}, [artists, name])
+    (artists || []).find((a) => a.name === requestedName)
+      || (artists || []).find((a) =>
+        artistIdentityKey(a.name) === artistIdentityKey(requestedName))
+      || {}, [artists, requestedName])
+  const name = meta.name || requestedName
   const [featured, setFeatured] = useState(null)
 
   useEffect(() => {

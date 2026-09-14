@@ -73,6 +73,7 @@ export default {
     artistNamePh: 'Nom de l’artiste',
     artistSort: 'Nom romanisé / anglais',
     artistSortPh: 'ex. Ishikawa, Hidemi',
+    artistCasingHint: 'Les changements de casse s’appliquent au nom de cet artiste dans tous ses albums et titres.',
     addArtist: 'Ajouter un artiste',
     removeArtist: 'Retirer l’artiste',
     moveArtistUp: 'Monter l’artiste',

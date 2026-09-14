@@ -150,6 +150,7 @@ export default {
     hideFail: (m) => `操作失败：${m}`,
     artist: '艺人', artists: '艺人', artistName: '艺人名称', artistNamePh: '输入艺人名称',
     artistSort: '英文 / 罗马音名称', artistSortPh: '例：Ishikawa, Hidemi',
+    artistCasingHint: '仅修改大小写会同步更新此艺人在所有专辑和曲目中的名称。',
     addArtist: '添加艺人', removeArtist: '移除艺人',
     moveArtistUp: '上移艺人', moveArtistDown: '下移艺人',
     title: '盤名',

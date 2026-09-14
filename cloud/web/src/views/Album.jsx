@@ -174,7 +174,7 @@ function EditDialog({ album, artistOptions, onClose, onSaved }) {
         coverPath = `${album.folder}/cover-${Date.now().toString(36)}.${ext}`
         await api.uploadCover(coverPath, cover)
       }
-      await api.patchAlbum(album.id, {
+      const result = await api.patchAlbum(album.id, {
         artists, title,
         year,
         genres,
@@ -184,7 +184,7 @@ function EditDialog({ album, artistOptions, onClose, onSaved }) {
         ...(coverPath ? { coverPath } : {}),
       })
       toast(t('albumPage.saved'), 'ok')
-      onSaved()
+      onSaved(result)
     } catch (e) { toast(t('albumPage.saveFail', e.message), 'err') }
     finally { saveInFlight.current = false; setBusy(false) }
   }
@@ -207,6 +207,8 @@ function EditDialog({ album, artistOptions, onClose, onSaved }) {
         <div className="fields">
           <div className="frow artist-editor-field"><label>{t('albumPage.artists')}</label>
             <ArtistEditor value={credits} onChange={setCredits}
+                          previous={creditsOf(album)}
+                          disabled={busy}
                           suggestions={artistOptions} t={t} /></div>
           <div className="frow"><label>{t('albumPage.title')}</label>
             <input className="tin" value={f.title} onChange={set('title')} /></div>
@@ -1064,8 +1066,9 @@ function TrackArtistsDialog({ album, track, artistOptions, onClose, onSaved }) {
     }
     setBusy(true)
     try {
-      await api.patchTrack(album.id, track.id, { artists: custom ? artists : [] })
-      onSaved()
+      const result = await api.patchTrack(album.id, track.id,
+        { artists: custom ? artists : [] })
+      onSaved(result)
     } catch (error) { toast(error.message, 'err') }
     finally { setBusy(false) }
   }
@@ -1087,6 +1090,8 @@ function TrackArtistsDialog({ album, track, artistOptions, onClose, onSaved }) {
       </label>
       {custom && (
         <ArtistEditor value={credits} onChange={setCredits}
+                      previous={track.hasCustomArtists ? creditsOf(track) : creditsOf(album)}
+                      disabled={busy}
                       suggestions={artistOptions} t={t} />
       )}
       <div className="actions">
@@ -1118,11 +1123,11 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
   const toast = useToast()
   const discGroups = groupTracksByDisc(rows)
 
-  const refresh = async () => {
+  const refresh = async (result) => {
     const d = await api.album(album.id)
     setRows(d.tracks)
     setOrderDirty(false)
-    onChanged()
+    onChanged(result)
   }
 
   const move = (from, to) => {
@@ -1345,9 +1350,9 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
         <TrackArtistsDialog album={album} track={creditTrack}
                             artistOptions={artistOptions}
                             onClose={() => setCreditTrack(null)}
-                            onSaved={async () => {
+                            onSaved={async (result) => {
                               setCreditTrack(null)
-                              await refresh()
+                              await refresh(result)
                             }} />
       )}
     </Dialog>
@@ -1677,11 +1682,11 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
       {dlg === 'edit' &&
         <EditDialog album={al} artistOptions={artistOptions}
                     onClose={() => setDlg('')}
-                    onSaved={() => { setDlg(''); load(); onChanged() }} />}
+                    onSaved={(result) => { setDlg(''); load(); onChanged(result) }} />}
       {dlg === 'tracks' &&
         <TracksDialog album={al} artistOptions={artistOptions}
                       onClose={() => { setDlg(''); load() }}
-                      onChanged={() => { load(); onChanged() }} />}
+                      onChanged={(result) => { load(); onChanged(result) }} />}
       {dlg === 'rym' &&
         <RymDialog album={al} onClose={() => setDlg('')}
                    onSaved={() => { setDlg(''); load(); onChanged() }} />}

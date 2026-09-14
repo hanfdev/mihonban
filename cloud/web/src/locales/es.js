@@ -73,6 +73,7 @@ export default {
     artistNamePh: 'Nombre del artista',
     artistSort: 'Nombre romanizado / inglés',
     artistSortPh: 'p. ej., Ishikawa, Hidemi',
+    artistCasingHint: 'Los cambios de mayúsculas y minúsculas se aplican al nombre de este artista en todos sus álbumes y canciones.',
     addArtist: 'Añadir artista',
     removeArtist: 'Quitar artista',
     moveArtistUp: 'Mover artista arriba',

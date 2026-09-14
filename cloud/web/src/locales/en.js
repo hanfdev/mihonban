@@ -298,6 +298,7 @@ export const en = {
     artistNamePh: 'Artist name',
     artistSort: 'Romanized / English name',
     artistSortPh: 'e.g. Ishikawa, Hidemi',
+    artistCasingHint: 'Capitalization changes apply to this artist across all albums and tracks.',
     addArtist: 'Add artist',
     removeArtist: 'Remove artist',
     moveArtistUp: 'Move artist up',

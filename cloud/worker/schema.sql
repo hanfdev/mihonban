@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS favorites (
   PRIMARY KEY (kind, item_id)
 );
 
--- Supplemental artist information (avatar, etc.; name is the stable display name)
+-- Supplemental artist information (avatar, etc.; name is the shared display name)
 CREATE TABLE IF NOT EXISTS artists (
   name        TEXT PRIMARY KEY,
   avatar_path TEXT NOT NULL DEFAULT '', -- storage-relative path

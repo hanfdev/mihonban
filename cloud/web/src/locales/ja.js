@@ -73,6 +73,7 @@ export default {
     artistNamePh: 'アーティスト名を入力',
     artistSort: '英字 / ローマ字名',
     artistSortPh: '例：Ishikawa, Hidemi',
+    artistCasingHint: '大文字・小文字の変更は、このアーティストのすべてのアルバムと曲に反映されます。',
     addArtist: 'アーティストを追加',
     removeArtist: 'アーティストを削除',
     moveArtistUp: '上へ移動',
