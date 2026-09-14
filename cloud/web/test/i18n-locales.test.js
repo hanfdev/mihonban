@@ -59,6 +59,20 @@ test('new accessibility and error strings are explicitly localized', () => {
   }
 })
 
+test('artist rename controls and errors do not fall back to English', () => {
+  const keys = ['editName', 'nameDialog', 'nameLabel', 'nameHint', 'nameAliasHint',
+    'nameRequired', 'nameInvalid', 'nameConflict', 'nameTooLong', 'nameChanged',
+    'nameSaved', 'sortSaved']
+  for (const [id, locale] of Object.entries(locales)) {
+    for (const key of keys) {
+      assert.equal(typeof locale.artistPage[key], 'string')
+      assert.notEqual(locale.artistPage[key].trim(), '')
+      assert.notEqual(locale.artistPage[key], en.artistPage[key],
+        `${id} falls back to English artistPage.${key}`)
+    }
+  }
+})
+
 test('Discogs image results report imported and skipped counts in every locale', () => {
   for (const [id, locale] of Object.entries({ en, ...locales })) {
     const message = locale.discogsAlbum.images(2, false, 3)

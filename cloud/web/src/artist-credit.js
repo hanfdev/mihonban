@@ -23,6 +23,27 @@ export const effectiveArtistSort = (artist) =>
 export const artistIdentityKey = (name) =>
   String(name || '').trim().normalize('NFC').toLocaleLowerCase()
 
+export function findArtistByName(artists, name) {
+  const key = artistIdentityKey(name)
+  return (artists || []).find((artist) => artist.name === name)
+    || (artists || []).find((artist) => artistIdentityKey(artist.name) === key)
+    || (artists || []).find((artist) =>
+      (artist.aliases || []).some((alias) => artistIdentityKey(alias) === key))
+}
+
+export function renameArtistRecord(artist, renames) {
+  const change = (renames || []).find(({ from }) =>
+    artistIdentityKey(from) === artistIdentityKey(artist.name))
+  if (!change || change.to === artist.name) return artist
+  const names = [...(artist.aliases || []), artist.name,
+    ...renames.filter(({ to }) => to === change.to).map(({ from }) => from)]
+  const aliases = [...new Map(names
+    .filter((name) => artistIdentityKey(name) !== artistIdentityKey(change.to))
+    .map((name) => [artistIdentityKey(name), name])).values()]
+  return { ...artist, name: change.to, aliases,
+    sort: explicitArtistSort(change.to, explicitArtistSort(artist.name, artist.sort)) }
+}
+
 export function artistCasingChanges(previous, next) {
   const names = new Map((previous || []).map((artist) =>
     [artistIdentityKey(artist.name), artist.name.trim().normalize('NFC')]))

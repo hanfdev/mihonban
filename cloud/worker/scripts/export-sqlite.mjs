@@ -14,7 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const workerDir = resolve(here, "..");
 const repoDir = resolve(workerDir, "..", "..");
 const durableTables = [
-  "albums", "album_artists", "tracks", "track_artists", "artists",
+  "albums", "album_artists", "tracks", "track_artists", "artists", "artist_aliases",
   "album_images", "favorites", "notes",
   "source_posts",
 ];

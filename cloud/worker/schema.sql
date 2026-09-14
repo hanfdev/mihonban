@@ -108,6 +108,14 @@ CREATE TABLE IF NOT EXISTS artists (
   storage_id  TEXT                      -- named storage backend when an avatar exists
 );
 
+-- Current and previous names reserve one normalized identity after a rename.
+CREATE TABLE IF NOT EXISTS artist_aliases (
+  alias_key TEXT PRIMARY KEY,           -- NFC, lowercase identity key
+  alias     TEXT NOT NULL,
+  artist    TEXT NOT NULL REFERENCES artists(name) ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_artist_aliases_artist ON artist_aliases(artist);
+
 -- Ordered many-to-many relationship between albums and artists. albums.artist
 -- and artist_sort remain display fields for older clients; all artist-scoped
 -- business logic treats this table as authoritative.

@@ -29,6 +29,7 @@ async function req(method, url, body, raw = false) {
   if (!r.ok) {
     const error = new Error(data.error || `${r.status}`);
     error.status = r.status;
+    error.code = data.code;
     throw error;
   }
   return data;
@@ -123,6 +124,8 @@ export const api = {
       opts.hidden ? '?hidden=1' : ''}`),
   putArtist: (name, fields = {}) =>
     req("PUT", "/api/artists", { name, ...fields }),
+  renameArtist: (name, nextName) =>
+    req("PATCH", `/api/artists/${encodeURIComponent(name)}`, { name: nextName }),
   // Album gallery images
   addAlbumImage: (albumId, path) =>
     req("POST", `/api/album/${albumId}/images`, { path }),

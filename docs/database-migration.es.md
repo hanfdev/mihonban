@@ -10,7 +10,7 @@ Si permaneces local, haz una copia de seguridad `<DATA_DIR>/mihonban.sqlite`, la
 
 | Datos | Ruta de migración |
 |---|---|
-| Álbumes, temas, artistas, galerías, favoritos, notas, publicaciones fuente | D1 Exportación/importación SQL |
+| Álbumes, temas, artistas y sus nombres anteriores, galerías, favoritos, notas, publicaciones fuente | D1 Exportación/importación SQL |
 | OneDrive/R2/configuración de módulos y configuraciones de almacenamiento nombrado | Configuración de administrador JSON |
 | Contraseña de app/administrador, secreto de sesión, clave de acompañante, secreto de firma de proxy | Configurar como secretos Worker destino |
 | KV límites de tasa y cachés de corta duración | No migrar |

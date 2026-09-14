@@ -70,7 +70,9 @@ The artist-page Discogs action searches for matching candidates automatically. I
 
 Use the album editor for the default ordered artist credit of the whole release. In Manage tracks, the artist button beside a song can add a track-specific collaboration; leave that option off to inherit the album artists. Track credits are used by search, the player and system media metadata. A guest artist's page lists only the songs they joined under Featured tracks and does not claim the whole album. The companion and browser uploader prefer structured `ARTISTS` / `ALBUMARTISTS` values. With display text only, explicit `feat.` / `ft.` / `featuring` joins can be split; commas and `&` are split only when multiple MusicBrainz artist IDs confirm the same number of credits. Ambiguous formal names such as `Neil & Iraiza` remain intact.
 
-To correct capitalization, edit an existing artist name in the album or track editor. Saving applies that spelling to the same artist across the library, including hidden albums and guest credits, while preserving the profile, favorites, and storage paths. Imports and rescans reuse the corrected name. Adding a different artist changes only that credit. An inline notice appears before saving a capitalization change.
+Administrators can choose **Edit name** beside the name on an artist page to correct capitalization or change the full name. Saving updates that artist throughout the library, including hidden albums and guest credits, while preserving the profile, favorites, and storage paths. Previous names remain usable in artist links, the Artists search, and later imports. A name used by another artist cannot be saved; artists are never automatically merged.
+
+Capitalization can also be corrected in album and track credits. The editor explains the library-wide effect before saving. Selecting a different artist changes only the edited credit.
 
 Multi-disc imports keep each disc identity and display a separate heading. Track numbers restart at 1 for each disc; Manage tracks permits reordering only inside the same disc and never turns a reorder into a disc reassignment.
 

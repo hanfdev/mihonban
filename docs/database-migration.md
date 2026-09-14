@@ -10,7 +10,7 @@ If you remain local, back up `<DATA_DIR>/mihonban.sqlite`, the Admin settings JS
 
 | Data | Migration path |
 |---|---|
-| Albums, tracks, artists, galleries, favorites, notes, source posts | D1 SQL export/import |
+| Albums, tracks, artists and their previous names, galleries, favorites, notes, source posts | D1 SQL export/import |
 | OneDrive/R2/module settings and named storage configs | Admin settings JSON |
 | App/admin password, session secret, companion key, proxy signing secret | Configure as target Worker secrets |
 | KV rate limits and short-lived caches | Do not migrate |

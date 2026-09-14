@@ -54,7 +54,7 @@ test("configured migration guard runs once across fresh binding objects", async 
     assert.equal(sqlLog.some((sql) => /CREATE TABLE|CREATE INDEX|CREATE TRIGGER|ALTER TABLE|sqlite_master/i.test(sql)), false);
     assert.equal(db.prepare(
       "SELECT v FROM settings WHERE k = 'schema_version'").get().v,
-    "2026-08-05-1");
+    "2026-09-14-1");
 
     // A different in-memory key simulates a cold isolate. The D1 marker must
     // still avoid rerunning the compatibility migration.

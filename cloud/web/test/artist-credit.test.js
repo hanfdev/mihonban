@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { artistCasingChanges, artistCreditText, artistSearchText, creditsFromTags, creditsOf,
-         effectiveArtistSort, hasArtist, renameArtistCredits, sameArtistNames,
+         effectiveArtistSort, findArtistByName, hasArtist, renameArtistCredits,
+         renameArtistRecord, sameArtistNames,
          splitArtistCreditText } from '../src/artist-credit.js'
 
 test('track credits fall back to the legacy singular artist shape', () => {
@@ -23,6 +24,31 @@ test('only casing edits to existing credits need the shared-name notice', () => 
   assert.deepEqual(artistCasingChanges([], [{ name: 'Roly Poly Rag Bear' }]), [])
   assert.deepEqual(artistCasingChanges([{ name: 'Björk' }], [{ name: 'BJÖRK' }]),
     [{ from: 'Björk', to: 'BJÖRK' }])
+})
+
+test('old artist links resolve to the current profile after a full rename', () => {
+  const current = { name: 'New Artist', aliases: ['Björk', 'Original Name'],
+    note: 'Biography', hasAvatar: true }
+  assert.equal(findArtistByName([current], 'BJÖRK'), current)
+  assert.equal(findArtistByName([current], 'original name'), current)
+  assert.equal(findArtistByName([current], 'New Artist'), current)
+  assert.equal(findArtistByName([current], 'Unrelated'), undefined)
+})
+
+test('optimistic artist renames preserve metadata and searchable name history', () => {
+  const original = { name: 'Current', aliases: ['First'], sort: 'Current',
+    note: 'Biography', hasAvatar: true, featuredTrackCount: 3 }
+  const renamed = renameArtistRecord(original, [
+    { from: 'Current', to: 'New' }, { from: 'First', to: 'New' },
+  ])
+  assert.equal(renamed.name, 'New')
+  assert.equal(renamed.sort, '')
+  assert.equal(renamed.note, original.note)
+  assert.equal(renamed.hasAvatar, true)
+  assert.equal(renamed.featuredTrackCount, 3)
+  assert.equal(findArtistByName([renamed], 'First'), renamed)
+  assert.equal(findArtistByName([renamed], 'Current'), renamed)
+  assert.equal(renameArtistRecord(original, [{ from: 'Other', to: 'New' }]), original)
 })
 
 test('old artist links still match after capitalization changes', () => {

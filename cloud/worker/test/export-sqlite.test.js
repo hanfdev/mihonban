@@ -40,6 +40,8 @@ test("SQLite export restores library data without leaking config by default", ()
       ('track-1', 'Track Guest', 'Guest, Track', 1)`).run();
     source.prepare(`INSERT INTO artists (name, avatar_path, storage_id)
       VALUES ('Artist', 'Music/Library/Artist/avatar.jpg', 'catalog-store')`).run();
+    source.prepare(`INSERT INTO artist_aliases (alias_key, alias, artist)
+      VALUES ('old artist', 'Old Artist', 'Artist')`).run();
     source.prepare(`INSERT INTO storages (id, name, kind, config, created_at)
       VALUES ('secret-store', 'Store', 'webdav', '{"password":"do-not-export"}', 1)`).run();
     source.prepare("INSERT INTO settings (k, v) VALUES ('discogs_token', 'do-not-export')").run();
@@ -65,6 +67,8 @@ test("SQLite export restores library data without leaking config by default", ()
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM album_artists").get().n, 2);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM track_artists").get().n, 2);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM artists").get().n, 1);
+      assert.deepEqual(target.prepare("SELECT * FROM artist_aliases").all(),
+        [{ alias_key: "old artist", alias: "Old Artist", artist: "Artist" }]);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM storages").get().n, 0);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM settings").get().n, 0);
     } finally {

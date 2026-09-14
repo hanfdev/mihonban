@@ -30,6 +30,8 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
     new Map((artists || []).map((a) => [a.name, a.note])), [artists])
   const sortBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, effectiveArtistSort(a)])), [artists])
+  const aliasesBy = useMemo(() =>
+    new Map((artists || []).map((a) => [a.name, (a.aliases || []).join(' ')])), [artists])
   // Add 'c' for a custom avatar so the browser cannot reuse a cached no-avatar 302 cover as the avatar.
   const avatarFlagBy = useMemo(() =>
     new Map((artists || []).map((a) => [a.name, !!a.hasAvatar])), [artists])
@@ -92,10 +94,10 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
   const searchHay = useMemo(() => {
     const m = new Map()
     for (const e of data) {
-      m.set(e.name, zhNorm(`${e.name} ${e.sort} ${romajiOf(e.name)}`))
+      m.set(e.name, zhNorm(`${e.name} ${e.sort} ${romajiOf(e.name)} ${aliasesBy.get(e.name) || ''}`))
     }
     return m
-  }, [data])
+  }, [data, aliasesBy])
 
   const shown = useMemo(() => {
     const needle = zhNorm(q.trim())

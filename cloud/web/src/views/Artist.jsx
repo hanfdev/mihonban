@@ -6,8 +6,79 @@ import { useI18n } from '../i18n.jsx'
 import { AlbumCard, isPriorityCover } from './Library.jsx'
 import { TrackRow } from './Tracks.jsx'
 import { preferredArtistSort } from '../aliases.js'
-import { artistIdentityKey, hasArtist } from '../artist-credit.jsx'
+import { artistIdentityKey, findArtistByName, hasArtist } from '../artist-credit.jsx'
 import { contentLanguage } from '../content-language.js'
+
+function ArtistNameDialog({ name, artists, onClose, onSaved }) {
+  const { t } = useI18n()
+  const [value, setValue] = useState(name)
+  const [busy, setBusy] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const toast = useToast()
+  const nextName = value.trim().normalize('NFC')
+  const existing = findArtistByName(artists, nextName)
+  const changed = nextName !== name
+  const invalid = !nextName || nextName.length > 500 || /[\u0000-\u001f\u007f]/.test(nextName)
+  const conflict = existing && artistIdentityKey(existing.name) !== artistIdentityKey(name)
+  const error = !nextName ? t('artistPage.nameRequired')
+    : invalid ? t('artistPage.nameInvalid')
+      : conflict ? t('artistPage.nameConflict') : saveError
+
+  const save = async (event) => {
+    event.preventDefault()
+    if (busy || !changed || invalid || conflict) return
+    setBusy(true)
+    setSaveError('')
+    try {
+      const result = await api.renameArtist(name, nextName)
+      toast(t('artistPage.nameSaved'), 'ok')
+      onSaved(result)
+    } catch (e) {
+      const message = {
+        invalid_artist_name: 'nameInvalid',
+        artist_name_conflict: 'nameConflict',
+        artist_credit_too_long: 'nameTooLong',
+        artist_changed: 'nameChanged',
+        artist_not_found: 'nameChanged',
+      }[e.code]
+      setSaveError(message ? t(`artistPage.${message}`) : e.message)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog title={t('artistPage.nameDialog')} onClose={() => { if (!busy) onClose() }}>
+      <form onSubmit={save}>
+        <div className="bio-form artist-name-form">
+          <label htmlFor="artist-name-input">{t('artistPage.nameLabel')}</label>
+          <input id="artist-name-input" className="tin" value={value} autoFocus
+                 maxLength={500} autoComplete="off" disabled={busy}
+                 aria-invalid={!!error}
+                 aria-describedby={`artist-name-help${error ? ' artist-name-error' : ''}`}
+                 onChange={(e) => { setValue(e.target.value); setSaveError('') }}
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault()
+                 }} />
+          <div id="artist-name-help" className="artist-name-hint">
+            <p>{t('artistPage.nameHint')}</p>
+            <p>{t('artistPage.nameAliasHint')}</p>
+          </div>
+          {error && <div id="artist-name-error" className="artist-name-error" role="alert">
+            {error}
+          </div>}
+        </div>
+        <div className="actions">
+          <button className="btn" type="button" disabled={busy} onClick={onClose}>
+            {t('common.cancel')}
+          </button>
+          <button className="btn primary" type="submit"
+                  disabled={busy || !changed || invalid || !!conflict}>
+            {busy ? <I.spin /> : t('common.save')}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
 
 function BioDialog({ name, initialNote, onClose, onSaved }) {
   const { t } = useI18n()
@@ -339,6 +410,7 @@ export default function ArtistPage({ name: requestedName, albums, artists, avata
                                      currentAlbumId, playingId, onTogglePlayback }) {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
+  const [nameDlg, setNameDlg] = useState(false)
   const [bioDlg, setBioDlg] = useState(false)
   const [sortDlg, setSortDlg] = useState(false)
   const [reader, setReader] = useState(false)
@@ -349,11 +421,8 @@ export default function ArtistPage({ name: requestedName, albums, artists, avata
   const fileRef = useRef(null)
   const toast = useToast()
 
-  const meta = useMemo(() =>
-    (artists || []).find((a) => a.name === requestedName)
-      || (artists || []).find((a) =>
-        artistIdentityKey(a.name) === artistIdentityKey(requestedName))
-      || {}, [artists, requestedName])
+  const meta = useMemo(() => findArtistByName(artists, requestedName) || {},
+    [artists, requestedName])
   const name = meta.name || requestedName
   const [featured, setFeatured] = useState(null)
 
@@ -481,7 +550,15 @@ export default function ArtistPage({ name: requestedName, albums, artists, avata
         </div>
         <div className="artist-info">
           <div className="hero-artist">{t('artistPage.kicker')}</div>
-          <h1 className="hero-title" lang={contentLanguage(name)}>{name}</h1>
+          <div className="artist-name-row">
+            <h1 className="hero-title" lang={contentLanguage(name)}>{name}</h1>
+            {isAdmin && meta.name && (
+              <button className="artist-name-edit" title={t('artistPage.nameDialog')}
+                      aria-label={t('artistPage.nameDialog')} onClick={() => setNameDlg(true)}>
+                <I.edit size={13} /> {t('artistPage.editName')}
+              </button>
+            )}
+          </div>
           {(artistSort || isAdmin) && (
             <div className="artist-sort-row">
               {artistSort && <span className="artist-sort-name">{artistSort}</span>}
@@ -592,6 +669,14 @@ export default function ArtistPage({ name: requestedName, albums, artists, avata
         </section>
       )}
 
+      {nameDlg && (
+        <ArtistNameDialog name={name} artists={artists}
+                          onClose={() => setNameDlg(false)}
+                          onSaved={(result) => {
+                            setNameDlg(false)
+                            onArtistChanged?.(result)
+                          }} />
+      )}
       {bioDlg && (
         <BioDialog name={name} initialNote={note}
                    onClose={() => setBioDlg(false)}

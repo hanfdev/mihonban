@@ -22,7 +22,7 @@ import { sessionAfterLogout } from './session.js'
 import { visibleAlbumCount } from './visibility.js'
 import { isCurrentHash, scrollToTop } from './navigation.js'
 import { addFavoriteToFront } from './favorites.js'
-import { renameArtistCredits } from './artist-credit.js'
+import { artistIdentityKey, renameArtistCredits, renameArtistRecord } from './artist-credit.js'
 
 const parseHash = () => {
   const h = location.hash.replace(/^#\/?/, '')
@@ -201,10 +201,21 @@ export default function App() {
 
   const refreshCatalog = useCallback((result) => {
     if (result?.artistRenames?.length) {
+      const renames = result.artistRenames
+      tracksRequestRef.current++
+      setAlbums((previous) => previous?.map((album) => renameArtistCredits(album, renames)) ?? previous)
+      setTracksAll((previous) => previous?.map((track) => renameArtistCredits(track, renames)) ?? previous)
+      setArtists((previous) => previous.map((artist) => renameArtistRecord(artist, renames)))
       setQueue((previous) => ({
         ...previous,
-        list: previous.list.map((track) => renameArtistCredits(track, result.artistRenames)),
+        list: previous.list.map((track) => renameArtistCredits(track, renames)),
       }))
+      const currentRoute = parseHash()
+      const renamed = renames.find(({ from }) =>
+        artistIdentityKey(from) === artistIdentityKey(currentRoute.arg))
+      if (currentRoute.view === 'artist' && renamed) {
+        navigate(`/artist/${encodeURIComponent(renamed.to)}`, { replace: true })
+      }
     }
     return Promise.all([refreshLibrary(), refreshArtists()])
   }, [refreshLibrary, refreshArtists])
@@ -881,10 +892,11 @@ export default function App() {
                         setAvatarVer((v) => v + 1)
                         refreshArtists()
                       }}
-                      onArtistChanged={() => Promise.all([
-                        refreshArtists(),
-                        refreshLibrary({ invalidateTracks: false }),
-                      ])} />
+                      onArtistChanged={(result) => result?.artistRenames?.length
+                        ? refreshCatalog(result) : Promise.all([
+                          refreshArtists(),
+                          refreshLibrary({ invalidateTracks: false }),
+                        ])} />
         )}
         {route.view === 'album' && (
           <AlbumPage key={route.arg} id={route.arg} onPlay={playFrom}

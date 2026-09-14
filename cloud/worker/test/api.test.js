@@ -2343,7 +2343,7 @@ test("imports preserve artist casing while manual edits can correct it", async (
 
     assert.throws(() => db.prepare(
       "INSERT INTO artists (name, avatar_path) VALUES ('Advantage Lucy', '')")
-      .run(), /case-equivalent artist name already exists/);
+      .run(), { code: "SQLITE_CONSTRAINT_TRIGGER" });
   } finally {
     db.close();
   }

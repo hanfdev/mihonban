@@ -10,7 +10,7 @@ Si vous restez local, sauvegardez `<DATA_DIR>/mihonban.sqlite`, les paramètres 
 
 | Données | Chemin de migration |
 |---|---|
-| Albums, morceaux, artistes, galeries, favoris, notes, publications sources | D1 Export/import SQL |
+| Albums, morceaux, artistes et leurs anciens noms, galeries, favoris, notes, publications sources | D1 Export/import SQL |
 | OneDrive/R2/paramètres de modules et configurations de stockage nommé | Paramètres administrateur JSON |
 | Mot de passe application/admin, secret de session, clé compagnon, secret de signature proxy | Configurer comme cible Worker secrets |
 | KV limites de débit et caches de courte durée | Ne pas migrer |
