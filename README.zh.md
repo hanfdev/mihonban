@@ -10,6 +10,7 @@ Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。�
 - 原生支持有顺序的专辑多艺人署名与单曲合作艺人覆盖，每位艺人均可独立搜索、进入主页并从播放器跳转
 - 听众与管理员双口令，以及可选的免密只读访客模式
 - 播放队列、移动端上一首/播放暂停/下一首完整控制、手势安全首播、随机/循环、Range 拖动和系统媒体控制
+- `desktop/` 目录下的原生 Windows 桌面客户端（egui + Rodio），以免安装便携 exe 发布于 [Releases 页面](https://github.com/hanfdev/mihonban/releases)
 - 命名 OneDrive、WebDAV、Google Drive，以及仅 Node 支持的本地文件夹后端
 - 可自动回源修复的 R2 图片镜像，用于封面、内页和艺人头像
 - Discogs 官方 API 导入；手动保存 RYM HTML 后解析，不自动请求 RYM
@@ -98,6 +99,7 @@ mihonban doctor
 | `cloud/web/` | React 播放器与管理界面 |
 | `cloud/worker/` | Hono API、D1 schema、Node 兼容运行时 |
 | `cloud/proxy-worker/` | 可选签名音源中转 |
+| `desktop/` | 原生 Windows 桌面客户端（Rust、egui） |
 | `pipeline/` | Python `mihonban` CLI 与整理/同步管线 |
 | `config/` | 不含密钥的配置模板 |
 | `tools/` | 本地开发、部署、守望和迁移工具 |

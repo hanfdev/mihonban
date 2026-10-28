@@ -57,6 +57,10 @@ cd ../proxy-worker
 npm ci
 npm test
 npx wrangler deploy --dry-run
+
+cd ../../desktop
+cargo test --locked
+cargo build --release --locked
 ```
 
 Do not add ignored build output, local D1 state, databases, or backups merely to make CI pass.

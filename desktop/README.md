@@ -3,6 +3,7 @@
 This directory contains the native Rust desktop client. It draws its own interface with `egui`, talks directly to the Mihonban HTTP API with `reqwest`, and decodes supported audio formats locally with `rodio`/Symphonia. It does not embed a browser or load the Mihonban web application.
 
 The client supports multiple Mihonban service profiles. The service address is editable in Settings, passwords are stored in Windows Credential Manager, and the optional client update manifest is independent from Mihonban server releases.
+Tagged builds are published on [GitHub Releases](https://github.com/hanfdev/mihonban/releases) (`desktop-v*` tags), each attaching the portable exe and a SHA-256 checksum file.
 
 The client starts maximized on its monitor, respecting Windows display scaling and the taskbar work area. The startup viewport deliberately omits a fixed inner size: eframe 0.29 applies that size after creating the maximized window, which can shrink the window without clearing its maximized state.
 
@@ -15,6 +16,8 @@ Artist avatars use a centered, aspect-preserving crop in both the artist grid an
 On Windows, minimizing hides the client to its native system tray icon by default; playback and queue progression continue in the background. Double-click the original Mihonban icon or choose Show main window from its right-click menu to restore the window. The menu also provides Play/Pause and Exit. Settings → Window behavior saves independent options for minimizing and closing to the tray. Closing still exits by default, and the tray's Exit command always quits. If tray initialization fails, normal window behavior remains available.
 
 The default cache is under the Windows local application-data directory. Changing the folder or limit only affects the native client and never changes the Mihonban server or its storage.
+
+Settings are stored per Windows user in `%APPDATA%\Mihonban\Mihonban\config\config.json`; every copy of the client on the same account reads the same service profiles, window preferences, and cache settings, no matter which folder the executable sits in. Passwords stay separate in Windows Credential Manager, keyed by profile name. A machine without a saved profile starts from the built-in local placeholder address.
 
 Settings use the same warm black surfaces, serif headings, fine borders, and orange actions as the library. The centered page switches between a service form with a window/update sidebar and stacked full-width cards on smaller windows. Native input fields, keyboard-accessible switches, wrapped action rows, and a local-storage usage meter support all seven interface languages. Save the cache settings to apply changes to its switch, directory, or size limit; window-to-tray options continue to save automatically.
 
@@ -49,7 +52,7 @@ The update source points to a small JSON document hosted by the client release c
 ```json
 {
   "latest": "0.2.0",
-  "download_url": "https://example.invalid/Mihonban-0.2.0.exe",
+  "download_url": "https://github.com/hanfdev/mihonban/releases/download/desktop-v0.2.0/mihonban_desktop.exe",
   "sha256": "...",
   "notes": "..."
 }

@@ -10,6 +10,7 @@ Mihonban es una biblioteca musical privada y autoalojada con un reproductor web 
 - Créditos ordenados de varios artistas por álbum y colaboraciones por pista, con búsqueda, página y enlace del reproductor para cada artista
 - Contraseñas separadas para oyentes y administradores, además de un modo invitado opcional, sin contraseña y de solo lectura
 - Cola persistente, controles móviles completos de pista anterior／reproducir-pausar／pista siguiente, inicio dentro del gesto del usuario, reproducción aleatoria/repetición, búsqueda Range y controles Media Session
+- Cliente de escritorio nativo para Windows en `desktop/` (egui + Rodio), distribuido como exe portátil en la [página de Releases](https://github.com/hanfdev/mihonban/releases)
 - Almacenamientos con nombre para OneDrive, WebDAV, Google Drive y carpetas locales exclusivas del runtime Node
 - Espejo de imágenes R2 opcional y autorreparable para portadas, galerías y retratos de artistas
 - Importación mediante la API de Discogs y análisis de HTML de RYM guardado manualmente, sin solicitudes automatizadas a RYM
@@ -98,6 +99,7 @@ El JSON de ajustes de Administración no es una copia del catálogo, y una copia
 | `cloud/web/` | Reproductor React e interfaz de administración |
 | `cloud/worker/` | API Hono, esquema D1 y runtime compatible con Node |
 | `cloud/proxy-worker/` | Relé de audio firmado opcional |
+| `desktop/` | Cliente de escritorio nativo para Windows (Rust, egui) |
 | `pipeline/` | CLI de Python `mihonban` y canal de importación／sincronización |
 | `config/` | Plantillas de configuración seguras |
 | `tools/` | Herramientas de desarrollo local, despliegue, vigilancia y migración |

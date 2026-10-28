@@ -57,6 +57,10 @@ cd ../proxy-worker
 npm ci
 npm test
 npx wrangler deploy --dry-run
+
+cd ../../desktop
+cargo test --locked
+cargo build --release --locked
 ```
 
 CI 통과를 위해 무시된 빌드 출력, 로컬 D1 상태, 데이터베이스, 백업을 추가하지 마세요.

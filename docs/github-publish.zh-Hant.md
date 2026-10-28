@@ -57,6 +57,10 @@ cd ../proxy-worker
 npm ci
 npm test
 npx wrangler deploy --dry-run
+
+cd ../../desktop
+cargo test --locked
+cargo build --release --locked
 ```
 
 不要為了讓 CI 透過而新增被忽略的構建產物、本地 D1、資料庫或備份。

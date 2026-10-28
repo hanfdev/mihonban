@@ -10,6 +10,7 @@ Mihonban은 반응형 웹 플레이어를 제공하는 개인용 셀프 호스�
 - 순서가 유지되는 앨범 다중 아티스트 크레딧과 트랙별 협업 아티스트 재정의, 아티스트별 검색·페이지·플레이어 링크
 - 청취자 및 관리자 비밀번호와 선택적으로 사용할 수 있는 비밀번호 없는 읽기 전용 게스트 모드
 - 영구 재생 대기열, 모바일 이전 곡／재생·일시 정지／다음 곡 전체 제어, 사용자 동작 안에서 시작되는 재생, 셔플／반복, Range 탐색, Media Session 제어
+- `desktop/`의 네이티브 Windows 데스크톱 클라이언트(egui + Rodio), 설치가 필요 없는 포터블 exe로 [Releases 페이지](https://github.com/hanfdev/mihonban/releases)에서 배포
 - OneDrive, WebDAV, Google Drive와 Node 전용 로컬 폴더를 이름 있는 저장소로 관리
 - 표지, 갤러리, 아티스트 이미지를 위한 자동 복구 R2 이미지 미러
 - Discogs API 가져오기와 자동 RYM 요청 없이 수동 저장된 RYM HTML 분석
@@ -98,6 +99,7 @@ mihonban doctor
 | `cloud/web/` | React 플레이어와 관리 UI |
 | `cloud/worker/` | Hono API, D1 스키마, Node 호환 런타임 |
 | `cloud/proxy-worker/` | 선택적 서명 오디오 릴레이 |
+| `desktop/` | 네이티브 Windows 데스크톱 클라이언트(Rust, egui) |
 | `pipeline/` | Python `mihonban` CLI와 가져오기／동기화 파이프라인 |
 | `config/` | 안전한 구성 템플릿 |
 | `tools/` | 로컬 개발, 배포, 감시, 마이그레이션 도우미 |

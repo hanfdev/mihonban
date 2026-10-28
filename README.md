@@ -10,6 +10,7 @@ Mihonban is a private, self-hosted music library with a responsive web player. R
 - Ordered multi-artist album credits plus per-track collaboration overrides, with per-artist pages, search, and player links
 - Listener and administrator passwords, plus an optional passwordless read-only guest mode
 - Persistent playback queue, complete mobile previous/play-pause/next controls, gesture-safe playback, shuffle/repeat, Range seeking, and Media Session controls
+- Native Windows desktop client in `desktop/` (egui + Rodio), shipped as a portable exe on the [Releases page](https://github.com/hanfdev/mihonban/releases)
 - Named OneDrive, WebDAV, Google Drive, and Node-only local-folder storage backends
 - Optional self-healing R2 image mirror for covers, galleries, and artist avatars
 - Discogs API imports and manual RYM HTML parsing without automated RYM requests
@@ -98,6 +99,7 @@ An Admin settings JSON is not a catalog backup, and a database backup is not an 
 | `cloud/web/` | React player and administration UI |
 | `cloud/worker/` | Hono API, D1 schema, Node compatibility runtime |
 | `cloud/proxy-worker/` | Optional signed audio relay |
+| `desktop/` | Native Windows desktop client (Rust, egui) |
 | `pipeline/` | Python `mihonban` CLI and ingest/sync pipeline |
 | `config/` | Safe configuration templates |
 | `tools/` | Local development, deployment, watcher, and migration helpers |
