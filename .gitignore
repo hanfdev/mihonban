@@ -28,6 +28,9 @@ pnpm-debug.log*
 cloud/web/dist/
 cloud/proxy-worker/dist/
 
+# Native Rust desktop build output
+desktop/target*/
+
 # Cloudflare and local runtimes
 .wrangler/
 .dev.vars
