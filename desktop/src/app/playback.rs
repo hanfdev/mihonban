@@ -6,6 +6,11 @@ impl MihonbanApp {
         let Some(track) = self.current_track.clone() else {
             self.full_player = false;
             self.player_transition = None;
+            // The sheet can force-close when the queue empties; never leave
+            // the window stuck in fullscreen without the player visible.
+            if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+            }
             return;
         };
         let Some(offset) = self.full_player_offset(ctx) else {
@@ -51,6 +56,43 @@ impl MihonbanApp {
                 if response.clicked() {
                     self.set_full_player_open(false, ctx);
                 }
+                // Fullscreen sits on the opposite corner so the sheet chrome
+                // stays balanced, mirroring the collapse control exactly.
+                let fullscreen_on =
+                    ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+                let fullscreen_rect = Rect::from_min_size(
+                    Pos2::new(bounds.right() - 62.0, bounds.min.y + 14.0),
+                    Vec2::splat(38.0),
+                );
+                let response = ui
+                    .interact(
+                        fullscreen_rect,
+                        ui.id().with("fullscreen"),
+                        Sense::click(),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .on_hover_text(self.t(if fullscreen_on {
+                        "player.exitFullscreen"
+                    } else {
+                        "player.fullscreen"
+                    }));
+                if response.hovered() {
+                    ui.painter()
+                        .circle_filled(fullscreen_rect.center(), 19.0, BG2);
+                }
+                paint_icon(
+                    ui.painter(),
+                    fullscreen_rect.shrink(9.0),
+                    if fullscreen_on {
+                        Icon::FullscreenExit
+                    } else {
+                        Icon::Fullscreen
+                    },
+                    if response.hovered() { INK } else { DIM },
+                );
+                if response.clicked() || ctx.input(|input| input.key_pressed(egui::Key::F11)) {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen_on));
+                }
                 let album = Rect::from_center_size(
                     Pos2::new(bounds.center().x, bounds.top() + 33.0),
                     Vec2::new((bounds.width() - 112.0).min(720.0), 28.0),
@@ -78,7 +120,7 @@ impl MihonbanApp {
                     .as_shape(cover, 14.0),
                 );
                 self.paint_player_cover(ui, ctx, &track, cover, 14.0);
-                let title = Rect::from_min_size(panel.min, Vec2::new(panel.width(), 42.0));
+                let title = Rect::from_min_size(panel.min, Vec2::new((panel.width() - 40.0).max(80.0), 42.0));
                 if player_link(
                     ui,
                     &track.title,
@@ -106,6 +148,11 @@ impl MihonbanApp {
                 ) {
                     self.open_player_artist(ctx, name);
                 }
+                let heart_rect = Rect::from_center_size(
+                    Pos2::new(panel.right() - 24.0, panel.top() + 21.0),
+                    Vec2::splat(32.0),
+                );
+                self.heart_button(ui, heart_rect, &track.id);
                 self.seek_control(
                     ui,
                     &track,
@@ -177,7 +224,18 @@ impl MihonbanApp {
         ) {
             self.open_player_artist(ctx, name);
         }
-        let controls = Pos2::new(title.right() + 16.0, bounds.center().y - 22.0);
+        let mut controls_left = title.right() + 16.0;
+        if self.role.as_deref() == Some("admin") {
+            // Web parity: the mini bar offers the heart between the track
+            // info and the transport controls.
+            let heart_rect = Rect::from_center_size(
+                Pos2::new(controls_left + 16.0, bounds.center().y),
+                Vec2::splat(32.0),
+            );
+            self.heart_button(ui, heart_rect, &track.id);
+            controls_left += 40.0;
+        }
+        let controls = Pos2::new(controls_left, bounds.center().y - 22.0);
         self.playback_controls(ui, controls, false);
         let volume = Rect::from_min_size(
             Pos2::new(bounds.right() - 130.0, bounds.center().y - 12.0),
@@ -227,8 +285,72 @@ impl MihonbanApp {
         self.open_artist(name.to_owned());
     }
 
+    /// Compact heart toggle used by the mini player and the full player.
+    /// Mirrors the track-row heart: filled accent when favorited, outline
+    /// otherwise; read-only for non-admins browsing an already-favorited track.
+    fn heart_button(&mut self, ui: &mut egui::Ui, rect: Rect, track_id: &str) {
+        let can_edit = self.role.as_deref() == Some("admin") && self.favorites_loaded;
+        let is_favorite = self
+            .favorites
+            .tracks
+            .iter()
+            .any(|favorite| favorite.id == track_id);
+        if !can_edit && !is_favorite {
+            return;
+        }
+        let response = ui.interact(
+            rect,
+            ui.id().with(("player-favorite", track_id)),
+            if can_edit {
+                Sense::click()
+            } else {
+                Sense::hover()
+            },
+        );
+        paint_icon(
+            ui.painter(),
+            rect.shrink(8.0),
+            if is_favorite {
+                Icon::Heart
+            } else {
+                Icon::HeartOutline
+            },
+            if is_favorite {
+                if response.hovered() && can_edit {
+                    ACCENT_HI
+                } else {
+                    ACCENT
+                }
+            } else if response.hovered() {
+                INK
+            } else {
+                FAINT
+            },
+        );
+        let label = self.t(if is_favorite {
+            if can_edit {
+                "common.unfav"
+            } else {
+                "common.faved"
+            }
+        } else {
+            "common.fav"
+        });
+        let hovered = response.hovered();
+        let clicked = response.on_hover_text(label).clicked();
+        if hovered && can_edit {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if clicked && can_edit {
+            self.toggle_favorite("track", track_id);
+        }
+    }
+
     fn playback_controls(&mut self, ui: &mut egui::Ui, origin: Pos2, big: bool) {
         let playing = self.engine.is_playing();
+        // The engine reports the track it is currently downloading and
+        // preparing; the toggle shows a spinner while that load is in flight.
+        let preparing = self.loading_track.is_some();
         let repeat = self.playback_order.repeat;
         let shuffled = self.playback_order.shuffled;
         let buttons = [
@@ -253,7 +375,9 @@ impl MihonbanApp {
                 if big { 64.0 } else { 44.0 },
                 if playing { Icon::Pause } else { Icon::Play },
                 "toggle",
-                self.t(if playing {
+                self.t(if preparing {
+                    "desktop.preparing"
+                } else if playing {
                     "common.pause"
                 } else {
                     "common.play"
@@ -336,24 +460,39 @@ impl MihonbanApp {
             } else {
                 16.0
             };
-            paint_icon(
-                ui.painter(),
-                Rect::from_center_size(rect.center(), Vec2::splat(icon_size)),
-                icon,
-                if main {
-                    if playing {
-                        Color32::from_rgb(255, 246, 236)
-                    } else {
-                        BG0
-                    }
-                } else if active {
-                    ACCENT_HI
-                } else if response.hovered() {
-                    INK
+            let icon_tint = if main {
+                if playing {
+                    Color32::from_rgb(255, 246, 236)
                 } else {
-                    DIM
-                },
-            );
+                    BG0
+                }
+            } else if active {
+                ACCENT_HI
+            } else if response.hovered() {
+                INK
+            } else {
+                DIM
+            };
+            if main && preparing {
+                // A rotating arc on the toggle mirrors how Web players show
+                // buffering right on the play control; the circle underneath
+                // keeps its normal hover and focus treatment.
+                let phase = (ui.ctx().input(|input| input.time) as f32 / 1.1).fract();
+                paint_spinner(
+                    ui.painter(),
+                    Rect::from_center_size(rect.center(), Vec2::splat(icon_size)),
+                    icon_tint,
+                    phase,
+                );
+                ui.ctx().request_repaint_after(Duration::from_millis(16));
+            } else {
+                paint_icon(
+                    ui.painter(),
+                    Rect::from_center_size(rect.center(), Vec2::splat(icon_size)),
+                    icon,
+                    icon_tint,
+                );
+            }
             if active && !main {
                 ui.painter().circle_filled(
                     Pos2::new(rect.center().x, rect.bottom() - 5.0),

@@ -102,6 +102,8 @@
   "player.repeatAll": "Repetir lista",
   "player.repeatOne": "Repetir una",
   "player.collapse": "Contraer (Esc)",
+  "player.fullscreen": "Pantalla completa (F11)",
+  "player.exitFullscreen": "Salir de pantalla completa (Esc)",
   "player.viewAlbum": "Ver álbum",
   "player.shuffle": "Aleatorio",
   "player.noPlayable": "No hay formato reproducible en la cola para este dispositivo",

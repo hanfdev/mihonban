@@ -102,6 +102,8 @@
   "player.repeatAll": "Répéter la liste",
   "player.repeatOne": "Répéter le titre",
   "player.collapse": "Réduire (Esc)",
+  "player.fullscreen": "Plein écran (F11)",
+  "player.exitFullscreen": "Quitter le plein écran (Esc)",
   "player.viewAlbum": "Voir l’album",
   "player.shuffle": "Aléatoire",
   "player.noPlayable": "Aucun format lisible sur cet appareil dans la file",

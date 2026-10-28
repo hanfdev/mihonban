@@ -102,6 +102,8 @@
   "player.repeatAll": "목록 반복",
   "player.repeatOne": "한 곡 반복",
   "player.collapse": "접기 (Esc)",
+  "player.fullscreen": "전체 화면 (F11)",
+  "player.exitFullscreen": "전체 화면 종료 (Esc)",
   "player.viewAlbum": "앨범 보기",
   "player.shuffle": "셔플",
   "player.noPlayable": "이 기기에서 재생 가능한 형식이 큐에 없습니다",

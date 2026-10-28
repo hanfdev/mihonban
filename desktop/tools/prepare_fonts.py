@@ -35,6 +35,8 @@ def main():
         ("inter", "Inter"),
         ("notosanssc", "NotoSansSC"),
         ("notoserifsc", "NotoSerifSC"),
+        ("notosanskr", "NotoSansKR"),
+        ("notoserifkr", "NotoSerifKR"),
     ]:
         download(family, "OFL.txt", ASSETS / f"{prefix}-OFL.txt")
     for weight in ["SemiBold", "Bold"]:
@@ -44,6 +46,8 @@ def main():
     static_font("inter", "Inter[opsz,wght].ttf", "Inter-SemiBold.ttf", {"opsz": 14, "wght": 600})
     static_font("notosanssc", "NotoSansSC[wght].ttf", "NotoSansSC-Regular.ttf", {"wght": 400})
     static_font("notoserifsc", "NotoSerifSC[wght].ttf", "NotoSerifSC-SemiBold.ttf", {"wght": 600})
+    static_font("notosanskr", "NotoSansKR[wght].ttf", "NotoSansKR-Regular.ttf", {"wght": 400})
+    static_font("notoserifkr", "NotoSerifKR[wght].ttf", "NotoSerifKR-SemiBold.ttf", {"wght": 600})
 
 
 if __name__ == "__main__":

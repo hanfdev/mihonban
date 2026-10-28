@@ -14,6 +14,8 @@ fn main() {
         "ShipporiMincho-Bold",
         "NotoSansSC-Regular",
         "NotoSerifSC-SemiBold",
+        "NotoSansKR-Regular",
+        "NotoSerifKR-SemiBold",
     ];
     for name in fonts {
         let source = Path::new("assets").join(format!("{name}.ttf"));

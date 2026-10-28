@@ -58,6 +58,9 @@ const SANS_REGULAR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/Inter-Regu
 const SANS_SEMIBOLD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/Inter-SemiBold.ttf.gz"));
 const CJK_SERIF: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/NotoSerifSC-SemiBold.ttf.gz"));
 const CJK_SANS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/NotoSansSC-Regular.ttf.gz"));
+const KOREAN_SERIF: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/NotoSerifKR-SemiBold.ttf.gz"));
+const KOREAN_SANS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/NotoSansKR-Regular.ttf.gz"));
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LibrarySort {
@@ -471,6 +474,11 @@ impl MihonbanApp {
     }
 
     fn set_full_player_open(&mut self, open: bool, ctx: &egui::Context) {
+        if !open && ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
+            // Collapsing the player always returns to a windowed frame so the
+            // fullscreen state cannot leak into the library pages.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+        }
         if self.full_player == open && self.player_transition.is_none() {
             return;
         }
@@ -1916,7 +1924,13 @@ impl eframe::App for MihonbanApp {
             if self.pending_profile_delete.is_some() {
                 self.pending_profile_delete = None;
             } else if self.full_player {
-                self.set_full_player_open(false, ctx);
+                if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
+                    // First Esc leaves fullscreen and keeps the player open;
+                    // a second Esc collapses it as before.
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+                } else {
+                    self.set_full_player_open(false, ctx);
+                }
             } else if self.reader.is_some() {
                 self.set_reader_open(false, ctx);
             } else if self.selected.is_some() {
@@ -2276,10 +2290,10 @@ fn reader_markdown_area(ui: &mut egui::Ui, text: &str, generation: u64) {
     });
 }
 
-fn configure_style(ctx: &egui::Context, language: &str) {
-    ctx.options_mut(|options| {
-        options.line_scroll_speed = 72.0;
-    });
+/// The bundled typography stack: Japanese Mincho, Latin, Simplified
+/// Chinese, and Korean faces. The Korean faces close every family because
+/// neither Shippori Mincho nor the Noto SC fonts contain Hangul glyphs.
+fn bundled_fonts() -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::empty();
     fonts
         .font_data
@@ -2300,30 +2314,68 @@ fn configure_style(ctx: &egui::Context, language: &str) {
     fonts
         .font_data
         .insert("mihonban-cjk-sans".into(), compressed_font(CJK_SANS));
+    fonts
+        .font_data
+        .insert("mihonban-korean-serif".into(), compressed_font(KOREAN_SERIF));
+    fonts
+        .font_data
+        .insert("mihonban-korean-sans".into(), compressed_font(KOREAN_SANS));
     fonts.families.insert(
         egui::FontFamily::Name("mihonban-serif".into()),
-        vec!["mihonban-serif".into(), "mihonban-cjk-serif".into()],
+        vec![
+            "mihonban-serif".into(),
+            "mihonban-cjk-serif".into(),
+            "mihonban-korean-serif".into(),
+        ],
     );
     fonts.families.insert(
         egui::FontFamily::Name("mihonban-display".into()),
-        vec!["mihonban-serif-bold".into(), "mihonban-cjk-serif".into()],
+        vec![
+            "mihonban-serif-bold".into(),
+            "mihonban-cjk-serif".into(),
+            "mihonban-korean-serif".into(),
+        ],
     );
     fonts.families.insert(
         egui::FontFamily::Name("mihonban-ui".into()),
-        vec!["mihonban-sans".into(), "mihonban-cjk-sans".into()],
+        vec![
+            "mihonban-sans".into(),
+            "mihonban-cjk-sans".into(),
+            "mihonban-korean-sans".into(),
+        ],
     );
     fonts.families.insert(
         egui::FontFamily::Name("mihonban-ui-bold".into()),
-        vec!["mihonban-sans-semibold".into(), "mihonban-cjk-sans".into()],
+        vec![
+            "mihonban-sans-semibold".into(),
+            "mihonban-cjk-sans".into(),
+            "mihonban-korean-sans".into(),
+        ],
     );
     fonts.families.insert(
         egui::FontFamily::Proportional,
-        vec!["mihonban-sans".into(), "mihonban-cjk-sans".into()],
+        vec![
+            "mihonban-sans".into(),
+            "mihonban-cjk-sans".into(),
+            "mihonban-korean-sans".into(),
+        ],
     );
     fonts.families.insert(
         egui::FontFamily::Monospace,
-        vec!["mihonban-sans".into(), "mihonban-cjk-sans".into()],
+        vec![
+            "mihonban-sans".into(),
+            "mihonban-cjk-sans".into(),
+            "mihonban-korean-sans".into(),
+        ],
     );
+    fonts
+}
+
+fn configure_style(ctx: &egui::Context, language: &str) {
+    ctx.options_mut(|options| {
+        options.line_scroll_speed = 72.0;
+    });
+    let mut fonts = bundled_fonts();
     load_windows_font_fallbacks(&mut fonts, language);
     ctx.set_fonts(fonts);
     let mut visuals = egui::Visuals::dark();
@@ -2465,6 +2517,44 @@ mod font_tests {
     }
 
     #[test]
+    fn korean_faces_complete_every_bundled_family() {
+        let fonts = bundled_fonts();
+        let family = |name: &str| fonts.families[&egui::FontFamily::Name(name.into())].clone();
+        assert_eq!(
+            family("mihonban-serif"),
+            ["mihonban-serif", "mihonban-cjk-serif", "mihonban-korean-serif"]
+        );
+        assert_eq!(
+            family("mihonban-display"),
+            [
+                "mihonban-serif-bold",
+                "mihonban-cjk-serif",
+                "mihonban-korean-serif"
+            ]
+        );
+        assert_eq!(
+            family("mihonban-ui"),
+            ["mihonban-sans", "mihonban-cjk-sans", "mihonban-korean-sans"]
+        );
+        assert_eq!(
+            family("mihonban-ui-bold"),
+            [
+                "mihonban-sans-semibold",
+                "mihonban-cjk-sans",
+                "mihonban-korean-sans"
+            ]
+        );
+        assert_eq!(
+            fonts.families[&egui::FontFamily::Proportional],
+            ["mihonban-sans", "mihonban-cjk-sans", "mihonban-korean-sans"]
+        );
+        assert_eq!(
+            fonts.families[&egui::FontFamily::Monospace],
+            ["mihonban-sans", "mihonban-cjk-sans", "mihonban-korean-sans"]
+        );
+    }
+
+    #[test]
     fn bundled_fonts_decompress_to_valid_truetype_data() {
         for compressed in [
             SERIF_REGULAR,
@@ -2473,6 +2563,8 @@ mod font_tests {
             SANS_SEMIBOLD,
             CJK_SERIF,
             CJK_SANS,
+            KOREAN_SERIF,
+            KOREAN_SANS,
         ] {
             let font = compressed_font(compressed);
             assert_eq!(&font.font[..4], &[0, 1, 0, 0]);

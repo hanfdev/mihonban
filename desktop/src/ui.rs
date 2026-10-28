@@ -297,6 +297,8 @@ pub enum Icon {
     RepeatOne,
     VolumeMuted,
     VolumeLow,
+    Fullscreen,
+    FullscreenExit,
 }
 
 fn paint_web_filter_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
@@ -413,6 +415,20 @@ pub fn paint_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color3
         Icon::Close => {
             line(&[(6.0, 6.0), (18.0, 18.0)]);
             line(&[(18.0, 6.0), (6.0, 18.0)]);
+        }
+        Icon::Fullscreen => {
+            // Outward corner brackets: the standard enter-fullscreen glyph.
+            line(&[(4.5, 9.5), (4.5, 4.5), (9.5, 4.5)]);
+            line(&[(14.5, 4.5), (19.5, 4.5), (19.5, 9.5)]);
+            line(&[(19.5, 14.5), (19.5, 19.5), (14.5, 19.5)]);
+            line(&[(9.5, 19.5), (4.5, 19.5), (4.5, 14.5)]);
+        }
+        Icon::FullscreenExit => {
+            // Inward brackets read as "compress back into a window".
+            line(&[(4.5, 9.5), (9.5, 9.5), (9.5, 4.5)]);
+            line(&[(14.5, 4.5), (14.5, 9.5), (19.5, 9.5)]);
+            line(&[(19.5, 14.5), (14.5, 14.5), (14.5, 19.5)]);
+            line(&[(9.5, 19.5), (9.5, 14.5), (4.5, 14.5)]);
         }
         Icon::Next | Icon::Previous => {
             let previous = matches!(icon, Icon::Previous);
@@ -549,6 +565,30 @@ pub fn paint_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color3
                 ));
             }
         }
+    }
+}
+
+/// Rotating arc with a fading tail, shown on the play control while the
+/// engine prepares audio. Phase is a 0..1 fraction of one revolution,
+/// advancing clockwise from twelve o'clock.
+pub fn paint_spinner(painter: &egui::Painter, rect: Rect, color: Color32, phase: f32) {
+    let size = rect.width().min(rect.height());
+    let stroke = (size / 10.0).max(1.8);
+    let radius = size * 0.5 - stroke * 0.65;
+    let head = std::f32::consts::TAU * phase.clamp(0.0, 1.0) - std::f32::consts::FRAC_PI_2;
+    let sweep = std::f32::consts::TAU * 0.68;
+    let segments = 26;
+    for index in 0..segments {
+        let from = head - sweep * index as f32 / segments as f32;
+        let to = head - sweep * (index + 1) as f32 / segments as f32;
+        let alpha = 1.0 - 0.88 * index as f32 / segments as f32;
+        painter.line_segment(
+            [
+                rect.center() + Vec2::angled(from) * radius,
+                rect.center() + Vec2::angled(to) * radius,
+            ],
+            Stroke::new(stroke, color.gamma_multiply(alpha)),
+        );
     }
 }
 

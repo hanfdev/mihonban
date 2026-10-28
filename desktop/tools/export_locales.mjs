@@ -52,6 +52,14 @@ const native = {
   noTracks: ['No tracks yet', '曲がありません', '아직 곡이 없습니다', 'Aucune piste', 'Sin pistas', '暂无歌曲', '尚無歌曲'],
 }
 
+// Player-page keys that exist only in the native client. They are merged
+// into the player section so regenerating catalogs from the Web sources
+// keeps them intact.
+const playerNative = {
+  fullscreen: ['Fullscreen (F11)', '全画面 (F11)', '전체 화면 (F11)', 'Plein écran (F11)', 'Pantalla completa (F11)', '全屏 (F11)', '全螢幕 (F11)'],
+  exitFullscreen: ['Exit fullscreen (Esc)', '全画面を終了 (Esc)', '전체 화면 종료 (Esc)', 'Quitter le plein écran (Esc)', 'Salir de pantalla completa (Esc)', '退出全屏 (Esc)', '結束全螢幕 (Esc)'],
+}
+
 const catalogs = {}
 for (const [index, id] of ids.entries()) {
   const dictionary = id === 'en' ? en : (await import(`../../cloud/web/src/locales/${id}.js`)).default
@@ -66,6 +74,7 @@ for (const [index, id] of ids.entries()) {
     catalog[path] = (dictionary[section]?.[name] || en[section][name])('{0}', '{1}')
   }
   for (const [key, values] of Object.entries(native)) catalog[`desktop.${key}`] = values[index]
+  for (const [key, values] of Object.entries(playerNative)) catalog[`player.${key}`] = values[index]
   catalogs[id] = catalog
 }
 process.stdout.write(JSON.stringify(catalogs))

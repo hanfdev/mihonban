@@ -103,7 +103,13 @@ impl AudioPlayer {
         }
     }
 
-    pub fn play_file(&mut self, title: &str, path: PathBuf, remove_on_stop: bool) -> Result<()> {
+    pub fn play_file(
+        &mut self,
+        title: &str,
+        path: PathBuf,
+        remove_on_stop: bool,
+        start_playing: bool,
+    ) -> Result<()> {
         self.stop();
         let stream = self
             .stream
@@ -112,8 +118,15 @@ impl AudioPlayer {
         let source = decode_file(&path)?;
         self.seek_limit = decoder_seek_limit(&source);
         let sink = Arc::new(Sink::connect_new(stream.mixer()));
-        sink.append(source);
-        sink.play();
+        if start_playing {
+            sink.append(source);
+            sink.play();
+        } else {
+            // Pause before appending so a load that the user paused cannot
+            // leak its first frames; toggling later starts it cleanly.
+            sink.pause();
+            sink.append(source);
+        }
         self.sink = Some(sink.clone());
         if let Ok(mut shared_sink) = self.playback_handle.lock() {
             *shared_sink = Some(sink);
@@ -151,6 +164,11 @@ impl AudioPlayer {
         }
         self.remove_source_on_stop = false;
     }
+    /// Whether an audio sink is currently attached to this player.
+    pub fn has_sink(&self) -> bool {
+        self.sink.is_some()
+    }
+
     pub fn is_playing(&self) -> bool {
         self.sink
             .as_ref()

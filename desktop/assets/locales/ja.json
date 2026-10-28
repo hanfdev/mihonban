@@ -102,6 +102,8 @@
   "player.repeatAll": "リストをリピート",
   "player.repeatOne": "1曲リピート",
   "player.collapse": "閉じる (Esc)",
+  "player.fullscreen": "全画面 (F11)",
+  "player.exitFullscreen": "全画面を終了 (Esc)",
   "player.viewAlbum": "音盤を見る",
   "player.shuffle": "シャッフル",
   "player.noPlayable": "この端末で再生できる形式がキューにありません",

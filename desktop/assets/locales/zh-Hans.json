@@ -102,6 +102,8 @@
   "player.repeatAll": "列表循环",
   "player.repeatOne": "单曲循环",
   "player.collapse": "收起 (Esc)",
+  "player.fullscreen": "全屏 (F11)",
+  "player.exitFullscreen": "退出全屏 (Esc)",
   "player.viewAlbum": "查看音盤",
   "player.shuffle": "随机播放",
   "player.noPlayable": "队列里没有此设备能播放的格式",

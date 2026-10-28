@@ -102,6 +102,8 @@
   "player.repeatAll": "Repeat all",
   "player.repeatOne": "Repeat one",
   "player.collapse": "Collapse (Esc)",
+  "player.fullscreen": "Fullscreen (F11)",
+  "player.exitFullscreen": "Exit fullscreen (Esc)",
   "player.viewAlbum": "View album",
   "player.shuffle": "Shuffle",
   "player.noPlayable": "No playable format in the queue for this device",

@@ -91,7 +91,7 @@ impl MihonbanApp {
             let mut child_clicked = false;
             let can_edit_favorites = self.role.as_deref() == Some("admin") && self.favorites_loaded;
             let heart_column = !flat || can_edit_favorites || self.page == Page::Favorites;
-            let duration_right = rect.right() - if heart_column { 48.0 } else { 12.0 };
+            let duration_right = rect.right() - if heart_column { 64.0 } else { 12.0 };
             let duration_left = duration_right - 52.0;
             let main_left = if flat {
                 let art_rect =
@@ -262,9 +262,11 @@ impl MihonbanApp {
                 .tracks
                 .iter()
                 .any(|favorite| favorite.id == track.id);
-            if heart_column && (can_edit_favorites || is_favorite) {
+            // Mirror the Web: unfavorited hearts appear on row hover; favorited
+                // hearts stay visible. The reserved column never shifts.
+                if heart_column && (is_favorite || (can_edit_favorites && hovered)) {
                 let heart_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.right() - 24.0, rect.center().y),
+                    egui::pos2(rect.right() - 40.0, rect.center().y),
                     Vec2::splat(32.0),
                 );
                 let heart_response = ui.interact(

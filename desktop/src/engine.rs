@@ -101,6 +101,8 @@ impl PlaybackEngineClient {
                     queue: Vec::new(),
                     current: None,
                     loading: None,
+                    desired_playing: false,
+                    last_seen_playing: None,
                     generation: 0,
                     prefetch_inflight: None,
                     load_abort: None,
@@ -236,12 +238,53 @@ struct Engine {
     queue: Vec<Track>,
     current: Option<Track>,
     loading: Option<Track>,
+    desired_playing: bool,
+    last_seen_playing: Option<bool>,
     generation: u64,
     prefetch_inflight: Option<String>,
     load_abort: Option<tokio::task::AbortHandle>,
     prefetch_abort: Option<tokio::task::AbortHandle>,
     watcher: PlaybackCompletionWatcher,
     last_fingerprint: Option<Fingerprint>,
+}
+
+/// The play intent after a Toggle press. Once audio is loaded the live sink
+/// is the source of truth (its state just flipped); with only a load in
+/// flight the press flips the pending intent; otherwise nothing is under
+/// user control and the intent stays put.
+fn intent_after_toggle(
+    live_sink: bool,
+    audible_before: bool,
+    loading: bool,
+    desired: bool,
+) -> bool {
+    if live_sink {
+        !audible_before
+    } else if loading {
+        !desired
+    } else {
+        desired
+    }
+}
+
+/// Fold an observation of the live sink into the play intent. External sink
+/// toggles (the tray controls the sink directly) are detected as changes
+/// since the last observation; a stable audible state keeps the intent, so
+/// an explicit play command survives while an old paused track is replaced.
+fn reconcile_intent(
+    desired: bool,
+    live_sink: bool,
+    audible: bool,
+    last_seen: Option<bool>,
+) -> (bool, Option<bool>) {
+    if !live_sink {
+        return (desired, None);
+    }
+    if last_seen != Some(audible) {
+        (audible, Some(audible))
+    } else {
+        (desired, Some(audible))
+    }
 }
 
 impl Engine {
@@ -279,6 +322,9 @@ impl Engine {
                 self.queue = tracks;
                 self.order.reset(self.queue.len(), index);
                 self.abort_prefetch();
+                // Picking tracks is an explicit play command; a pause
+                // pressed while the load is in flight can still flip it back.
+                self.desired_playing = true;
                 if let Some(track) = self.queue.get(index).cloned() {
                     self.start_load(track);
                 }
@@ -292,7 +338,16 @@ impl Engine {
                 self.handle_load_finished(generation, track, result);
             }
             EngineCommand::Toggle => {
-                self.player.toggle();
+                let live = self.player.has_sink() && !self.player.finished();
+                self.desired_playing = intent_after_toggle(
+                    live,
+                    self.player.is_playing(),
+                    self.loading.is_some(),
+                    self.desired_playing,
+                );
+                if live {
+                    self.player.toggle();
+                }
                 self.publish();
             }
             EngineCommand::Next => self.advance(true, false),
@@ -331,6 +386,7 @@ impl Engine {
         self.order = PlaybackOrder::default();
         self.current = None;
         self.loading = None;
+        self.desired_playing = false;
         self.abort_prefetch();
         if let Some(abort) = self.load_abort.take() {
             abort.abort();
@@ -436,7 +492,7 @@ impl Engine {
             Ok((path, temporary)) => {
                 let title = track.title.clone();
                 let cleanup = temporary.then(|| path.clone());
-                match self.player.play_file(&title, path, temporary) {
+                match self.player.play_file(&title, path, temporary, self.desired_playing) {
                     Ok(()) => {
                         self.player.set_volume(self.volume);
                         self.current = Some(track);
@@ -522,24 +578,49 @@ impl Engine {
     }
 
     fn tick(&mut self) {
+        self.sync_intent_with_sink();
         if self.loading.is_none() && self.current.is_some() && self.watcher.observe(&self.handle) {
             self.advance(true, true);
         }
         self.publish();
     }
 
+    /// Mirror pause/play changes made outside the command channel (the tray
+    /// toggles the live sink directly) into the play intent, so a load that
+    /// lands later cannot override the user's latest choice.
+    fn sync_intent_with_sink(&mut self) {
+        let live = self.player.has_sink() && !self.player.finished();
+        let (desired, seen) = reconcile_intent(
+            self.desired_playing,
+            live,
+            self.player.is_playing(),
+            self.last_seen_playing,
+        );
+        self.desired_playing = desired;
+        self.last_seen_playing = seen;
+    }
+
     fn publish(&mut self) {
+        let audible = self.player.is_playing();
+        // While a track is loading the published state mirrors the user's
+        // intent, so the button and the tray show what will happen when the
+        // load lands; afterwards the audible sink is the truth.
+        let playing = if self.loading.is_some() {
+            self.desired_playing
+        } else {
+            audible
+        };
         let fingerprint = (
             self.current.as_ref().map(|track| track.id.clone()),
             self.loading.as_ref().map(|track| track.id.clone()),
-            self.player.is_playing(),
+            playing,
             self.order.shuffled,
             self.order.repeat as u8,
         );
         if let Ok(mut state) = self.state.lock() {
             state.current_track = self.current.clone();
             state.loading = self.loading.clone();
-            state.playing = self.player.is_playing();
+            state.playing = playing;
             state.position = self.player.position();
             state.shuffled = self.order.shuffled;
             state.repeat = self.order.repeat;
@@ -555,5 +636,44 @@ impl Engine {
             state.error = Some(message);
         }
         self.ctx.request_repaint();
+    }
+}
+
+#[cfg(test)]
+mod intent_tests {
+    use super::{intent_after_toggle, reconcile_intent};
+
+    #[test]
+    fn toggle_follows_the_live_sink_or_flips_a_pending_load() {
+        // A live sink decides the intent by its new audible state.
+        assert!(!intent_after_toggle(true, true, false, true));
+        assert!(intent_after_toggle(true, false, false, true));
+        // With only a load in flight the press flips the pending intent.
+        assert!(!intent_after_toggle(false, false, true, true));
+        assert!(intent_after_toggle(false, false, true, false));
+        // Nothing under control: the intent stays put.
+        assert!(intent_after_toggle(false, false, false, true));
+        assert!(!intent_after_toggle(false, false, false, false));
+    }
+
+    #[test]
+    fn external_sink_changes_update_the_intent_once() {
+        // An explicit play command survives while a paused sink stays put.
+        assert_eq!(
+            reconcile_intent(true, true, false, Some(false)),
+            (true, Some(false))
+        );
+        // The tray pausing the live sink is mirrored into the intent.
+        assert_eq!(
+            reconcile_intent(true, true, false, Some(true)),
+            (false, Some(false))
+        );
+        // Resuming it again flips the intent back.
+        assert_eq!(
+            reconcile_intent(false, true, true, Some(false)),
+            (true, Some(true))
+        );
+        // No live sink: the pending intent is preserved untouched.
+        assert_eq!(reconcile_intent(true, false, false, None), (true, None));
     }
 }

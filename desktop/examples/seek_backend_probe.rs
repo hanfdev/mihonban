@@ -88,7 +88,7 @@ fn main() -> Result<()> {
     }
     sink.stop();
     let mut app_player = player::AudioPlayer::with_handle(player::PlaybackHandle::default());
-    app_player.play_file("probe", paths[0].clone(), false)?;
+    app_player.play_file("probe", paths[0].clone(), false, true)?;
     app_player.set_volume(0.0);
     thread::sleep(Duration::from_millis(100));
     for paused in [false, true, false] {
@@ -138,7 +138,7 @@ fn main() -> Result<()> {
         app_player.finished(),
         "near-end seek failed to finish naturally"
     );
-    app_player.play_file("probe", paths[0].clone(), false)?;
+    app_player.play_file("probe", paths[0].clone(), false, true)?;
     app_player.set_volume(0.0);
     app_player.toggle();
     thread::sleep(Duration::from_millis(100));
@@ -162,7 +162,7 @@ fn main() -> Result<()> {
         app_player.finished(),
         "resuming near EOF failed to finish naturally"
     );
-    app_player.play_file("probe", paths[0].clone(), false)?;
+    app_player.play_file("probe", paths[0].clone(), false, true)?;
     app_player.set_volume(0.0);
     thread::sleep(Duration::from_millis(100));
     app_player.seek(duration + Duration::from_secs(1))?;
