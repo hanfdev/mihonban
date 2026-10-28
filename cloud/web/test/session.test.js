@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { sessionAfterLogout } from '../src/session.js'
+import { needsAdminElevation, sessionAfterLogout } from '../src/session.js'
+
+test('a signed-in visitor needs admin elevation on the direct admin route', () => {
+  assert.equal(needsAdminElevation({ view: 'admin' }, 'user'), true)
+  assert.equal(needsAdminElevation({ view: 'admin' }, null), true)
+  assert.equal(needsAdminElevation({ view: 'admin' }, 'admin'), false)
+  assert.equal(needsAdminElevation({ view: 'library' }, 'user'), false)
+})
 
 test('logout falls back to passwordless guest access when it is open', async () => {
   const calls = []

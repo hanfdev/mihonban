@@ -18,7 +18,7 @@ import { freezeMediaSession, isStandaloneWebApp, loadAudioUntilPlayable,
          updateMediaPosition } from './media.js'
 import { installTrackMediaSessionHandlers } from './media-session.js'
 import { adjacentQueuePosition } from './player-queue.js'
-import { sessionAfterLogout } from './session.js'
+import { needsAdminElevation, sessionAfterLogout } from './session.js'
 import { visibleAlbumCount } from './visibility.js'
 import { isCurrentHash, scrollToTop } from './navigation.js'
 import { addFavoriteToFront } from './favorites.js'
@@ -693,7 +693,7 @@ export default function App() {
   if (authed === null) return null
   if (!authed) return <Login onOk={(r) => { setRole(r); setAuthed(true); setGuest(false) }} />
   // Use the overlay only to elevate to admin; logout uses the full Login page.
-  if (loginMode === 'admin') {
+  if (loginMode === 'admin' || needsAdminElevation(route, role)) {
     return (
       <Login
         guestReturn
@@ -706,7 +706,10 @@ export default function App() {
           setGuest(false)
           setLoginMode(null)
         }}
-        onCancel={() => setLoginMode(null)}
+        onCancel={() => {
+          setLoginMode(null)
+          if (needsAdminElevation(route, role)) navigate('/', { replace: true })
+        }}
       />
     )
   }
