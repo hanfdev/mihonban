@@ -78,8 +78,6 @@ export default function App() {
   const [authed, setAuthed] = useState(null) // null = checking
   const [role, setRole] = useState(null)     // 'user' | 'admin'
   const [guest, setGuest] = useState(false)  // Passwordless guest access; the user can still sign in as admin.
-  // loginMode: null | 'admin' (elevate to admin) | 'switch' (switch account or sign in after logout)
-  const [loginMode, setLoginMode] = useState(null)
   const [sessOpen, setSessOpen] = useState(false)  // Header session menu
   const sessRef = useRef(null)
   const [route, setRoute] = useState(parseHash())
@@ -684,7 +682,6 @@ export default function App() {
     applyFavs({ albums: [], tracks: [] })
     setQueue({ list: [], order: [], pos: -1 })
     setPlaying(false)
-    setLoginMode(null)
     if (location.hash && location.hash !== '#/' && location.hash !== '#') {
       navigate('/', { replace: true })
     }
@@ -693,7 +690,7 @@ export default function App() {
   if (authed === null) return null
   if (!authed) return <Login onOk={(r) => { setRole(r); setAuthed(true); setGuest(false) }} />
   // Use the overlay only to elevate to admin; logout uses the full Login page.
-  if (loginMode === 'admin' || needsAdminElevation(route, role)) {
+  if (needsAdminElevation(route, role)) {
     return (
       <Login
         guestReturn
@@ -704,11 +701,9 @@ export default function App() {
           favoritesRequestRef.current++
           setRole(r)
           setGuest(false)
-          setLoginMode(null)
         }}
         onCancel={() => {
-          setLoginMode(null)
-          if (needsAdminElevation(route, role)) navigate('/', { replace: true })
+          navigate('/', { replace: true })
         }}
       />
     )
@@ -828,7 +823,7 @@ export default function App() {
                 </div>
                 {!isAdmin && (
                   <button type="button" role="menuitem"
-                          onClick={() => { setSessOpen(false); setLoginMode('admin') }}>
+                          onClick={() => { setSessOpen(false); navigate('/admin') }}>
                     <I.gear size={14} /> {t('login.adminLogin')}
                   </button>
                 )}

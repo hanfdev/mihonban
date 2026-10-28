@@ -5,6 +5,7 @@ import { hashOf, isCurrentHash, scrollToTop } from '../src/navigation.js'
 test('navigation treats an empty hash as the album library', () => {
   assert.equal(hashOf('/'), '#/')
   assert.equal(hashOf('/tracks'), '#/tracks')
+  assert.equal(hashOf('/admin'), '#/admin')
   assert.equal(isCurrentHash('/', ''), true)
   assert.equal(isCurrentHash('/', '#'), true)
   assert.equal(isCurrentHash('/tracks', '#/tracks'), true)
