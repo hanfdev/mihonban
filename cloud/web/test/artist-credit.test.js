@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { artistCasingChanges, artistCreditText, artistSearchText, creditsFromTags, creditsOf,
+import { albumCreditsFromText, artistCasingChanges, artistCreditText, artistSearchText, creditsFromTags, creditsOf,
          effectiveArtistSort, findArtistByName, hasArtist, renameArtistCredits,
          renameArtistRecord, sameArtistNames,
          splitArtistCreditText } from '../src/artist-credit.js'
@@ -122,6 +122,53 @@ test('ambiguous punctuation is preserved without structured identity evidence', 
     [{ name: 'Main' }, { name: 'Guest' }],
     [{ name: 'Guest' }, { name: 'Main' }],
   ), false)
+})
+
+test('plain "A & B" splits unless identity data or the name says it is one band', () => {
+  assert.deepEqual(splitArtistCreditText('Marcos Valle & Azymuth'),
+    ['Marcos Valle', 'Azymuth'])
+  assert.deepEqual(splitArtistCreditText('A & B & C'), ['A', 'B', 'C'])
+  assert.deepEqual(splitArtistCreditText('Kool & the Gang'), ['Kool & the Gang'])
+  assert.deepEqual(splitArtistCreditText('Bob Marley & The Wailers'),
+    ['Bob Marley & The Wailers'])
+  assert.deepEqual(splitArtistCreditText('Earth, Wind & Fire'), ['Earth, Wind & Fire'])
+  assert.deepEqual(splitArtistCreditText('Simon&Garfunkel'), ['Simon&Garfunkel'])
+  assert.deepEqual(splitArtistCreditText('Marcos Valle & Azymuth', 1),
+    ['Marcos Valle & Azymuth'])
+  assert.deepEqual(creditsFromTags({ artist: 'Marcos Valle & Azymuth' }), [
+    { name: 'Marcos Valle', sort: '' },
+    { name: 'Azymuth', sort: '' },
+  ])
+  // Track artist equal to the album artist follows the same rule.
+  assert.deepEqual(creditsFromTags({
+    artist: 'Marcos Valle & Azymuth', albumArtist: 'Marcos Valle & Azymuth',
+  }), [
+    { name: 'Marcos Valle', sort: '' },
+    { name: 'Azymuth', sort: '' },
+  ])
+  assert.deepEqual(creditsFromTags({
+    artist: 'Neil & Iraiza', albumArtist: 'Neil & Iraiza', albumArtistIds: ['one'],
+  }), [{ name: 'Neil & Iraiza', sort: '' }])
+  assert.deepEqual(albumCreditsFromText('Marcos Valle & Azymuth'),
+    ['Marcos Valle', 'Azymuth'])
+  assert.deepEqual(albumCreditsFromText('ROUND TABLE featuring Nino'),
+    ['ROUND TABLE featuring Nino'])
+})
+
+test('comma lists split only when every part reads as a full name', () => {
+  assert.deepEqual(splitArtistCreditText(
+    'Kazuo Ohtani, Yoshiaki Furuta, Fujimaru Yoshino, Ryo Yonemitsu'),
+  ['Kazuo Ohtani', 'Yoshiaki Furuta', 'Fujimaru Yoshino', 'Ryo Yonemitsu'])
+  assert.deepEqual(splitArtistCreditText('Takeshi Saito, Etsuko Yamakawa & Hideya Nakazaki'),
+    ['Takeshi Saito', 'Etsuko Yamakawa', 'Hideya Nakazaki'])
+  assert.deepEqual(splitArtistCreditText('山下達郎, 竹内まりや'), ['山下達郎', '竹内まりや'])
+  assert.deepEqual(splitArtistCreditText('Crosby, Stills, Nash & Young'),
+    ['Crosby, Stills, Nash & Young'])
+  assert.deepEqual(splitArtistCreditText('Yamashita, Tatsuro'), ['Yamashita, Tatsuro'])
+  assert.deepEqual(splitArtistCreditText('Bob Marley, The Wailers'),
+    ['Bob Marley, The Wailers'])
+  assert.deepEqual(splitArtistCreditText('Kazuo Ohtani, Yoshiaki Furuta', 1),
+    ['Kazuo Ohtani, Yoshiaki Furuta'])
 })
 
 test('explicit and MusicBrainz-backed collaboration text becomes ordered credits', () => {

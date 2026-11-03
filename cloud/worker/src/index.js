@@ -227,6 +227,60 @@ function explicitArtistSort(name, sort) {
 const artistIdentityKey = (name) =>
   String(name || "").normalize("NFC").toLocaleLowerCase();
 
+const creditListSeparator = /\s*,\s*|\s+&\s+/;
+
+/** Name parts as import clients split them, so "A, B & C" matches [A, B, C]. */
+const creditPartsKey = (parts) => JSON.stringify(parts.map(artistIdentityKey));
+const creditNameParts = (name) =>
+  String(name || "").split(creditListSeparator).map((part) => part.trim()).filter(Boolean);
+
+/**
+ * Import clients split "A & B" and plain-name lists such as "A B, C D" into
+ * separate credits. A library that already credits the combined text as one
+ * artist keeps it that way on rescans and later imports, so the new rule only
+ * affects artists that do not exist yet. Manual edits skip this.
+ */
+async function rejoinKnownAmpersandCredits(db, creditLists) {
+  if (!creditLists.some((artists) => artists.length > 1)) return creditLists;
+  // Only names still credited somewhere count, so a deliberately split
+  // artist does not resurrect itself through an orphaned row.
+  const { results } = await db.prepare(`
+    SELECT name FROM artists ar
+    WHERE (name LIKE '%,%' OR name LIKE '%&%')
+      AND (EXISTS (SELECT 1 FROM album_artists aa WHERE aa.artist = ar.name)
+        OR EXISTS (SELECT 1 FROM track_artists ta WHERE ta.artist = ar.name))`).all();
+  const known = new Map();
+  let longest = 0;
+  for (const row of results) {
+    const parts = creditNameParts(row.name);
+    if (parts.length < 2) continue;
+    known.set(creditPartsKey(parts), row.name);
+    longest = Math.max(longest, parts.length);
+  }
+  if (!known.size) return creditLists;
+  return creditLists.map((artists) => {
+    const out = [];
+    for (let start = 0; start < artists.length;) {
+      let joined = null;
+      for (let end = Math.min(artists.length, start + longest);
+        end >= start + 2; end -= 1) {
+        const parts = artists.slice(start, end)
+          .flatMap((artist) => creditNameParts(artist.name));
+        const name = known.get(creditPartsKey(parts));
+        if (name) { joined = { name, end }; break; }
+      }
+      if (joined) {
+        out.push({ name: joined.name, sort: "" });
+        start = joined.end;
+      } else {
+        out.push(artists[start]);
+        start += 1;
+      }
+    }
+    return out;
+  });
+}
+
 async function canonicalizeArtistCredits(db, artists) {
   if (!artists.length) return artists;
   const aliases = new Map();
@@ -2950,7 +3004,8 @@ app.post("/api/albums", async (c) => {
   // collapse it back to one combined string.
   const existingArtists = body.artists === undefined
     ? await artistsForAlbum(c.env.DB, id) : [];
-  let albumArtists = existingArtists.length > 1 ? existingArtists : incomingArtists;
+  let albumArtists = existingArtists.length > 1 ? existingArtists
+    : (await rejoinKnownAmpersandCredits(c.env.DB, [incomingArtists]))[0];
   albumArtists = uniqueArtistCredits(await canonicalizeArtistCredits(c.env.DB, albumArtists));
   albumArtists = await applyArtistSortOverrides(c.env.DB, albumArtists);
   const artist = artistCredit(albumArtists);
@@ -3047,6 +3102,13 @@ app.post("/api/albums", async (c) => {
       artists: trackArtists,
     });
   }
+  const splitTracks = normalizedTracks.filter((track) => track.artists?.length > 1);
+  const rejoinedTracks = await rejoinKnownAmpersandCredits(
+    c.env.DB, splitTracks.map((track) => track.artists));
+  splitTracks.forEach((track, index) => {
+    track.artists = rejoinedTracks[index];
+    if (sameArtistCredit(track.artists, albumArtists)) track.artists = [];
+  });
   const explicitArtists = normalizedTracks.flatMap((track) => track.artists || []);
   const canonicalArtists = await canonicalizeArtistCredits(c.env.DB, explicitArtists);
   const resolvedArtists = await applyArtistSortOverrides(c.env.DB, canonicalArtists);
@@ -3666,6 +3728,7 @@ app.post("/api/album/:id/tracks", async (c) => {
     return c.json({ error: "曲目元数据格式无效" }, 400);
   }
   if (trackCredits) {
+    [trackCredits] = await rejoinKnownAmpersandCredits(c.env.DB, [trackCredits]);
     trackCredits = uniqueArtistCredits(await canonicalizeArtistCredits(c.env.DB, trackCredits));
     trackCredits = await applyArtistSortOverrides(c.env.DB, trackCredits);
     const inherited = albumCredits.length ? albumCredits

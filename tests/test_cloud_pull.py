@@ -236,6 +236,59 @@ def test_artist_text_splits_only_with_explicit_or_identity_backed_evidence():
     ) == ["Round Table Featuring Nino"]
 
 
+def test_plain_ampersand_splits_unless_the_name_reads_as_one_band():
+    split = cloud._split_artist_text
+    assert split("Marcos Valle & Azymuth") == ["Marcos Valle", "Azymuth"]
+    assert split("Marcos Valle & Azymuth", 0, allow_explicit=False) == [
+        "Marcos Valle", "Azymuth"]
+    assert split("A & B & C") == ["A", "B", "C"]
+    assert split("Kool & the Gang") == ["Kool & the Gang"]
+    assert split("Bob Marley & The Wailers") == ["Bob Marley & The Wailers"]
+    assert split("Earth, Wind & Fire") == ["Earth, Wind & Fire"]
+    assert split("Simon&Garfunkel") == ["Simon&Garfunkel"]
+    assert split("Marcos Valle & Azymuth", 1) == ["Marcos Valle & Azymuth"]
+
+
+def test_comma_list_splits_only_when_every_part_reads_as_a_full_name():
+    split = cloud._split_artist_text
+    assert split("Kazuo Ohtani, Yoshiaki Furuta, Fujimaru Yoshino") == [
+        "Kazuo Ohtani", "Yoshiaki Furuta", "Fujimaru Yoshino"]
+    assert split("Takeshi Saito, Etsuko Yamakawa & Hideya Nakazaki") == [
+        "Takeshi Saito", "Etsuko Yamakawa", "Hideya Nakazaki"]
+    assert split("山下達郎, 竹内まりや") == ["山下達郎", "竹内まりや"]
+    assert split("Crosby, Stills, Nash & Young") == ["Crosby, Stills, Nash & Young"]
+    assert split("Yamashita, Tatsuro") == ["Yamashita, Tatsuro"]
+    assert split("Bob Marley, The Wailers") == ["Bob Marley, The Wailers"]
+    assert split("Kazuo Ohtani, Yoshiaki Furuta", 1) == [
+        "Kazuo Ohtani, Yoshiaki Furuta"]
+
+
+def test_album_payload_splits_a_plain_ampersand_album_artist(
+        cloud_cfg, monkeypatch):
+    album_dir = cloud_cfg.music_root / "Marcos Valle & Azymuth" / "Fly Away"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01.flac").write_bytes(b"audio")
+
+    def fake_mutagen(_path, easy=False):
+        return SimpleNamespace(
+            tags={
+                "title": ["Fly Away"],
+                "albumartist": ["Marcos Valle & Azymuth"],
+                "artist": ["Marcos Valle & Azymuth"],
+                "album": ["Fly Away"], "tracknumber": ["1"],
+            },
+            info=SimpleNamespace(length=10.0, bitrate=320_000),
+        )
+
+    monkeypatch.setattr(cloud.mutagen, "File", fake_mutagen)
+    monkeypatch.setattr(cloud, "resolve_sort_name",
+                        lambda name, cache: name)
+    payload = cloud.payload_for_album(cloud_cfg, album_dir)
+
+    assert [artist["name"] for artist in payload["artists"]] == [
+        "Marcos Valle", "Azymuth"]
+
+
 def test_desired_tags_keep_album_credit_and_write_track_credit_separately():
     album = {
         "artists": [{"name": "山下達郎", "sort": "Yamashita, Tatsuro"}],

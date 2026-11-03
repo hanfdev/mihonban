@@ -96,7 +96,7 @@ export async function readTags(file, detectedFormat = "") {
     disc: 1,
     duration: null,
     artist: "", artists: [], artistIds: [], hasStructuredArtists: false,
-    albumArtist: "", albumArtists: [],
+    albumArtist: "", albumArtists: [], albumArtistIds: [],
     artistSort: "", artistSorts: [], albumArtistSort: "",
     album: "", year: null,
     picture: null, // {blob, type}
@@ -123,6 +123,10 @@ export async function readTags(file, detectedFormat = "") {
     base.albumArtist = c.albumartist || c.artist || "";
     base.albumArtists = (Array.isArray(c.albumartists) && c.albumartists.length
       ? c.albumartists : (base.albumArtist ? [base.albumArtist] : []))
+      .map((value) => String(value || '').trim()).filter(Boolean);
+    base.albumArtistIds = (Array.isArray(c.musicbrainz_albumartistid)
+      ? c.musicbrainz_albumartistid
+      : (c.musicbrainz_albumartistid ? [c.musicbrainz_albumartistid] : []))
       .map((value) => String(value || '').trim()).filter(Boolean);
     base.artistSort = c.artistsort || "";
     base.artistSorts = (Array.isArray(c.artistsort)

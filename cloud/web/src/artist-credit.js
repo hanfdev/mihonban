@@ -74,13 +74,42 @@ const featureSeparator = /\s+(?:feat(?:uring)?|ft)\.?\s+/i
 const listSeparator = /\s*(?:,|&)\s*|\s+(?:feat(?:uring)?|ft)\.?\s+/i
 const compoundSort = /(?:&|\bfeat(?:uring)?\.?\b|\bft\.?\b)/i
 
-export function splitArtistCreditText(value, identityCount = 0) {
+const ampersandSeparator = /\s+&\s+/
+// "Kool & the Gang", "Bob Marley & His Wailers": the part after & names the band.
+const bandContinuation = /^(?:the|his|her|their)\b/i
+
+const commaListSeparator = /\s*,\s*|\s+&\s+/
+const cjkName = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
+// A comma list is split only when every entry reads as a full personal name.
+// Single-word entries mark band names such as "Earth, Wind & Fire" or sort
+// names such as "Yamashita, Tatsuro".
+const fullName = (part) => /\s/.test(part) || cjkName.test(part)
+
+/** Split "A & B" or "A B, C D, E F" without identity data unless it looks like one band. */
+function splitAmpersandCredit(text) {
+  const hasComma = text.includes(',')
+  const parts = text.split(hasComma ? commaListSeparator : ampersandSeparator)
+    .map((part) => part.trim())
+  if (parts.length < 2 || parts.some((part) => !part)) return [text]
+  if (parts.slice(1).some((part) => bandContinuation.test(part))) return [text]
+  if (hasComma && !parts.every(fullName)) return [text]
+  return parts
+}
+
+export function splitArtistCreditText(value, identityCount = 0,
+                                      { allowExplicit = true } = {}) {
   const text = String(value || '').trim().normalize('NFC')
   if (!text) return []
-  if (!featureSeparator.test(text) && Number(identityCount) <= 1) return [text]
-  const parts = text.split(listSeparator).map((part) => part.trim()).filter(Boolean)
-  return parts.length > 1 && (Number(identityCount) <= 1
-    || parts.length === Number(identityCount)) ? parts : [text]
+  const count = Number(identityCount) || 0
+  const explicit = allowExplicit && featureSeparator.test(text)
+  if (explicit || count > 1) {
+    const parts = text.split(listSeparator).map((part) => part.trim()).filter(Boolean)
+    if (parts.length > 1 && (count <= 1 || parts.length === count)) return parts
+    return [text]
+  }
+  // One MusicBrainz identity confirms a single artist such as "Neil & Iraiza".
+  if (count === 1) return [text]
+  return splitAmpersandCredit(text)
 }
 
 export const hasArtist = (album, name) =>
@@ -97,6 +126,14 @@ export function artistSearchText(value) {
     .flatMap((artist) => [artist.name, effectiveArtistSort(artist)]).join(' ')
 }
 
+const identityCountOf = (ids) =>
+  Array.isArray(ids) ? ids.filter(Boolean).length : 0
+
+/** Album-level credits from the most common album artist text of an import. */
+export function albumCreditsFromText(value, identityCount = 0) {
+  return splitArtistCreditText(value, identityCount, { allowExplicit: false })
+}
+
 export function creditsFromTags(metadata) {
   const structured = metadata?.hasStructuredArtists === true
     || (metadata?.hasStructuredArtists === undefined
@@ -109,10 +146,12 @@ export function creditsFromTags(metadata) {
   if (sameAsAlbum) {
     rawNames = Array.isArray(metadata?.albumArtists) && metadata.albumArtists.length
       ? metadata.albumArtists : [metadata.albumArtist]
+    if (rawNames.length === 1) {
+      rawNames = splitArtistCreditText(rawNames[0],
+        identityCountOf(metadata?.albumArtistIds), { allowExplicit: false })
+    }
   } else if (rawNames.length === 1 && !structured) {
-    const identityCount = Array.isArray(metadata?.artistIds)
-      ? metadata.artistIds.filter(Boolean).length : 0
-    rawNames = splitArtistCreditText(rawNames[0], identityCount)
+    rawNames = splitArtistCreditText(rawNames[0], identityCountOf(metadata?.artistIds))
   }
   const rawSorts = Array.isArray(metadata?.artistSorts)
     ? metadata.artistSorts : (metadata?.artistSort ? [metadata.artistSort] : [])

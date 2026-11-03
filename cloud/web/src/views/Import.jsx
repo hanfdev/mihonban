@@ -4,7 +4,7 @@ import { readTags, recognizedAudioFiles } from '../tags.js'
 import { sortOf, toJa } from '../aliases.js'
 import { CropDialog, I, useToast } from '../ui.jsx'
 import { useI18n } from '../i18n.jsx'
-import { ArtistEditor, artistCreditText, creditsFromTags,
+import { ArtistEditor, albumCreditsFromText, artistCreditText, creditsFromTags,
          sameArtistNames } from '../artist-credit.jsx'
 import { groupTracksByDisc } from '../track-disc.js'
 
@@ -68,10 +68,17 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
     const artist = toJa(rawArtist) || rawArtist
     const taggedSort = mostCommon(merged.map((p) => p.albumArtistSort))
       || mostCommon(merged.map((p) => p.artistSort))
+    // "Marcos Valle & Azymuth" becomes two credits unless an alias or a single
+    // MusicBrainz album artist ID shows it is one name.
+    const albumIdCount = Math.max(0, ...merged.map((p) => p.albumArtistIds?.length || 0))
+    const splitNames = artist === rawArtist ? albumCreditsFromText(artist, albumIdCount) : [artist]
+    const taggedArtists = splitNames.length > 1
+      ? splitNames.map((name) => ({ name, sort: sortOf(name) }))
+      : [{ name: artist, sort: taggedSort || sortOf(artist) }]
     setForm((f) => ({
       artists: (appending && f.artists?.some((entry) => entry.name))
         ? f.artists
-        : [{ name: artist, sort: taggedSort || sortOf(artist) }],
+        : taggedArtists,
       title: (appending && f.title) || mostCommon(merged.map((p) => p.album)),
       year: (appending && f.year) || mostCommon(merged.map((p) => p.year)) || '',
     }))

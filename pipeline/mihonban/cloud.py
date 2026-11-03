@@ -304,19 +304,58 @@ def _tag_values(tags: dict, *keys) -> list[str]:
     return []
 
 
+_AMPERSAND_SEPARATOR = re.compile(r"\s+&\s+")
+# "Kool & the Gang", "Bob Marley & His Wailers": the part after & names the band.
+_BAND_CONTINUATION = re.compile(r"^(?:the|his|her|their)\b", re.I)
+
+
+_COMMA_LIST_SEPARATOR = re.compile(r"\s*,\s*|\s+&\s+")
+_CJK_NAME = re.compile(
+    r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af"
+    r"\u1100-\u11ff\u3130-\u318f]")
+
+
+def _full_name(part: str) -> bool:
+    """A comma list is split only when every entry reads as a full name.
+
+    Single-word entries mark band names such as "Earth, Wind & Fire" or sort
+    names such as "Yamashita, Tatsuro".
+    """
+    return bool(re.search(r"\s", part) or _CJK_NAME.search(part))
+
+
+def _split_ampersand_credit(text: str) -> list[str]:
+    """Split "A & B" or "A B, C D" without identity data unless it looks like one band."""
+    has_comma = "," in text
+    separator = _COMMA_LIST_SEPARATOR if has_comma else _AMPERSAND_SEPARATOR
+    parts = [part.strip() for part in separator.split(text)]
+    if len(parts) < 2 or not all(parts):
+        return [text]
+    if any(_BAND_CONTINUATION.match(part) for part in parts[1:]):
+        return [text]
+    if has_comma and not all(_full_name(part) for part in parts):
+        return [text]
+    return parts
+
+
 def _split_artist_text(value: str, identity_count: int = 0,
                        allow_explicit: bool = True) -> list[str]:
-    """Split only explicit or identity-backed artist collaboration text."""
+    """Split explicit, identity-backed or plain "A & B" collaboration text."""
     text = unicodedata.normalize("NFC", str(value or "").strip())
     if not text:
         return []
     explicit = allow_explicit and _FEATURE_SEPARATOR.search(text)
-    if not explicit and identity_count <= 1:
+    if explicit or identity_count > 1:
+        parts = [part.strip() for part in _LIST_SEPARATOR.split(text)
+                 if part.strip()]
+        if len(parts) > 1 and (identity_count <= 1
+                               or len(parts) == identity_count):
+            return parts
         return [text]
-    parts = [part.strip() for part in _LIST_SEPARATOR.split(text) if part.strip()]
-    if len(parts) > 1 and (identity_count <= 1 or len(parts) == identity_count):
-        return parts
-    return [text]
+    # One MusicBrainz identity confirms a single artist such as "Neil & Iraiza".
+    if identity_count == 1:
+        return [text]
+    return _split_ampersand_credit(text)
 
 
 def _artist_values(tags: dict, structured_key: str, display_key: str,
