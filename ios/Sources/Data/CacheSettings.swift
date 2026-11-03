@@ -17,10 +17,13 @@ final class CacheSettings {
     init(defaults: UserDefaults = .standard, prefix: String = "cache") {
         self.defaults = defaults
         self.prefix = prefix
-        let stored = defaults.object(forKey: key("limit")) as? Int
-        enabled = defaults.object(forKey: key("enabled")) as? Bool ?? true
-        limitBytes = Self.limits.contains(stored ?? -1) ? stored! : 1 << 30
-        preloadNext = defaults.object(forKey: key("preload")) as? Bool ?? true
+        // A local function keeps the stored keys reachable before every
+        // property is initialized, where an instance method may not be used.
+        let stored = { (name: String) -> String in "\(prefix).\(name)" }
+        let limit = defaults.object(forKey: stored("limit")) as? Int ?? 0
+        enabled = defaults.object(forKey: stored("enabled")) as? Bool ?? true
+        limitBytes = CacheSettings.limits.contains(limit) ? limit : 1 << 30
+        preloadNext = defaults.object(forKey: stored("preload")) as? Bool ?? true
     }
 
     private func key(_ name: String) -> String { "\(prefix).\(name)" }

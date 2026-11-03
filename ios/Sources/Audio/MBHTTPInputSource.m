@@ -228,9 +228,10 @@
 
 - (BOOL)closeReturningError:(NSError **)error {
     [self cancel];
-    // With caching disabled the growing file is only a playback buffer.
+    // With caching disabled the growing file is only a playback buffer. The file
+    // is unlinked here, but the descriptor stays open until deallocation so a
+    // transfer still in flight can never write through a recycled descriptor.
     if (!_persistent) [NSFileManager.defaultManager removeItemAtURL:_partialURL error:nil];
-    if (_fd >= 0) { close(_fd); _fd = -1; }
     return YES;
 }
 

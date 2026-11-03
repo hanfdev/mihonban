@@ -9,13 +9,19 @@ final class MihonbanUITests: XCTestCase {
         let album = app.buttons["album.demo-1"]
         XCTAssertTrue(album.waitForExistence(timeout: 15))
         screenshot("01-library")
+
+        // The cache section must be reachable and its actions must work.
         app.buttons["settings.open"].tap()
-        XCTAssertTrue(app.buttons["cache.clear"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["cache.used"].exists || app.otherElements["cache.used"].exists)
-        screenshot("05-settings-cache")
+        XCTAssertTrue(app.staticTexts["Local cache"].waitForExistence(timeout: 10))
         app.swipeUp()
+        let clear = app.buttons["cache.clear"]
+        XCTAssertTrue(clear.waitForExistence(timeout: 10))
+        clear.tap()
+        XCTAssertTrue(app.staticTexts["Cache cleared"].waitForExistence(timeout: 5))
+        screenshot("05-settings-cache")
         app.buttons["Done"].tap()
         XCTAssertTrue(album.waitForExistence(timeout: 10))
+
         album.tap()
         let play = app.buttons["album.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 10))
