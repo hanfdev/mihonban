@@ -515,6 +515,10 @@ export default function ArtistPage({ name: requestedName, albums, artists, avata
     } catch (e) { toast(e.message, 'err') }
   }, [onPlay, toast])
 
+  const handleToggleFav = useCallback((id) => toggleFav?.('track', id), [toggleFav])
+  const handlePlayFeatured = useCallback((start) => onPlayTracks(featured, start),
+    [onPlayTracks, featured])
+
   const playAll = async () => {
     try {
       const details = await Promise.all(mine.map((a) => api.album(a.id)))
@@ -661,8 +665,8 @@ export default function ArtistPage({ name: requestedName, albums, artists, avata
               <TrackRow key={track.id} t={track} i={index}
                         currentId={currentId} playingId={playingId}
                         isAdmin={isAdmin} fav={favTracks?.has(track.id) || false}
-                        onToggleFav={() => toggleFav?.('track', track.id)}
-                        onPlay={(start) => onPlayTracks(featured, start)}
+                        onToggleFav={handleToggleFav}
+                        onPlay={handlePlayFeatured}
                         onOpen={onOpen} onOpenArtist={onOpenArtist} />
             ))}
           </div>

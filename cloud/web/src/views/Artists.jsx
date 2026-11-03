@@ -99,16 +99,23 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
     return m
   }, [data, aliasesBy])
 
+  const order = useMemo(() => {
+    const fn = SORTS[sort].fn
+    const deferred = sort === 'added' ? data.some((e) => !Number.isFinite(e.latest))
+      : sort === 'count' && data.some((e) => !Number.isFinite(e.trackCount))
+    return { list: deferred ? data : [...data].sort(fn), deferred, fn }
+  }, [data, sort, SORTS])
   const shown = useMemo(() => {
     const needle = zhNorm(q.trim())
     const wantGenre = genre.toLowerCase()
-    return data.filter((e) => {
+    const out = order.list.filter((e) => {
       if (needle && !searchHay.get(e.name).includes(needle)) return false
       if (wantGenre && ![...e.genres]
         .some((g) => g.toLowerCase() === wantGenre)) return false
       return true
-    }).sort(SORTS[sort].fn)
-  }, [data, searchHay, q, genre, sort, SORTS])
+    })
+    return order.deferred ? out.sort(order.fn) : out
+  }, [order, searchHay, q, genre])
 
   const yearsOf = (e) => {
     if (!e.years.length) return ''

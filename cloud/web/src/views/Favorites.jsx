@@ -82,12 +82,20 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
   const needle = zhNorm(q.trim())
   const hasAlbumFilter = !!(fArtist || fDecade || fGenre || needle)
 
-  // Preserve the backend favs.albums order (sort_order) so the favorites sequence remains manually controllable.
-  const favAlbumsRaw = useMemo(() => {
-    if (!albums) return null
-    const byId = new Map(albums.map((a) => [a.id, a]))
-    return favs.albums.map((f) => byId.get(f.id)).filter(Boolean)
-  }, [albums, favs])
+  const albumsById = useMemo(() => albums && new Map(albums.map((a) => [a.id, a])), [albums])
+  const tracksById = useMemo(() => tracks && new Map(tracks.map((tr) => [tr.id, tr])), [tracks])
+
+  // Preserve backend order while reusing catalog indexes across searches and favorite edits.
+  const favAlbumsRaw = useMemo(() => albumsById
+    && favs.albums.map((f) => albumsById.get(f.id)).filter(Boolean), [albumsById, favs.albums])
+  const favTracksRaw = useMemo(() => tracksById
+    && favs.tracks.map((f) => tracksById.get(f.id)).filter(Boolean), [tracksById, favs.tracks])
+  const albumHay = useMemo(() => new Map((favAlbumsRaw || []).map((a) => [a,
+    zhNorm(`${a.title} ${artistSearchText(a)} ${creditsOf(a)
+      .map((credit) => romajiOf(credit.name)).join(' ')}`)])), [favAlbumsRaw])
+  const trackHay = useMemo(() => new Map((favTracksRaw || []).map((tr) => [tr,
+    zhNorm(`${tr.title} ${artistSearchText(tr)} ${creditsOf(tr)
+      .map((credit) => romajiOf(credit.name)).join(' ')} ${tr.albumTitle}`)])), [favTracksRaw])
 
   const aArtists = useMemo(() => {
     const m = new Map()
@@ -112,34 +120,44 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
       .map((e) => [...e.forms.entries()].sort((x, y) => y[1] - x[1])[0][0])
   }, [favAlbumsRaw])
 
-  const favAlbumList = useMemo(() => {
+  const albumOrder = useMemo(() => {
     if (!favAlbumsRaw) return null
+    const fn = ALBUM_SORTS[aSort].fn
+    // Invalid numeric keys can make a comparator non-transitive. Keep the
+    // original filter-then-sort path for those inputs rather than change ties.
+    const deferred = fn && !['fav', 'title'].includes(aSort)
+      && favAlbumsRaw.some((a) => a.year != null && !Number.isFinite(a.year))
+    return { list: fn && !deferred ? [...favAlbumsRaw].sort(fn) : favAlbumsRaw,
+      deferred, fn }
+  }, [favAlbumsRaw, aSort, ALBUM_SORTS])
+  const favAlbumList = useMemo(() => {
+    if (!albumOrder) return null
     const wantG = fGenre.toLowerCase()
-    const out = favAlbumsRaw.filter((a) => {
-      if (needle && !zhNorm(`${a.title} ${artistSearchText(a)} ${creditsOf(a)
-        .map((credit) => romajiOf(credit.name)).join(' ')}`)
-        .includes(needle)) return false
+    const out = albumOrder.list.filter((a) => {
+      if (needle && !albumHay.get(a).includes(needle)) return false
       if (fArtist && !hasArtist(a, fArtist)) return false
       if (fDecade && decadeOf(a.year) !== fDecade) return false
       if (wantG && ![...(a.genres || []), ...(a.secondaryGenres || [])]
         .some((g) => g.toLowerCase() === wantG)) return false
       return true
     })
-    const fn = ALBUM_SORTS[aSort].fn
-    return fn ? [...out].sort(fn) : out // Favorite mode keeps backend order without another sort.
-  }, [favAlbumsRaw, needle, fArtist, fDecade, fGenre, aSort])
+    return albumOrder.deferred ? out.sort(albumOrder.fn) : out
+  }, [albumOrder, albumHay, needle, fArtist, fDecade, fGenre])
 
-  const favTrackList = useMemo(() => {
-    if (!tracks) return null
-    const byId = new Map(tracks.map((t) => [t.id, t]))
-    const out = favs.tracks.map((f) => byId.get(f.id)).filter(Boolean)
-      .filter((t) => !needle ||
-        zhNorm(`${t.title} ${artistSearchText(t)} ${creditsOf(t)
-          .map((credit) => romajiOf(credit.name)).join(' ')} ${t.albumTitle}`)
-          .includes(needle))
+  const trackOrder = useMemo(() => {
+    if (!favTracksRaw) return null
     const fn = TRACK_SORTS[tSort].fn
-    return fn ? [...out].sort(fn) : out // Favorite mode keeps backend order.
-  }, [tracks, favs, needle, tSort])
+    const numericKey = tSort === 'album' ? 'track' : 'year'
+    const deferred = fn && !['fav', 'title'].includes(tSort)
+      && favTracksRaw.some((tr) => tr[numericKey] != null && !Number.isFinite(tr[numericKey]))
+    return { list: fn && !deferred ? [...favTracksRaw].sort(fn) : favTracksRaw,
+      deferred, fn }
+  }, [favTracksRaw, tSort, TRACK_SORTS])
+  const favTrackList = useMemo(() => {
+    if (!trackOrder) return null
+    const out = trackOrder.list.filter((tr) => !needle || trackHay.get(tr).includes(needle))
+    return trackOrder.deferred ? out.sort(trackOrder.fn) : out
+  }, [trackOrder, trackHay, needle])
 
   // ---- Manual drag ordering: administrator only, favorite order only, and disabled during filtering/search ----
   const canDragA = isAdmin && aSort === 'fav' && !hasAlbumFilter
@@ -154,8 +172,13 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
     const byId = new Map(list.map((x) => [x.id, x]))
     return ids.map((id) => byId.get(id)).filter(Boolean)
   }
-  const shownAlbums = drag && canDragA ? orderBy(favAlbumList, drag) : favAlbumList
-  const shownTracks = drag && canDragT ? orderBy(favTrackList, drag) : favTrackList
+  const shownAlbums = useMemo(() => drag && canDragA
+    ? orderBy(favAlbumList, drag) : favAlbumList, [drag, canDragA, favAlbumList])
+  const shownTracks = useMemo(() => drag && canDragT
+    ? orderBy(favTrackList, drag) : favTrackList, [drag, canDragT, favTrackList])
+  const handleToggleFav = useCallback((id) => toggleFav('track', id), [toggleFav])
+  const handlePlay = useCallback((idx) => onPlayTracks(shownTracks, idx),
+    [onPlayTracks, shownTracks])
 
   // onMove reads the current displayed order from a ref to avoid stale closures; a drag starts from the current order.
   const listRef = useRef({ a: null, t: null })
@@ -339,8 +362,8 @@ export default function FavoritesPage({ albums, tracks, ensureTracks, favs, q,
               <TrackRow t={tr} i={i}
                         currentId={currentId} playingId={playingId}
                         isAdmin={isAdmin} fav={favTracks.has(tr.id)}
-                        onToggleFav={(id) => toggleFav('track', id)}
-                        onPlay={(idx) => onPlayTracks(shownTracks, idx)}
+                        onToggleFav={handleToggleFav}
+                        onPlay={handlePlay}
                         onOpen={onOpen} onOpenArtist={onOpenArtist} />
             </div>
           ))}

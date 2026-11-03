@@ -277,11 +277,25 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     return m
   }, [albums])
 
-  const shown = useMemo(() => {
+  const order = useMemo(() => {
     if (!albums) return null
+    const fn = SORTS[sort].fn
+    // Preserve filter-then-sort for added and malformed numeric keys; their
+    // comparator ties need not be transitive across the unfiltered collection.
+    const deferred = sort === 'added'
+      || (['artist', 'yearNew', 'yearOld'].includes(sort)
+        && albums.some((a) => a.year != null && !Number.isFinite(a.year)))
+      || (['rating', 'ratingRaw'].includes(sort) && albums.some((a) =>
+        [a.rym?.rating, a.rym?.votes].some((value) => value != null
+          && (typeof value !== 'number' || !Number.isFinite(value)
+            || Math.abs(value) > Number.MAX_SAFE_INTEGER))))
+    return { list: deferred ? albums : [...albums].sort(fn), deferred, fn }
+  }, [albums, sort, SORTS])
+  const shown = useMemo(() => {
+    if (!order) return null
     const needle = zhNorm(q.trim())
     const wantG = genre.toLowerCase()
-    const out = albums.filter((a) => {
+    const out = order.list.filter((a) => {
       // Hidden albums stay out of the administrator's default view until the visibility toggle is enabled.
       if (a.hidden && !(isAdmin && showHidden)) return false
       if (needle && !searchHay.get(a.id).includes(needle)) return false
@@ -292,9 +306,8 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
         .some((g) => g.toLowerCase() === wantG)) return false
       return true
     })
-    return out.sort(SORTS[sort].fn)
-  }, [albums, searchHay, q, minR, genre, decade, artist, sort, SORTS, isAdmin,
-      showHidden])
+    return order.deferred ? out.sort(order.fn) : out
+  }, [order, searchHay, q, minR, genre, decade, artist, isAdmin, showHidden])
 
   const playAlbum = useCallback(async (a) => {
     try {
