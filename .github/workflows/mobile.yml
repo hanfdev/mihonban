@@ -73,6 +73,23 @@ jobs:
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
             -resultBundlePath build/Tests.xcresult CODE_SIGNING_ALLOWED=NO \
             | tee build-simulator.log
+      - name: Preserve crash diagnostics and symbols
+        if: always()
+        run: |
+          mkdir -p build/diagnostics
+          if [ -d "$HOME/Library/Logs/DiagnosticReports" ]; then
+            cp -R "$HOME/Library/Logs/DiagnosticReports" build/diagnostics/host
+          fi
+          if [ -d build/Mihonban.xcarchive/dSYMs ]; then
+            cp -R build/Mihonban.xcarchive/dSYMs build/diagnostics/dSYMs
+          fi
+      - name: Upload crash diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-diagnostics-${{ github.run_number }}
+          path: build/diagnostics
+          retention-days: 14
       - name: Export simulator screenshots
         if: always()
         run: |

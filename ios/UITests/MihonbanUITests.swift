@@ -40,6 +40,40 @@ final class MihonbanUITests: XCTestCase {
         screenshot("04-queue")
     }
 
+    func testRealConnectionAndNetworkPlayback() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)"]
+        app.launch()
+        let address = app.textFields["connection.address"]
+        if !address.waitForExistence(timeout: 5) {
+            app.buttons["settings.open"].tap()
+            app.buttons["Sign out"].tap()
+            app.buttons["Sign out"].firstMatch.tap()
+        }
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        address.tap()
+        address.press(forDuration: 1.2)
+        if app.menuItems["Select All"].waitForExistence(timeout: 2) {
+            app.menuItems["Select All"].tap()
+        }
+        address.typeText("http://127.0.0.1:8766")
+        let password = app.secureTextFields["connection.password"]
+        password.tap()
+        password.typeText("fixture-password")
+        app.buttons["connection.connect"].tap()
+        let album = app.buttons["album.network-mp3"]
+        XCTAssertTrue(album.waitForExistence(timeout: 20))
+        album.tap()
+        app.buttons["album.play"].tap()
+        let expand = app.buttons["player.expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 20))
+        expand.tap()
+        XCTAssertTrue(app.staticTexts["player.title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["0:02"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.state, .runningForeground)
+        screenshot("06-network-playback")
+    }
+
     func testConnectionScreen() {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)"]

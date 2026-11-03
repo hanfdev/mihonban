@@ -359,13 +359,18 @@ final class PlayerModel: NSObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
+    // Keep construction in one place so tests exercise the actual system callback.
+    static func makeArtwork(_ image: UIImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+    }
+
     private func loadArtwork() {
         artworkTask?.cancel()
         guard let client, let track = current, let album = track.albumId, demoURL == nil else { return }
         artworkTask = Task { [weak self] in
             guard let image = await ArtworkStore.shared.image(url: client.artworkURL(album, size: 480),
                 session: client.session, pixels: 640), !Task.isCancelled, self?.current?.id == track.id else { return }
-            self?.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            self?.artwork = Self.makeArtwork(image)
             self?.updateNowPlaying()
         }
     }
