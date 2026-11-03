@@ -600,6 +600,7 @@
     "mobile.cacheCovers": "Covers",
     "mobile.cacheBuffer": "Playing now (temporary)",
     "mobile.cacheClearFailed": "Some cached files could not be removed. Try again.",
+    "mobile.offlineLibrary": "The service is unreachable. Showing the library saved on this device; downloads still play.",
     "mobile.moreActions": "More actions",
     "mobile.licenses": "Open-source licenses"
   },
@@ -1204,6 +1205,7 @@
     "mobile.cacheCovers": "カバー",
     "mobile.cacheBuffer": "再生中（一時ファイル）",
     "mobile.cacheClearFailed": "一部のキャッシュを削除できませんでした。もう一度お試しください。",
+    "mobile.offlineLibrary": "サーバーに接続できません。この端末に保存したライブラリを表示しています。ダウンロード済みの曲は再生できます。",
     "mobile.moreActions": "その他の操作",
     "mobile.licenses": "オープンソースライセンス"
   },
@@ -1808,6 +1810,7 @@
     "mobile.cacheCovers": "커버",
     "mobile.cacheBuffer": "재생 중(임시)",
     "mobile.cacheClearFailed": "일부 캐시 파일을 삭제하지 못했습니다. 다시 시도하세요.",
+    "mobile.offlineLibrary": "서버에 연결할 수 없습니다. 이 기기에 저장된 보관함을 표시하며, 다운로드한 곡은 재생할 수 있습니다.",
     "mobile.moreActions": "더 많은 작업",
     "mobile.licenses": "오픈 소스 라이선스"
   },
@@ -2412,6 +2415,7 @@
     "mobile.cacheCovers": "Pochettes",
     "mobile.cacheBuffer": "Lecture en cours (temporaire)",
     "mobile.cacheClearFailed": "Certains fichiers du cache n’ont pas pu être supprimés. Réessayez.",
+    "mobile.offlineLibrary": "Service inaccessible. Affichage de la bibliothèque enregistrée sur cet appareil ; les téléchargements restent lisibles.",
     "mobile.moreActions": "Plus d’actions",
     "mobile.licenses": "Licences libres"
   },
@@ -3016,6 +3020,7 @@
     "mobile.cacheCovers": "Carátulas",
     "mobile.cacheBuffer": "En reproducción (temporal)",
     "mobile.cacheClearFailed": "No se pudieron eliminar algunos archivos de la caché. Inténtalo de nuevo.",
+    "mobile.offlineLibrary": "No se puede conectar. Se muestra la biblioteca guardada en este dispositivo; las descargas se pueden reproducir.",
     "mobile.moreActions": "Más acciones",
     "mobile.licenses": "Licencias de código abierto"
   },
@@ -3620,6 +3625,7 @@
     "mobile.cacheCovers": "封面",
     "mobile.cacheBuffer": "正在播放（临时）",
     "mobile.cacheClearFailed": "部分缓存文件未能删除，请重试。",
+    "mobile.offlineLibrary": "无法连接服务，正在显示本机保存的曲库，已下载的曲目仍可播放。",
     "mobile.moreActions": "更多操作",
     "mobile.licenses": "开源许可"
   },
@@ -4224,6 +4230,7 @@
     "mobile.cacheCovers": "封面",
     "mobile.cacheBuffer": "正在播放（暫存）",
     "mobile.cacheClearFailed": "部分快取檔案未能刪除，請重試。",
+    "mobile.offlineLibrary": "無法連線至服務，正在顯示本機儲存的曲庫，已下載的曲目仍可播放。",
     "mobile.moreActions": "更多操作",
     "mobile.licenses": "開源授權"
   }

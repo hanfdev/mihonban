@@ -16,6 +16,8 @@ final class CatalogStore {
     // Seeded catalogs (demo mode) never contact a service.
     private(set) var offline = false
     var error: String?
+    // Supplies full albums kept with offline downloads when the service is unreachable.
+    @ObservationIgnored var localAlbum: (@MainActor (String) -> Album?)?
     @ObservationIgnored private let session: SessionStore
     @ObservationIgnored private let favorites: FavoritesStore
     @ObservationIgnored private var disk: SnapshotStore?
@@ -103,7 +105,7 @@ final class CatalogStore {
             rebuildIndex()
             await persist()
         } catch {
-            if token == generation && !(error is CancellationError) { self.error = error.localizedDescription }
+            if token == generation && !(error is CancellationError) { self.error = describe(error) }
         }
     }
 
@@ -127,7 +129,7 @@ final class CatalogStore {
             applyTracks(loaded)
             await persist()
         } catch {
-            if token == generation && !(error is CancellationError) { self.error = error.localizedDescription }
+            if token == generation && !(error is CancellationError) { self.error = describe(error) }
         }
     }
 
@@ -150,8 +152,10 @@ final class CatalogStore {
         } catch {
             // Offline metadata is only available within the previously authorized
             // service and role. Authorization failures never fall back to disk.
-            if token == generation, error is URLError,
-               let saved = await disk?.load(scope + ":album:" + id, as: Album.self) { return saved }
+            if token == generation, error is URLError {
+                if let saved = await disk?.load(scope + ":album:" + id, as: Album.self) { return saved }
+                if let local = localAlbum?(id), local.hidden != true || session.canSeeHidden { return local }
+            }
             throw error
         }
     }
@@ -179,6 +183,12 @@ final class CatalogStore {
     func biography(_ name: String) async throws -> String {
         if offline { return "" }
         return try await session.perform { try await $0.biography(artist: name) }
+    }
+
+    // A saved library stays usable when the service cannot be reached.
+    private func describe(_ error: Error) -> String {
+        if isUnreachable(error) && !albums.isEmpty { return L10n.text("mobile.offlineLibrary") }
+        return error.localizedDescription
     }
 
     private func applyTracks(_ value: Versioned<[Track]>) {

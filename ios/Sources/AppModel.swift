@@ -1,13 +1,31 @@
 import Foundation
 import Observation
 
+// The last session the service authorized, kept so a cold launch without a
+// connection can reopen that service's saved library and downloads.
+struct RememberedSession: Codable, Equatable {
+    var address: String
+    var role: String?
+    var guest: Bool?
+    private static let key = "rememberedSession"
+
+    static func load(_ defaults: UserDefaults) -> RememberedSession? {
+        defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(RememberedSession.self, from: $0) }
+    }
+
+    static func save(_ value: RememberedSession?, _ defaults: UserDefaults) {
+        if let value, let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: key) }
+        else { defaults.removeObject(forKey: key) }
+    }
+}
+
 // Composes the service session with the catalog, favorites and player stores.
 // Domain rules live in those stores; this type only wires connection state.
 @MainActor @Observable
 final class AppModel {
     var connecting = false
     var error: String?
-    var address = UserDefaults.standard.string(forKey: "serviceAddress") ?? ""
+    var address: String
     var password = ""
     var rememberPassword = true
     var demo = false
@@ -22,14 +40,21 @@ final class AppModel {
     private(set) var media: MediaCache?
     private(set) var downloads: DownloadStore?
     @ObservationIgnored private var generation = UUID()
+    @ObservationIgnored private let defaults: UserDefaults
+    // Tests substitute the transport; nil uses the app's shared configuration.
+    @ObservationIgnored private let transport: URLSession?
 
-    init() {
+    init(defaults: UserDefaults = .standard, transport: URLSession? = nil) {
+        self.defaults = defaults
+        self.transport = transport
+        address = defaults.string(forKey: "serviceAddress") ?? ""
         let session = SessionStore()
         let favorites = FavoritesStore(session: session)
         sessionStore = session
         self.favorites = favorites
         catalog = CatalogStore(session: session, favorites: favorites)
         player.cache = cache
+        catalog.localAlbum = { [weak self] id in self?.downloads?.albums[id] }
     }
 
     var client: APIClient? { sessionStore.client }
@@ -114,8 +139,13 @@ final class AppModel {
         error = nil
         let token = generation
         defer { if token == generation { connecting = false } }
+        let api: APIClient
+        do { api = try APIClient(address: address, session: transport) }
+        catch {
+            self.error = (error as? ClientError)?.errorDescription ?? L10n.text("mobile.connectionFailed")
+            return
+        }
         do {
-            let api = try APIClient(address: address)
             let saved = CredentialStore.read(for: api.baseURL.absoluteString)
             let supplied = automatic ? (saved ?? "") : password
             let state: SessionInfo
@@ -130,18 +160,32 @@ final class AppModel {
             }
             password = ""
             address = api.baseURL.absoluteString
-            UserDefaults.standard.set(address, forKey: "serviceAddress")
-            favorites.reset()
-            // Metadata is shown only after authorization, never while signed out.
-            sessionStore.connect(api, info: state)
-            player.connect(api)
-            await attachStorage(api)
-            guard token == generation else { return }
-            await catalog.connect()
+            defaults.set(address, forKey: "serviceAddress")
+            RememberedSession.save(RememberedSession(address: address, role: state.role, guest: state.guest), defaults)
+            await open(api, info: state, token: token)
         } catch {
             guard token == generation else { return }
+            if isRejected(error) { RememberedSession.save(nil, defaults) }
+            else if automatic, isUnreachable(error), let saved = RememberedSession.load(defaults),
+                    saved.address == api.baseURL.absoluteString {
+                // Only a service that authorized this device before, and is now
+                // unreachable rather than refusing, reopens from local data.
+                password = ""
+                await open(api, info: SessionInfo(ok: true, role: saved.role, guest: saved.guest), token: token)
+                return
+            }
             self.error = (error as? ClientError)?.errorDescription ?? L10n.text("mobile.connectionFailed")
         }
+    }
+
+    private func open(_ api: APIClient, info: SessionInfo, token: UUID) async {
+        favorites.reset()
+        // Metadata is shown only after authorization, never while signed out.
+        sessionStore.connect(api, info: info)
+        player.connect(api)
+        await attachStorage(api)
+        guard token == generation else { return }
+        await catalog.connect()
     }
 
     func refresh() async {
@@ -194,6 +238,7 @@ final class AppModel {
             client.clearCookies()
             _ = CredentialStore.save(nil, for: client.baseURL.absoluteString)
         }
+        RememberedSession.save(nil, defaults)
         sessionStore.invalidate()
         catalog.reset()
         favorites.reset()

@@ -11,7 +11,7 @@ struct DownloadsView: View {
                 Section {
                     Button(L10n.text("mobile.retryAll"), systemImage: "arrow.clockwise") { downloads.retryAll() }
                         .accessibilityIdentifier("downloads.retryAll")
-                } footer: { Text(L10n.text("mobile.downloadInterruptedHint")) }
+                } footer: { Text(L10n.text("mobile.downloadInterruptedHint")) }.listRowBackground(Theme.surface)
             }
             ForEach(downloads.groups) { group in
                 Section {
@@ -28,7 +28,7 @@ struct DownloadsView: View {
                                 }
                             }
                     }
-                } header: { header(group) }
+                } header: { header(group) }.listRowBackground(Theme.surface)
             }
         }
         .overlay {

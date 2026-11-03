@@ -69,6 +69,7 @@ const extra = {
   cacheCovers: ['Covers', 'カバー', '커버', 'Pochettes', 'Carátulas', '封面', '封面'],
   cacheBuffer: ['Playing now (temporary)', '再生中（一時ファイル）', '재생 중(임시)', 'Lecture en cours (temporaire)', 'En reproducción (temporal)', '正在播放（临时）', '正在播放（暫存）'],
   cacheClearFailed: ['Some cached files could not be removed. Try again.', '一部のキャッシュを削除できませんでした。もう一度お試しください。', '일부 캐시 파일을 삭제하지 못했습니다. 다시 시도하세요.', 'Certains fichiers du cache n’ont pas pu être supprimés. Réessayez.', 'No se pudieron eliminar algunos archivos de la caché. Inténtalo de nuevo.', '部分缓存文件未能删除，请重试。', '部分快取檔案未能刪除，請重試。'],
+  offlineLibrary: ['The service is unreachable. Showing the library saved on this device; downloads still play.', 'サーバーに接続できません。この端末に保存したライブラリを表示しています。ダウンロード済みの曲は再生できます。', '서버에 연결할 수 없습니다. 이 기기에 저장된 보관함을 표시하며, 다운로드한 곡은 재생할 수 있습니다.', 'Service inaccessible. Affichage de la bibliothèque enregistrée sur cet appareil ; les téléchargements restent lisibles.', 'No se puede conectar. Se muestra la biblioteca guardada en este dispositivo; las descargas se pueden reproducir.', '无法连接服务，正在显示本机保存的曲库，已下载的曲目仍可播放。', '無法連線至服務，正在顯示本機儲存的曲庫，已下載的曲目仍可播放。'],
   moreActions: ['More actions', 'その他の操作', '더 많은 작업', 'Plus d’actions', 'Más acciones', '更多操作', '更多操作'],
   licenses: ['Open-source licenses', 'オープンソースライセンス', '오픈 소스 라이선스', 'Licences libres', 'Licencias de código abierto', '开源许可', '開源授權'],
 }

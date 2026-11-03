@@ -7,6 +7,25 @@ struct ClientError: LocalizedError, Sendable {
     static let sessionExpired = ClientError(key: "mobile.sessionExpired")
 }
 
+// The service could not be reached at all, as opposed to answering with an error.
+func isUnreachable(_ error: Error) -> Bool {
+    guard let error = error as? URLError else { return false }
+    switch error.code {
+    case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost,
+         .dnsLookupFailed, .timedOut, .internationalRoamingOff, .dataNotAllowed, .callIsActive:
+        return true
+    default:
+        return false
+    }
+}
+
+// The service answered and refused the credentials or the session.
+func isRejected(_ error: Error) -> Bool {
+    if let error = error as? ClientError { return ["mobile.sessionExpired", "mobile.wrongPassword"].contains(error.key) }
+    if let error = error as? ServerError { return error.status == 401 || error.status == 403 }
+    return false
+}
+
 final class RedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
