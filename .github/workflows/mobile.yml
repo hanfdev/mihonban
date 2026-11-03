@@ -88,6 +88,10 @@ jobs:
           if [ -d build/Mihonban.xcarchive/dSYMs ]; then
             cp -R build/Mihonban.xcarchive/dSYMs build/diagnostics/dSYMs
           fi
+          # App and background transfer daemon messages, for transfer failures.
+          xcrun simctl spawn booted log show --last 20m --style compact \
+            --predicate 'subsystem == "org.mihonban.ios" OR process == "nsurlsessiond" OR (process == "Mihonban" AND subsystem == "com.apple.CFNetwork")' \
+            > build/diagnostics/simulator.log 2>&1 || true
       - name: Upload crash diagnostics
         if: always()
         uses: actions/upload-artifact@v4

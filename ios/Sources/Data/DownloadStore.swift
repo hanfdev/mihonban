@@ -262,7 +262,9 @@ final class DownloadStore {
                 } catch {
                     guard records[id]?.attempt == record.attempt else { return }
                     records[id]?.state = .failed
-                    records[id]?.status = (error as? ServerError)?.status ?? -1
+                    let status = (error as? ServerError)?.status ?? (error as? URLError)?.code.rawValue ?? -1
+                    records[id]?.status = status
+                    DownloadEngine.log.error("resolve failed: \(status, privacy: .public)")
                     save()
                 }
             }

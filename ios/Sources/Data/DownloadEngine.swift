@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UIKit
 
 // Identifies one transfer across process launches. The background session
@@ -49,6 +50,7 @@ nonisolated enum DownloadEvent: Sendable {
 // quit cancels them, which the store reports as interrupted on next launch.
 nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     static let identifier = "org.mihonban.ios.downloads"
+    static let log = Logger(subsystem: "org.mihonban.ios", category: "downloads")
     static let shared = DownloadEngine(configuration: DownloadEngine.background(), root: MediaPaths.supportRoot)
 
     let root: URL
@@ -222,7 +224,15 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
         lock.unlock()
         if let error = error as? URLError, error.code == .cancelled { emit(.cancelled(key)); return }
         if error == nil, outcome == 0 { emit(.finished(key, bytes: task.countOfBytesReceived)) }
-        else { emit(.failed(key, status: outcome ?? -1)) }
+        else {
+            // HTTP statuses are positive; transport failures keep their negative
+            // URLError code so the row can say why. Addresses are never logged.
+            let code = outcome ?? (error as NSError?)?.code ?? -1
+            if let error = error as NSError? {
+                Self.log.error("transfer failed: \(error.domain, privacy: .public) \(error.code, privacy: .public)")
+            }
+            emit(.failed(key, status: code))
+        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,

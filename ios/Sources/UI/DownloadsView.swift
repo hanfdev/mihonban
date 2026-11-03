@@ -109,10 +109,16 @@ private struct DownloadRow: View {
         case .queued:
             Text(L10n.text("mobile.downloadQueued")).font(.caption).foregroundStyle(.secondary)
         case .failed:
-            Text(L10n.text("mobile.downloadFailed")).font(.caption).foregroundStyle(Theme.accent)
+            Text(L10n.text("mobile.downloadFailed") + code).font(.caption).foregroundStyle(Theme.accent)
         case .interrupted:
             Text(L10n.text("mobile.downloadInterrupted")).font(.caption).foregroundStyle(Theme.accent)
         }
+    }
+
+    // HTTP statuses read as "HTTP 404"; transport failures show their code.
+    private var code: String {
+        guard let status = record.status, status != 0 else { return "" }
+        return status > 0 ? " · HTTP \(status)" : " · \(status)"
     }
 
     @ViewBuilder private var indicator: some View {
