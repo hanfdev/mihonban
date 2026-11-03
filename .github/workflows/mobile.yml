@@ -1,0 +1,114 @@
+name: iOS preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mobile-dev]
+    paths: ["ios/**", ".github/workflows/mobile.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: Build and test native iOS
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode and install build tools
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+          brew install xcodegen ffmpeg
+      - uses: actions/cache@v4
+        with:
+          path: .spm
+          key: ios-spm-${{ runner.arch }}-${{ hashFiles('ios/project.yml', 'ios/Package.resolved') }}
+      - name: Prepare synthetic audio and project
+        run: |
+          mkdir -p ios/TestFixtures ios/Resources/ThirdParty
+          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a libmp3lame -q:a 3 ios/TestFixtures/tone.mp3
+          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a flac ios/TestFixtures/tone.flac
+          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a libvorbis -q:a 4 ios/TestFixtures/tone.ogg
+          xcodegen generate --spec ios/project.yml
+          if [ -f ios/Package.resolved ]; then
+            mkdir -p ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+            cp ios/Package.resolved ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          fi
+          xcodebuild -resolvePackageDependencies -project ios/Mihonban.xcodeproj -scheme Mihonban -clonedSourcePackagesDirPath .spm
+          python3 -I ios/tools/acknowledgements.py .spm/checkouts ios/Resources/ThirdParty/Acknowledgements.txt
+          xcodegen generate --spec ios/project.yml
+      - name: Build unsigned device archive
+        run: |
+          set -o pipefail
+          xcodebuild archive -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/Mihonban.xcarchive \
+            -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} CODE_SIGNING_ALLOWED=NO \
+            | tee build-device.log
+      - name: Package IPA and dependency lock
+        run: |
+          mkdir -p build/export/Payload
+          cp -R build/Mihonban.xcarchive/Products/Applications/Mihonban.app build/export/Payload/
+          cd build/export
+          zip -qry Mihonban.ipa Payload
+          shasum -a 256 Mihonban.ipa > SHA256SUMS
+          cd ../..
+          cp ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved build/export/Package.resolved
+          cp ios/Resources/ThirdParty/Acknowledgements.txt build/export/
+      - name: Run simulator tests
+        run: |
+          set -o pipefail
+          python3 -I ios/tools/fixture-server.py ios/TestFixtures > fixture-server.log 2>&1 &
+          FIXTURE_PID=$!
+          trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"] == "iPhone 17"))')
+          xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
+            -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
+            -resultBundlePath build/Tests.xcresult CODE_SIGNING_ALLOWED=NO \
+            | tee build-simulator.log
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          if [ -d build/Tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/screenshots || true
+          fi
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mihonban-iOS-${{ github.run_number }}
+          path: |
+            build/export/Mihonban.ipa
+            build/export/SHA256SUMS
+            build/export/Package.resolved
+            build/export/Acknowledgements.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload build and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-test-results-${{ github.run_number }}
+          path: |
+            build/Tests.xcresult
+            build/screenshots
+            build-device.log
+            build-simulator.log
+            fixture-server.log
+          retention-days: 14
+      - name: Save relinkable build objects
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-relink-${{ github.run_number }}
+          path: |
+            build/DerivedData/Build/Intermediates.noindex/ArchiveIntermediates/Mihonban/IntermediateBuildFilesPath/**/Objects-normal/arm64/*.o
+            build/DerivedData/Build/Intermediates.noindex/ArchiveIntermediates/Mihonban/BuildProductsPath/Release-iphoneos/**/*.a
+            build/DerivedData/Build/Intermediates.noindex/ArchiveIntermediates/Mihonban/BuildProductsPath/Release-iphoneos/**/*.framework
+            build/export/Package.resolved
+          retention-days: 30

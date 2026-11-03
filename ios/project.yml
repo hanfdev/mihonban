@@ -1,0 +1,107 @@
+name: Mihonban
+options:
+  bundleIdPrefix: org.mihonban
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: NO
+    CLANG_ENABLE_MODULES: YES
+    SWIFT_EMIT_LOC_STRINGS: NO
+packages:
+  SFBAudioEngine:
+    url: https://github.com/sbooth/SFBAudioEngine
+    revision: 8455c970de34a63422857c4b4d6fffc85b822b47
+targets:
+  Mihonban:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - path: Resources
+        buildPhase: resources
+      - path: ../desktop/assets/ShipporiMincho-SemiBold.ttf
+        buildPhase: resources
+      - path: ../desktop/assets/Inter-Regular.ttf
+        buildPhase: resources
+      - path: ../desktop/assets/Inter-SemiBold.ttf
+        buildPhase: resources
+      - path: ../desktop/assets/ShipporiMincho-OFL.txt
+        buildPhase: resources
+      - path: ../desktop/assets/Inter-OFL.txt
+        buildPhase: resources
+      - path: ../cloud/web/public/fonts/GenRyuMincho-OFL-1.1.txt
+        buildPhase: resources
+    dependencies:
+      - package: SFBAudioEngine
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.mihonban.ios
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Audio/Bridge.h
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        OTHER_LDFLAGS: ["$(inherited)", "-ObjC"]
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: 見本盤
+        CFBundleLocalizations: [en, ja, ko, fr, es, zh-Hans, zh-Hant]
+        ITSAppUsesNonExemptEncryption: false
+        UIBackgroundModes: [audio]
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        UIApplicationSupportsIndirectInputEvents: true
+        NSLocalNetworkUsageDescription: Connect to your Mihonban server on the local network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        UIAppFonts:
+          - ShipporiMincho-SemiBold.ttf
+          - Inter-Regular.ttf
+          - Inter-SemiBold.ttf
+          - GenRyuMincho-Fallback.ttf
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+  MihonbanTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+      - path: TestFixtures
+        buildPhase: resources
+    dependencies:
+      - target: Mihonban
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  MihonbanUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: UITests
+    dependencies:
+      - target: Mihonban
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Mihonban:
+    build:
+      targets:
+        Mihonban: all
+    test:
+      gatherCoverageData: true
+      targets:
+        - MihonbanTests
+        - MihonbanUITests
