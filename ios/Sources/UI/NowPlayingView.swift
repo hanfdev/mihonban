@@ -127,16 +127,22 @@ struct QueueView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    Text(L10n.text("mobile.queue")).font(Theme.title(30)).foregroundStyle(Theme.ink)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
+                }
                 if let current = player.current {
-                    Section(L10n.text("mobile.nowPlaying")) { row(current).foregroundStyle(Theme.accent) }
+                    Section { row(current).foregroundStyle(Theme.accent) } header: { header(L10n.text("mobile.nowPlaying")) }
                 }
-                Section(L10n.text("mobile.upNext")) {
-                    ForEach(player.queue.upcoming) { row($0) }
-                }
+                Section { ForEach(player.queue.upcoming) { row($0) } } header: { header(L10n.text("mobile.upNext")) }
             }.scrollContentBackground(.hidden).background(Theme.background)
-                .navigationTitle(L10n.text("mobile.queue"))
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
         }.tint(Theme.accent)
+    }
+    private func header(_ text: String) -> some View {
+        Text(text).font(Theme.body(12)).foregroundStyle(Theme.faint).textCase(nil)
     }
     private func row(_ track: Track) -> some View {
         VStack(alignment: .leading, spacing: 5) {

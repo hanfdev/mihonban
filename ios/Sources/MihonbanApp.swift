@@ -61,14 +61,16 @@ struct ConnectionView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L10n.text("mobile.address")).foregroundStyle(Theme.dim)
-                        TextField("https://music.example.com", text: $model.address)
+                        TextField(L10n.text("mobile.address"), text: $model.address,
+                                  prompt: Text(verbatim: "https://music.example.com").foregroundStyle(Theme.faint))
                             .keyboardType(.URL).textContentType(.URL).textInputAutocapitalization(.never)
                             .autocorrectionDisabled().accessibilityIdentifier("connection.address")
                             .padding(14).background(Theme.raised, in: RoundedRectangle(cornerRadius: 10))
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L10n.text("login.password")).foregroundStyle(Theme.dim)
-                        SecureField(L10n.text("mobile.optionalPassword"), text: $model.password)
+                        SecureField(L10n.text("login.password"), text: $model.password,
+                                    prompt: Text(L10n.text("mobile.optionalPassword")).foregroundStyle(Theme.faint))
                             .textContentType(.password).accessibilityIdentifier("connection.password")
                             .padding(14).background(Theme.raised, in: RoundedRectangle(cornerRadius: 10))
                     }
@@ -88,6 +90,7 @@ struct ConnectionView: View {
                 }
                 .buttonStyle(.plain).background(Theme.accent, in: RoundedRectangle(cornerRadius: 10))
                 .disabled(model.connecting || model.address.isEmpty).accessibilityIdentifier("connection.connect")
+                .opacity(model.connecting || model.address.isEmpty ? 0.55 : 1)
                 Text(L10n.text("mobile.m0Notice")).font(Theme.body(12)).foregroundStyle(Theme.faint)
             }.padding(28).frame(maxWidth: 500).frame(maxWidth: .infinity).padding(.top, 42)
         }.background(Theme.background).scrollDismissesKeyboard(.interactively)
@@ -115,7 +118,7 @@ struct SettingsView: View {
                 }.listRowBackground(Theme.surface)
             }
             .scrollContentBackground(.hidden).background(Theme.background)
-            .navigationTitle(L10n.text("mobile.settings"))
+            .navigationTitle(L10n.text("mobile.settings")).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
             .confirmationDialog(L10n.text("mobile.disconnectConfirm"), isPresented: $confirmDisconnect, titleVisibility: .visible) {
                 Button(L10n.text("login.signOut"), role: .destructive) { dismiss(); model.disconnect() }
