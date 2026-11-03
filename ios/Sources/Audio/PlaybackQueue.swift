@@ -28,9 +28,10 @@ struct PlaybackQueue: Sendable {
             let prefix = Array(order.prefix(cursor + 1))
             order = prefix + order.dropFirst(cursor + 1).shuffled()
         } else {
+            // Restore album order for what is still queued, keeping user edits.
             let history = Array(order.prefix(cursor))
-            let visited = Set(history + [currentIndex])
-            order = history + [currentIndex] + tracks.indices.filter { !visited.contains($0) }
+            let remaining = Set(order.dropFirst(cursor + 1))
+            order = history + [currentIndex] + tracks.indices.filter { remaining.contains($0) }
         }
     }
 
@@ -53,6 +54,41 @@ struct PlaybackQueue: Sendable {
     mutating func previous() -> Bool {
         guard cursor > 0 else { return false }
         cursor -= 1
+        return true
+    }
+
+    // Queue edits address upcoming entries by position, since one track may be
+    // queued more than once. Offsets are relative to `upcoming`.
+    mutating func enqueue(_ items: [Track], next: Bool) {
+        guard !items.isEmpty else { return }
+        let start = tracks.count
+        tracks += items
+        let added = Array(start..<tracks.count)
+        if order.isEmpty { order = added; cursor = 0; return }
+        if next { order.insert(contentsOf: added, at: min(cursor + 1, order.count)) }
+        else { order += added }
+    }
+
+    mutating func removeUpcoming(at offsets: IndexSet) {
+        let positions = offsets.map { cursor + 1 + $0 }.filter { order.indices.contains($0) }
+        for position in positions.sorted(by: >) { order.remove(at: position) }
+    }
+
+    mutating func moveUpcoming(from source: IndexSet, to destination: Int) {
+        let upcoming = Array(order.dropFirst(cursor + 1))
+        let moving = source.sorted().filter { upcoming.indices.contains($0) }.map { upcoming[$0] }
+        var rest = upcoming.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let insertion = destination - source.filter { $0 < destination }.count
+        rest.insert(contentsOf: moving, at: min(max(0, insertion), rest.count))
+        order = Array(order.prefix(cursor + 1)) + rest
+    }
+
+    // Jumping skips the entries in between, as other players do.
+    mutating func jumpToUpcoming(_ offset: Int) -> Bool {
+        let position = cursor + 1 + offset
+        guard order.indices.contains(position) else { return false }
+        order.removeSubrange((cursor + 1)..<position)
+        cursor += 1
         return true
     }
 

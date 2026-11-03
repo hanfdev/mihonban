@@ -1,26 +1,39 @@
 import Foundation
 import Observation
 
+// Composes the service session with the catalog, favorites and player stores.
+// Domain rules live in those stores; this type only wires connection state.
 @MainActor @Observable
 final class AppModel {
-    var client: APIClient?
-    var session: SessionInfo?
-    var albums: [Album] = []
     var connecting = false
-    var refreshing = false
     var error: String?
-    var query = ""
     var address = UserDefaults.standard.string(forKey: "serviceAddress") ?? ""
     var password = ""
     var rememberPassword = true
     var demo = false
+    // A route requested outside a navigation stack, such as from Now Playing.
+    var pendingRoute: CatalogRoute?
     var cache = CacheSettings()
+    let sessionStore: SessionStore
+    let favorites: FavoritesStore
+    let catalog: CatalogStore
     let player = PlayerModel()
-
-    init() { player.cache = cache }
-    @ObservationIgnored private var snapshot: LibrarySnapshot?
     @ObservationIgnored private var generation = UUID()
-    @ObservationIgnored private var details: [String: Album] = [:]
+
+    init() {
+        let session = SessionStore()
+        let favorites = FavoritesStore(session: session)
+        sessionStore = session
+        self.favorites = favorites
+        catalog = CatalogStore(session: session, favorites: favorites)
+        player.cache = cache
+    }
+
+    var client: APIClient? { sessionStore.client }
+    var session: SessionInfo? { sessionStore.info }
+    // Image requests are skipped in demo mode, whose service address is fake.
+    var imageClient: APIClient? { demo ? nil : sessionStore.client }
+    var signedIn: Bool { sessionStore.info?.ok == true && !sessionStore.needsSignIn }
 
     var cacheUsage: Int { AudioCache.usedBytes(audioCacheDirectory) }
 
@@ -31,22 +44,14 @@ final class AppModel {
 
     func clearCache() { AudioCache.remove(audioCacheDirectory) }
 
-    var visibleAlbums: [Album] {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return albums }
-        return albums.filter { album in
-            [album.title, album.artist, album.artistSort ?? "", (album.genres ?? []).joined(separator: " ")]
-                .contains { $0.localizedStandardContains(query) }
-        }
-    }
-
     func bootstrap() async {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--demo") {
+        if ProcessInfo.processInfo.arguments.contains("--demo"), let api = try? APIClient(address: "https://example.invalid") {
             demo = true
-            client = try? APIClient(address: "https://example.invalid")
-            albums = DemoLibrary.albums
-            session = SessionInfo(ok: true, role: "user", guest: true)
-            if let client { player.connect(client, demoURL: try? DemoLibrary.tone()) }
+            sessionStore.connect(api, info: SessionInfo(ok: true, role: "user", guest: true))
+            let albums = DemoLibrary.albums
+            catalog.seed(albums: albums, artists: [], tracks: albums.flatMap(\.normalizedTracks))
+            player.connect(api, demoURL: try? DemoLibrary.tone())
             return
         }
         #endif
@@ -77,15 +82,12 @@ final class AppModel {
             password = ""
             address = api.baseURL.absoluteString
             UserDefaults.standard.set(address, forKey: "serviceAddress")
-            client = api
-            session = state
+            favorites.reset()
             // Metadata is shown only after authorization, never while signed out.
-            snapshot = api.savedLibrary()
-            albums = snapshot?.albums ?? []
-            details.removeAll()
+            sessionStore.connect(api, info: state)
             AudioCache.prune(audioCacheDirectory, limit: cache.limitBytes, enabled: cache.enabled)
             player.connect(api)
-            await refresh()
+            await catalog.connect()
         } catch {
             guard token == generation else { return }
             self.error = (error as? ClientError)?.errorDescription ?? L10n.text("mobile.connectionFailed")
@@ -93,58 +95,54 @@ final class AppModel {
     }
 
     func refresh() async {
-        guard let client, !demo, !refreshing else { return }
-        refreshing = true
-        let token = generation
-        defer { if token == generation { refreshing = false } }
-        do {
-            let updated: LibrarySnapshot
-            do { updated = try await client.library(previous: snapshot) }
-            catch let error as ClientError where error.key == "mobile.sessionExpired" {
-                guard let password = CredentialStore.read(for: client.baseURL.absoluteString) else { throw error }
-                let state = try await client.login(password: password)
-                guard token == generation else { return }
-                session = state
-                updated = try await client.library(previous: snapshot)
-            }
-            guard token == generation else { return }
-            snapshot = updated
-            albums = updated.albums
-            client.saveLibrary(updated)
-        } catch {
-            guard token == generation else { return }
-            self.error = (error as? ClientError)?.errorDescription ?? L10n.text("mobile.connectionFailed")
-        }
+        guard signedIn, !demo else { return }
+        await catalog.refresh()
     }
 
     func album(_ id: String) async throws -> Album {
-        #if DEBUG
-        if demo, let album = albums.first(where: { $0.id == id }) { return album }
-        #endif
-        if let value = details[id] { return value }
-        guard let client else { throw ClientError.connection }
-        let token = generation
-        let album = try await client.album(id)
-        guard token == generation else { throw CancellationError() }
-        details[id] = album
-        return album
+        try await catalog.album(id)
+    }
+
+    func playAlbum(_ id: String, shuffle: Bool = false) async {
+        do {
+            let tracks = try await catalog.album(id).normalizedTracks
+            guard !tracks.isEmpty else { return }
+            player.play(tracks, shuffle: shuffle)
+        } catch { player.error = error.localizedDescription }
+    }
+
+    func enqueueAlbum(_ id: String, next: Bool) async {
+        do { player.enqueue(try await catalog.album(id).normalizedTracks, next: next) }
+        catch { player.error = error.localizedDescription }
+    }
+
+    // Matches the web artist page: owned albums in catalog order, then guest appearances.
+    func playArtist(_ name: String, shuffle: Bool = false) async {
+        do {
+            var tracks: [Track] = []
+            let owned = catalog.index.albums.filter { $0.credits.contains { $0.name == name } }
+                .sorted { ($0.year ?? 0, $0.title) < ($1.year ?? 0, $1.title) }
+            for album in owned { tracks += try await catalog.album(album.id).normalizedTracks }
+            tracks += try await catalog.artistTracks(name)
+            guard !tracks.isEmpty else { return }
+            player.play(tracks, shuffle: shuffle)
+        } catch { player.error = error.localizedDescription }
     }
 
     func disconnect() {
         generation = UUID()
         player.stop()
-        client?.clearCookies()
-        if let client { CredentialStore.save(nil, for: client.baseURL.absoluteString) }
-        client = nil
-        session = nil
-        snapshot = nil
-        albums = []
-        details.removeAll()
-        query = ""
+        if let client {
+            client.clearCookies()
+            _ = CredentialStore.save(nil, for: client.baseURL.absoluteString)
+        }
+        sessionStore.invalidate()
+        catalog.reset()
+        favorites.reset()
+        pendingRoute = nil
         password = ""
         error = nil
         connecting = false
-        refreshing = false
         demo = false
     }
 }

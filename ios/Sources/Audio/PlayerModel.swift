@@ -45,8 +45,10 @@ final class PlayerModel: NSObject {
 
     private struct Entry {
         let audio: PreparedAudio
-        let queue: PlaybackQueue
+        var queue: PlaybackQueue
         let generation: UUID
+        // True while the entry holds the predecoded next track, not the current one.
+        var isNext: Bool
     }
 
     override init() {
@@ -160,8 +162,18 @@ final class PlayerModel: NSObject {
         if !immediate { nextIsPreparing = false }
         switch result {
         case .success(let audio):
+            // The queue may have been edited while decoding. The current entry
+            // always follows the live queue; a stale prefetch is discarded.
+            var latest = snapshot
+            if immediate { latest = queue }
+            else if let next = queue.nextSnapshot(), next.current?.id == snapshot.current?.id { latest = next }
+            else {
+                audio.source?.cancel()
+                prepareNext()
+                return
+            }
             let id = ObjectIdentifier(audio.decoder)
-            entries[id] = Entry(audio: audio, queue: snapshot, generation: token)
+            entries[id] = Entry(audio: audio, queue: latest, generation: token, isNext: !immediate)
             do {
                 try engine.enqueue(audio.decoder, immediate: immediate)
                 if immediate {
@@ -188,6 +200,45 @@ final class PlayerModel: NSObject {
               entries.count == 1, pending.isEmpty,
               let next = queue.nextSnapshot(), next.current?.id != current?.id else { return }
         prepare(next, immediate: false)
+    }
+
+    func enqueue(_ tracks: [Track], next: Bool) {
+        guard !tracks.isEmpty, client != nil else { return }
+        let wasEmpty = current == nil
+        queue.enqueue(tracks, next: next)
+        if wasEmpty { wantsPlayback = true; beginCurrent() } else { queueEdited() }
+    }
+
+    func removeUpcoming(at offsets: IndexSet) {
+        queue.removeUpcoming(at: offsets)
+        queueEdited()
+    }
+
+    func moveUpcoming(from source: IndexSet, to destination: Int) {
+        queue.moveUpcoming(from: source, to: destination)
+        queueEdited()
+    }
+
+    func jumpToUpcoming(_ offset: Int) {
+        guard queue.jumpToUpcoming(offset) else { return }
+        wantsPlayback = true
+        beginCurrent()
+    }
+
+    // Keep decoded entries consistent with an edited queue. The engine cannot
+    // drop predecoded audio, so a changed next track rebuilds at the current
+    // position; otherwise only the stored queue snapshots are refreshed.
+    private func queueEdited() {
+        let next = queue.nextSnapshot()
+        var stale = false
+        for (id, entry) in entries where entry.generation == generation {
+            if entry.isNext {
+                if let next, next.current?.id == entry.queue.current?.id { entries[id]?.queue = next }
+                else { stale = true }
+            } else { entries[id]?.queue = queue }
+        }
+        if stale { restart(at: elapsed, playing: wantsPlayback) }
+        else { prepareNext() }
     }
 
     func toggle() { wantsPlayback ? pause() : resume() }
@@ -321,6 +372,7 @@ final class PlayerModel: NSObject {
     private func rendered(_ id: ObjectIdentifier) {
         guard let entry = entries[id], entry.generation == generation else { return }
         let changed = current?.id != entry.queue.current?.id
+        entries[id]?.isNext = false
         queue = entry.queue
         current = queue.current
         isLoading = false

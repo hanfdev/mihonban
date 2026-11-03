@@ -22,35 +22,13 @@ struct MihonbanApp: App {
 
 struct RootView: View {
     @Bindable var model: AppModel
-    @State private var settings = false
 
     var body: some View {
         Group {
-            if model.session?.ok == true {
-                NavigationStack {
-                    LibraryView(model: model)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button { settings = true } label: {
-                                    Image(systemName: "slider.horizontal.3").font(.system(size: 20, weight: .medium))
-                                        .foregroundStyle(Theme.ink)
-                                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                                }.buttonStyle(.plain)
-                                    .accessibilityLabel(L10n.text("mobile.settings"))
-                                    .accessibilityIdentifier("settings.open")
-                            }
-                        }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if model.player.current != nil { MiniPlayer(model: model) }
-                }
-                .sheet(isPresented: $settings) { SettingsView(model: model) }
-            } else { ConnectionView(model: model) }
+            if model.signedIn { CatalogShell(model: model) }
+            else { ConnectionView(model: model) }
         }
         .background(Theme.background)
-        .sheet(isPresented: Binding(get: { model.player.isExpanded }, set: { model.player.isExpanded = $0 })) {
-            NowPlayingView(model: model)
-        }
     }
 }
 
@@ -88,7 +66,9 @@ struct ConnectionView: View {
                             .font(Theme.body(13)).foregroundStyle(Theme.dim)
                     }
                 }
-                if let error = model.error { Text(error).foregroundStyle(Theme.accent).font(Theme.body(14)) }
+                if let error = model.error ?? (model.sessionStore.needsSignIn ? L10n.text("mobile.sessionExpired") : nil) {
+                    Text(error).foregroundStyle(Theme.accent).font(Theme.body(14))
+                }
                 Button { Task { await model.connect() } } label: {
                     HStack {
                         if model.connecting { ProgressView().tint(Theme.ink) }
@@ -98,7 +78,6 @@ struct ConnectionView: View {
                 .buttonStyle(.plain).background(Theme.accent, in: RoundedRectangle(cornerRadius: 10))
                 .disabled(model.connecting || model.address.isEmpty).accessibilityIdentifier("connection.connect")
                 .opacity(model.connecting || model.address.isEmpty ? 0.55 : 1)
-                Text(L10n.text("mobile.m0Notice")).font(Theme.body(12)).foregroundStyle(Theme.faint)
             }.padding(28).frame(maxWidth: 500).frame(maxWidth: .infinity).padding(.top, 42)
         }.background(Theme.background).scrollDismissesKeyboard(.interactively)
     }
@@ -110,11 +89,26 @@ struct SettingsView: View {
     @State private var confirmDisconnect = false
     @State private var cacheUsed = 0
     @State private var cleared = false
+
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        return "\(info?["CFBundleShortVersionString"] as? String ?? "") (\(info?["CFBundleVersion"] as? String ?? ""))"
+    }
+
+    private var roleName: String {
+        switch model.session?.role ?? "" {
+        case "admin": L10n.text("login.roleAdmin")
+        case "user" where model.session?.guest == true: L10n.text("login.roleGuest")
+        default: L10n.text("login.roleListener")
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 Section(L10n.text("mobile.connection")) {
                     Text(model.demo ? "Demo" : model.address).font(Theme.body(14)).textSelection(.enabled)
+                    LabeledContent(L10n.text("login.menuTitle"), value: roleName)
                     Button(L10n.text("login.signOut"), role: .destructive) { confirmDisconnect = true }
                 }.listRowBackground(Theme.surface)
                 Section {
@@ -138,9 +132,8 @@ struct SettingsView: View {
                     Text(L10n.text(model.cache.enabled ? "mobile.cacheHint" : "mobile.cacheOffNotice"))
                 }.listRowBackground(Theme.surface)
                 Section {
-                    Text(L10n.text("mobile.m0Notice"))
                     Text(L10n.text("mobile.prefetchNotice"))
-                    Text("Mihonban 0.1.0 · M0").foregroundStyle(Theme.faint)
+                    Text("Mihonban " + version).foregroundStyle(Theme.faint)
                 }.font(Theme.body(14)).listRowBackground(Theme.surface)
                 Section {
                     NavigationLink(L10n.text("mobile.licenses")) { LicenseView() }

@@ -10,8 +10,14 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(album.waitForExistence(timeout: 15))
         screenshot("01-library")
 
+        // Artists are derived from album credits, so the tab works offline too.
+        openTab(app, "Artists")
+        XCTAssertTrue(element(app, "artist.Studio Ensemble").waitForExistence(timeout: 10))
+        openTab(app, "Albums")
+        XCTAssertTrue(album.waitForExistence(timeout: 10))
+
         // The cache section must be reachable and its actions must work.
-        app.buttons["settings.open"].tap()
+        app.buttons["settings.open"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Local cache"].waitForExistence(timeout: 10))
         app.swipeUp()
         let clear = app.buttons["cache.clear"]
@@ -19,7 +25,7 @@ final class MihonbanUITests: XCTestCase {
         clear.tap()
         XCTAssertTrue(app.staticTexts["Cache cleared"].waitForExistence(timeout: 5))
         screenshot("05-settings-cache")
-        app.buttons["Done"].tap()
+        app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(album.waitForExistence(timeout: 10))
 
         album.tap()
@@ -37,7 +43,14 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         app.buttons["Queue"].tap()
         XCTAssertTrue(app.staticTexts["Up next"].waitForExistence(timeout: 5))
+        // Jumping to an upcoming entry plays it and removes it from Up next.
+        let upcoming = element(app, "queue.0")
+        XCTAssertTrue(upcoming.waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, "queue.1").exists)
         screenshot("04-queue")
+        upcoming.tap()
+        let skipped = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element(app, "queue.1"))
+        wait(for: [skipped], timeout: 10)
     }
 
     func testRealConnectionAndNetworkPlayback() throws {
@@ -46,7 +59,7 @@ final class MihonbanUITests: XCTestCase {
         app.launch()
         let address = app.textFields["connection.address"]
         if !address.waitForExistence(timeout: 5) {
-            app.buttons["settings.open"].tap()
+            app.buttons["settings.open"].firstMatch.tap()
             app.buttons["Sign out"].tap()
             app.buttons["Sign out"].firstMatch.tap()
         }
@@ -74,6 +87,34 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(elapsed.waitForExistence(timeout: 20))
         XCTAssertEqual(app.state, .runningForeground)
         screenshot("06-network-playback")
+        app.buttons["player.collapse"].firstMatch.tap()
+
+        // Every tab must decode the worker-shaped fixture responses.
+        openTab(app, "Artists")
+        let ensemble = element(app, "artist.Test Ensemble")
+        XCTAssertTrue(ensemble.waitForExistence(timeout: 15))
+        XCTAssertTrue(element(app, "artist.Session Player").exists, "featured-only artists are listed")
+        ensemble.tap()
+        XCTAssertTrue(app.buttons["artist.play"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["artist.bio"].waitForExistence(timeout: 10))
+        screenshot("07-artist")
+
+        openTab(app, "Tracks")
+        XCTAssertTrue(element(app, "track.network-ogg").waitForExistence(timeout: 15))
+        screenshot("08-tracks")
+
+        openTab(app, "Search")
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText("guest")
+        XCTAssertTrue(element(app, "search.artist.Guest Singer").waitForExistence(timeout: 10))
+        screenshot("09-search")
+
+        openTab(app, "Picks")
+        XCTAssertTrue(element(app, "favorite.network-mp3").waitForExistence(timeout: 15))
+        screenshot("10-picks")
+        XCTAssertEqual(app.state, .runningForeground)
     }
 
     func testConnectionScreen() {
@@ -83,6 +124,15 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(app.textFields["connection.address"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["connection.connect"].isEnabled)
         screenshot("00-connect-zh")
+    }
+
+    private func openTab(_ app: XCUIApplication, _ label: String) {
+        let tab = app.tabBars.buttons[label]
+        if tab.waitForExistence(timeout: 3) { tab.tap() } else { app.buttons[label].firstMatch.tap() }
+    }
+
+    private func element(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     private func screenshot(_ name: String) {

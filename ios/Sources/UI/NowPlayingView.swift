@@ -8,7 +8,7 @@ struct MiniPlayer: View {
             HStack(spacing: 12) {
                 Button { model.player.isExpanded = true } label: {
                     HStack(spacing: 12) {
-                        Cover(albumID: track.albumId ?? "", size: 160, client: model.demo ? nil : model.client)
+                        Cover(albumID: track.albumId ?? "", size: 160, client: model.imageClient)
                             .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 7))
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title).font(Theme.body(14, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
@@ -55,9 +55,16 @@ struct NowPlayingView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     IconButton(symbol: "chevron.down", label: L10n.text("mobile.collapse")) { dismiss() }
+                        .accessibilityIdentifier("player.collapse")
                 }
                 ToolbarItem(placement: .principal) {
                     Text(L10n.text("mobile.nowPlaying")).font(Theme.body(13)).foregroundStyle(Theme.dim)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if let track = player.current {
+                        Menu { TrackActions(track: track, model: model) } label: { Image(systemName: "ellipsis") }
+                            .accessibilityLabel(L10n.text("common.more")).accessibilityIdentifier("player.more")
+                    }
                 }
             }
             .sheet(isPresented: $queueVisible) { QueueView(player: player) }
@@ -65,7 +72,7 @@ struct NowPlayingView: View {
     }
 
     private var cover: some View {
-        Cover(albumID: player.current?.albumId ?? "", size: 800, client: model.demo ? nil : model.client)
+        Cover(albumID: player.current?.albumId ?? "", size: 800, client: model.imageClient)
             .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
@@ -74,8 +81,14 @@ struct NowPlayingView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(player.current?.title ?? "").font(Theme.title(27)).lineLimit(3)
                     .accessibilityIdentifier("player.title")
-                Text(player.current?.artist ?? "").font(Theme.body(16)).foregroundStyle(Theme.dim)
-                Text(player.current?.albumTitle ?? "").font(Theme.body(13)).foregroundStyle(Theme.faint).lineLimit(2)
+                Button { if let name = player.current?.credits.first?.name, !name.isEmpty { model.pendingRoute = .artist(name) } } label: {
+                    Text(player.current?.artist ?? "").font(Theme.body(16)).foregroundStyle(Theme.dim)
+                        .multilineTextAlignment(.leading)
+                }.buttonStyle(.plain)
+                Button { if let album = player.current?.albumId { model.pendingRoute = .album(album) } } label: {
+                    Text(player.current?.albumTitle ?? "").font(Theme.body(13)).foregroundStyle(Theme.faint).lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }.buttonStyle(.plain).accessibilityHint(L10n.text("player.viewAlbum"))
             }.frame(maxWidth: .infinity, alignment: .leading)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
@@ -133,12 +146,23 @@ struct QueueView: View {
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                 }
                 if let current = player.current {
-                    Section { row(current).foregroundStyle(Theme.accent) } header: { header(L10n.text("mobile.nowPlaying")) }
+                    Section { row(current).foregroundStyle(Theme.accent).listRowBackground(Theme.surface) } header: { header(L10n.text("mobile.nowPlaying")) }
                 }
-                Section { ForEach(player.queue.upcoming) { row($0) } } header: { header(L10n.text("mobile.upNext")) }
+                Section {
+                    // Offsets identify entries because one track may be queued twice.
+                    ForEach(Array(player.queue.upcoming.enumerated()), id: \.offset) { offset, track in
+                        Button { player.jumpToUpcoming(offset) } label: { row(track) }
+                            .buttonStyle(.plain).listRowBackground(Theme.surface).accessibilityIdentifier("queue.\(offset)")
+                    }
+                    .onMove { player.moveUpcoming(from: $0, to: $1) }
+                    .onDelete { player.removeUpcoming(at: $0) }
+                } header: { header(L10n.text("mobile.upNext")) }
             }.scrollContentBackground(.hidden).background(Theme.background)
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) { EditButton() }
+                    ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } }
+                }
         }.tint(Theme.accent)
     }
     private func header(_ text: String) -> some View {
@@ -148,7 +172,7 @@ struct QueueView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(track.title).font(Theme.body(15))
             Text(track.artist ?? "").font(Theme.body(12)).foregroundStyle(Theme.dim)
-        }.padding(.vertical, 6).listRowBackground(Theme.surface)
+        }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
 }
 

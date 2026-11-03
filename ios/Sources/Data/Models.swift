@@ -18,6 +18,19 @@ struct Album: Codable, Identifiable, Hashable, Sendable {
     var updatedAt: Int?
     var tracks: [Track]?
     var note: String?
+    var secondaryGenres: [String]?
+    var rym: RymRating?
+    var hidden: Bool?
+    var createdAt: Int?
+    var folder: String?
+    var storageId: String?
+    var images: [String]?
+    var similar: [SimilarAlbum]?
+
+    var credits: [ArtistCredit] {
+        if let artists, !artists.isEmpty { return artists }
+        return [ArtistCredit(name: artist, sort: artistSort)]
+    }
 
     var normalizedTracks: [Track] {
         (tracks ?? []).map { track in
@@ -41,10 +54,60 @@ struct Track: Codable, Identifiable, Hashable, Sendable {
     var albumTitle: String?
     var artist: String?
     var artists: [ArtistCredit]?
+    var artistSort: String?
+    var year: Int?
+    var addedAt: Int?
+    var hidden: Bool?
+    var bitrate: Double?
+    var size: Int64?
+    var path: String?
+    var hasCustomArtists: Bool?
+
+    var credits: [ArtistCredit] {
+        if let artists, !artists.isEmpty { return artists }
+        return [ArtistCredit(name: artist ?? "", sort: artistSort)]
+    }
 
     var fileExtension: String {
         let value = (format ?? "mp3").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         return ["mp3", "flac", "ogg", "oga", "opus", "m4a", "aac", "alac", "wav", "aif", "aiff"].contains(value) ? value : "audio"
+    }
+}
+
+// Track lists come straight from SQLite rows, where `hidden` is 0 or 1 rather
+// than a JSON boolean. Decode both, so a numeric flag never fails a whole list.
+extension Track {
+    enum CodingKeys: String, CodingKey {
+        case id, title, duration, format, disc, track, albumId, albumTitle, artist, artists
+        case artistSort, year, addedAt, hidden, bitrate, size, path, hasCustomArtists
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        duration = try? c.decodeIfPresent(Double.self, forKey: .duration)
+        format = try? c.decodeIfPresent(String.self, forKey: .format)
+        disc = try? c.decodeIfPresent(Int.self, forKey: .disc)
+        track = try? c.decodeIfPresent(Int.self, forKey: .track)
+        albumId = try? c.decodeIfPresent(String.self, forKey: .albumId)
+        albumTitle = try? c.decodeIfPresent(String.self, forKey: .albumTitle)
+        artist = try? c.decodeIfPresent(String.self, forKey: .artist)
+        artists = try? c.decodeIfPresent([ArtistCredit].self, forKey: .artists)
+        artistSort = try? c.decodeIfPresent(String.self, forKey: .artistSort)
+        year = try? c.decodeIfPresent(Int.self, forKey: .year)
+        addedAt = try? c.decodeIfPresent(Int.self, forKey: .addedAt)
+        hidden = Self.flag(c, .hidden)
+        bitrate = try? c.decodeIfPresent(Double.self, forKey: .bitrate)
+        size = try? c.decodeIfPresent(Int64.self, forKey: .size)
+        path = try? c.decodeIfPresent(String.self, forKey: .path)
+        hasCustomArtists = Self.flag(c, .hasCustomArtists)
+    }
+
+    private static func flag(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Bool? {
+        if let value = try? c.decodeIfPresent(Bool.self, forKey: key) { return value }
+        if let value = try? c.decodeIfPresent(Int.self, forKey: key) { return value != 0 }
+        return nil
     }
 }
 

@@ -41,13 +41,42 @@ const extra = {
   cacheCleared: ['Cache cleared', 'キャッシュを消去しました', '캐시를 비웠습니다', 'Cache vidé', 'Caché vaciada', '缓存已清除', '快取已清除'],
   preloadNext: ['Preload the next queued track', '次のキュー曲を先読みする', '대기열의 다음 곡 미리 받기', 'Précharger le prochain titre', 'Precargar la siguiente canción', '提前缓存队列中的下一首', '提前快取佇列中的下一首'],
   disconnectConfirm: ['Stop playback and sign out?', '再生を停止してログアウトしますか？', '재생을 중지하고 로그아웃할까요?', 'Arrêter la lecture et se déconnecter ?', '¿Detener la reproducción y cerrar sesión?', '停止播放并退出登录？', '停止播放並登出？'],
+  permissionDenied: ['Your account cannot perform this action.', 'この操作は許可されていません。', '이 작업을 수행할 권한이 없습니다.', 'Votre compte ne permet pas cette action.', 'Tu cuenta no permite esta acción.', '当前账号没有此操作的权限。', '目前帳號沒有此操作的權限。'],
+  itemMissing: ['This item is no longer available.', 'この項目は利用できなくなりました。', '이 항목은 더 이상 사용할 수 없습니다.', 'Cet élément n’est plus disponible.', 'Este elemento ya no está disponible.', '此项目已不可用。', '此項目已無法使用。'],
+  conflict: ['The library changed. Refresh and try again.', 'ライブラリが変更されました。更新して再試行してください。', '보관함이 변경되었습니다. 새로고침 후 다시 시도하세요.', 'La bibliothèque a changé. Actualisez puis réessayez.', 'La biblioteca ha cambiado. Actualiza e inténtalo de nuevo.', '曲库已发生变化，请刷新后重试。', '曲庫已發生變更，請重新整理後再試。'],
+  downloads: ['Downloads', 'ダウンロード', '다운로드', 'Téléchargements', 'Descargas', '下载', '下載'],
+  download: ['Download', 'ダウンロード', '다운로드', 'Télécharger', 'Descargar', '下载', '下載'],
+  playNext: ['Play next', '次に再生', '다음에 재생', 'Lire ensuite', 'Reproducir a continuación', '下一首播放', '下一首播放'],
+  addToQueue: ['Add to queue', 'キューに追加', '대기열에 추가', 'Ajouter à la file', 'Añadir a la cola', '加入播放队列', '加入播放佇列'],
+  allResults: ['All', 'すべて', '전체', 'Tout', 'Todo', '全部', '全部'],
+  filters: ['Filters', '絞り込み', '필터', 'Filtres', 'Filtros', '筛选', '篩選'],
+  sort: ['Sort', '並べ替え', '정렬', 'Trier', 'Ordenar', '排序', '排序'],
   licenses: ['Open-source licenses', 'オープンソースライセンス', '오픈 소스 라이선스', 'Licences libres', 'Licencias de código abierto', '开源许可', '開源授權'],
 }
+const { en } = await import('../../cloud/web/src/locales/en.js')
+const { adminEn } = await import('../../cloud/web/src/i18n-admin-en.js')
 const catalogs = {}
+function flatten(base, translated, prefix = '', result = {}) {
+  for (const [name, fallback] of Object.entries(base)) {
+    const key = prefix ? `${prefix}.${name}` : name
+    const value = translated?.[name] ?? fallback
+    if (typeof fallback === 'function') {
+      result[key] = value('{0}', '{1}', '{2}', '{3}')
+    } else if (typeof fallback === 'object' && fallback !== null) {
+      flatten(fallback, value, key, result)
+    } else if (typeof value === 'string') result[key] = value
+  }
+  return result
+}
 for (const [index, language] of languages.entries()) {
-  const native = JSON.parse(fs.readFileSync(path.join(root, '../desktop/assets/locales', language + '.json'), 'utf8'))
-  const result = Object.fromEntries(Object.entries(native).filter(([key]) => !key.startsWith('desktop.') && !key.startsWith('albumPage.')))
-  for (const [key, values] of Object.entries(extra)) result['mobile.' + key] = values[index]
+  const web = language === 'en' ? en : (await import(`../../cloud/web/src/locales/${language}.js`)).default
+  const admin = language === 'en' ? adminEn : (await import(`../../cloud/web/src/locales/admin-${language}.js`)).admin
+  const result = flatten(en, web)
+  flatten(adminEn, admin, 'admin', result)
+  for (const [key, values] of Object.entries(extra)) {
+    if (values.length !== languages.length || values.some(value => !value)) throw new Error(`Incomplete translation: ${key}`)
+    result['mobile.' + key] = values[index]
+  }
   catalogs[language] = result
 }
 fs.mkdirSync(path.join(root, 'Resources'), { recursive: true })
