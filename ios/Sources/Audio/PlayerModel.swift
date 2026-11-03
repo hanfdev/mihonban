@@ -38,6 +38,9 @@ final class PlayerModel: NSObject {
     @ObservationIgnored private var demoURL: URL?
     @ObservationIgnored private var foreground = true
     @ObservationIgnored private var nextIsPreparing = false
+    @ObservationIgnored private var activeID: ObjectIdentifier?
+    @ObservationIgnored private var interrupted = false
+    @ObservationIgnored private var initialPosition: Double = 0
 
     private struct Entry {
         let audio: PreparedAudio
@@ -87,14 +90,16 @@ final class PlayerModel: NSObject {
         beginCurrent()
     }
 
-    private func beginCurrent() {
+    private func beginCurrent(at position: Double = 0) {
         generation = UUID()
         cancelTransfers()
         engine.stop()
         entries.removeAll()
+        activeID = nil
+        initialPosition = position
         current = queue.current
         error = nil
-        elapsed = 0
+        elapsed = position
         duration = current?.duration ?? 0
         buffered = 0
         isSeeking = false
@@ -111,6 +116,7 @@ final class PlayerModel: NSObject {
         let token = generation
         let requestID = UUID()
         let local = demoURL
+        let position = immediate ? initialPosition : 0
         let source: MBHTTPInputSource?
         if local != nil { source = nil }
         else {
@@ -139,6 +145,10 @@ final class PlayerModel: NSObject {
                         decoderName: AudioDecoder.Name(rawValue: "org.sbooth.AudioEngine.Decoder." + suffix))
                 } else { throw ClientError.connection }
                 try decoder.open()
+                if position > 0 && decoder.supportsSeeking {
+                    let frame = AVAudioFramePosition(position * decoder.processingFormat.sampleRate)
+                    try decoder.seek(to: min(frame, max(0, decoder.length - 1)))
+                }
                 result = .success(PreparedAudio(decoder: decoder, source: sourceBox.value))
             } catch { result = .failure(error) }
             await self?.prepared(result, snapshot: snapshot, requestID: requestID, token: token, immediate: immediate)
@@ -174,6 +184,7 @@ final class PlayerModel: NSObject {
         case .failure:
             source?.cancel()
             if immediate { fail() }
+            else if engine.currentDecoder == nil { ended() }
             // A failed prefetch is retried only when that track becomes current.
         }
     }
@@ -248,12 +259,10 @@ final class PlayerModel: NSObject {
         restart(at: position, playing: playing)
     }
 
-    @ObservationIgnored private var restorePosition: Double?
     private func restart(at position: Double, playing: Bool) {
         guard current != nil else { return }
         wantsPlayback = playing
-        beginCurrent()
-        restorePosition = position > 0 ? position : nil
+        beginCurrent(at: position)
     }
 
     func stop() {
@@ -266,7 +275,9 @@ final class PlayerModel: NSObject {
         wantsPlayback = false
         isLoading = false
         isSeeking = false
-        restorePosition = nil
+        activeID = nil
+        initialPosition = 0
+        interrupted = false
         artworkTask?.cancel()
         artwork = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -325,15 +336,10 @@ final class PlayerModel: NSObject {
             artwork = nil
             loadArtwork()
         }
-        if let position = restorePosition {
-            restorePosition = nil
-            seek(to: position)
+        if let previous = activeID, previous != id {
+            entries.removeValue(forKey: previous)?.audio.source?.cancel()
         }
-        // The previous decoder may still be reporting completion on its queue.
-        for (key, old) in entries where key != id && old.queue.cursor < queue.cursor {
-            old.audio.source?.cancel()
-            entries.removeValue(forKey: key)
-        }
+        activeID = id
         updateNowPlaying()
         prepareNext()
     }
@@ -352,7 +358,7 @@ final class PlayerModel: NSObject {
             MPMediaItemPropertyAlbumTitle: track.albumTitle ?? "",
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
-            MPNowPlayingInfoPropertyPlaybackRate: wantsPlayback && !isLoading ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: wantsPlayback && !isLoading && !interrupted ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue]
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
@@ -406,17 +412,6 @@ extension PlayerModel: AudioPlayer.Delegate {
         Task { @MainActor [weak self] in self?.rendered(id) }
     }
 
-    nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, decodingStarted decoder: any PCMDecoding) {
-        let id = ObjectIdentifier(decoder as AnyObject)
-        Task { @MainActor [weak self] in
-            guard let self, self.entries[id]?.queue.current?.id == self.current?.id else { return }
-            if let position = self.restorePosition {
-                self.restorePosition = nil
-                self.seek(to: position)
-            }
-        }
-    }
-
     nonisolated func audioPlayerEndOfAudio(_ audioPlayer: AudioPlayer) {
         Task { @MainActor [weak self] in self?.ended() }
     }
@@ -464,12 +459,11 @@ extension PlayerModel: AudioPlayer.Delegate {
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if type == AVAudioSession.InterruptionType.began.rawValue {
-                self.updateNowPlaying()
-            } else if !self.engine.isPlaying {
+            self.interrupted = type == AVAudioSession.InterruptionType.began.rawValue
+            if !self.interrupted && options & AVAudioSession.InterruptionOptions.shouldResume.rawValue == 0 {
                 self.wantsPlayback = false
-                self.updateNowPlaying()
             }
+            self.updateNowPlaying()
         }
     }
 }
