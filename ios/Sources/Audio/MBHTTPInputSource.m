@@ -27,13 +27,19 @@
     BOOL _complete;
     BOOL _receivedResponse;
     BOOL _rangeSupported;
+    BOOL _persistent;
 }
 @end
 
 @implementation MBHTTPInputSource
 
 - (instancetype)initWithRemoteURL:(NSURL *)url cacheURL:(NSURL *)cacheURL {
+    return [self initWithRemoteURL:url cacheURL:cacheURL persistent:YES];
+}
+
+- (instancetype)initWithRemoteURL:(NSURL *)url cacheURL:(NSURL *)cacheURL persistent:(BOOL)persistent {
     if ((self = [super initWithURL:cacheURL])) {
+        _persistent = persistent;
         _remoteURL = url;
         _cacheURL = cacheURL;
         _partialURL = [cacheURL URLByAppendingPathExtension:[NSUUID.UUID.UUIDString stringByAppendingString:@".part"]];
@@ -48,7 +54,7 @@
 
 - (void)dealloc {
     if (_fd >= 0) close(_fd);
-    if (!_complete) [NSFileManager.defaultManager removeItemAtURL:_partialURL error:nil];
+    if (!_complete || !_persistent) [NSFileManager.defaultManager removeItemAtURL:_partialURL error:nil];
 }
 
 - (BOOL)openReturningError:(NSError **)error {
@@ -222,6 +228,9 @@
 
 - (BOOL)closeReturningError:(NSError **)error {
     [self cancel];
+    // With caching disabled the growing file is only a playback buffer.
+    if (!_persistent) [NSFileManager.defaultManager removeItemAtURL:_partialURL error:nil];
+    if (_fd >= 0) { close(_fd); _fd = -1; }
     return YES;
 }
 
@@ -291,7 +300,9 @@
             if (_available.count == (NSUInteger)_length && _length > 0) {
                 fsync(_fd);
                 // Rename is atomic; partial sparse files never become cache hits.
-                if (rename(_partialURL.fileSystemRepresentation, _cacheURL.fileSystemRepresentation) == 0) _complete = YES;
+                _complete = _persistent
+                    ? rename(_partialURL.fileSystemRepresentation, _cacheURL.fileSystemRepresentation) == 0
+                    : YES;
                 [_session finishTasksAndInvalidate];
                 _session = nil;
             }

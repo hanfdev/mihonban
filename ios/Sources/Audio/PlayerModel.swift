@@ -41,6 +41,7 @@ final class PlayerModel: NSObject {
     @ObservationIgnored private var activeID: ObjectIdentifier?
     @ObservationIgnored private var interrupted = false
     @ObservationIgnored private var initialPosition: Double = 0
+    @ObservationIgnored var cache: CacheSettings?
 
     private struct Entry {
         let audio: PreparedAudio
@@ -120,9 +121,10 @@ final class PlayerModel: NSObject {
         let source: MBHTTPInputSource?
         if local != nil { source = nil }
         else {
-            let cache = client.cacheDirectory.appendingPathComponent("audio", isDirectory: true)
+            let cacheFile = client.cacheDirectory.appendingPathComponent("audio", isDirectory: true)
                 .appendingPathComponent(digest(track.id)).appendingPathExtension(track.fileExtension)
-            source = MBHTTPInputSource(remoteURL: client.url("api", "stream", track.id), cacheURL: cache)
+            source = MBHTTPInputSource(remoteURL: client.url("api", "stream", track.id), cacheURL: cacheFile,
+                                       persistent: cache?.enabled ?? true)
             pending[requestID] = source
         }
         if !immediate { nextIsPreparing = true }
@@ -182,7 +184,7 @@ final class PlayerModel: NSObject {
     }
 
     private func prepareNext() {
-        guard prefetchAllowed, wantsPlayback, !isLoading, !nextIsPreparing,
+        guard prefetchAllowed, cache?.preloadNext ?? true, wantsPlayback, !isLoading, !nextIsPreparing,
               entries.count == 1, pending.isEmpty,
               let next = queue.nextSnapshot(), next.current?.id != current?.id else { return }
         prepare(next, immediate: false)

@@ -14,10 +14,22 @@ final class AppModel {
     var password = ""
     var rememberPassword = true
     var demo = false
+    var cache = CacheSettings()
     let player = PlayerModel()
+
+    init() { player.cache = cache }
     @ObservationIgnored private var snapshot: LibrarySnapshot?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var details: [String: Album] = [:]
+
+    var cacheUsage: Int { AudioCache.usedBytes(audioCacheDirectory) }
+
+    private var audioCacheDirectory: URL {
+        (client?.cacheDirectory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
+            .appendingPathComponent("audio", isDirectory: true)
+    }
+
+    func clearCache() { AudioCache.remove(audioCacheDirectory) }
 
     var visibleAlbums: [Album] {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return albums }
@@ -71,7 +83,7 @@ final class AppModel {
             snapshot = api.savedLibrary()
             albums = snapshot?.albums ?? []
             details.removeAll()
-            AudioCache.prune(api.cacheDirectory.appendingPathComponent("audio"))
+            AudioCache.prune(audioCacheDirectory, limit: cache.limitBytes, enabled: cache.enabled)
             player.connect(api)
             await refresh()
         } catch {
@@ -138,7 +150,20 @@ final class AppModel {
 }
 
 enum AudioCache {
-    static func prune(_ directory: URL) {
+    static func usedBytes(_ directory: URL) -> Int {
+        let manager = FileManager.default
+        guard let files = try? manager.contentsOfDirectory(at: directory,
+            includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        return files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+    }
+
+    static func remove(_ directory: URL) {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    // Incomplete transfers are always discarded; finished files are dropped
+    // oldest first until the limit holds. Disabling the cache clears it.
+    static func prune(_ directory: URL, limit: Int, enabled: Bool) {
         let manager = FileManager.default
         guard let files = try? manager.contentsOfDirectory(at: directory,
             includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]) else { return }
@@ -149,7 +174,9 @@ enum AudioCache {
             complete.append((file, values?.fileSize ?? 0, values?.contentModificationDate ?? .distantPast))
         }
         var size = complete.reduce(0) { $0 + $1.1 }
-        for (file, bytes, _) in complete.sorted(by: { $0.2 < $1.2 }) where size > 1024 * 1024 * 1024 {
+        let ceiling = enabled ? max(0, limit) : 0
+        for (file, bytes, _) in complete.sorted(by: { $0.2 < $1.2 }) {
+            if enabled && size <= ceiling { break }
             if (try? manager.removeItem(at: file)) != nil { size -= bytes }
         }
     }

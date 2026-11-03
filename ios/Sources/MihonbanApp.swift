@@ -31,7 +31,13 @@ struct RootView: View {
                     LibraryView(model: model)
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
-                                IconButton(symbol: "slider.horizontal.3", label: L10n.text("mobile.settings")) { settings = true }
+                                Button { settings = true } label: {
+                                    Image(systemName: "slider.horizontal.3").font(.system(size: 20, weight: .medium))
+                                        .foregroundStyle(Theme.ink)
+                                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                                }.buttonStyle(.plain)
+                                    .accessibilityLabel(L10n.text("mobile.settings"))
+                                    .accessibilityIdentifier("settings.open")
                             }
                         }
                 }
@@ -54,7 +60,8 @@ struct ConnectionView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 VStack(alignment: .leading, spacing: 12) {
-                    RecordPlaceholder().frame(width: 92, height: 92).clipShape(RoundedRectangle(cornerRadius: 22))
+                    Image("Logo").resizable().scaledToFit().frame(width: 92, height: 92)
+                        .clipShape(RoundedRectangle(cornerRadius: 22)).accessibilityHidden(true)
                     Text("見本盤").font(Theme.title(44))
                     Text(L10n.text("mobile.connectHint")).foregroundStyle(Theme.dim)
                 }.padding(.bottom, 12)
@@ -101,12 +108,34 @@ struct SettingsView: View {
     @Bindable var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDisconnect = false
+    @State private var cacheUsed = 0
+    @State private var cleared = false
     var body: some View {
         NavigationStack {
             List {
                 Section(L10n.text("mobile.connection")) {
                     Text(model.demo ? "Demo" : model.address).font(Theme.body(14)).textSelection(.enabled)
                     Button(L10n.text("login.signOut"), role: .destructive) { confirmDisconnect = true }
+                }.listRowBackground(Theme.surface)
+                Section {
+                    Toggle(L10n.text("mobile.cacheEnable"), isOn: $model.cache.enabled)
+                    Picker(L10n.text("mobile.cacheLimit"), selection: $model.cache.limitBytes) {
+                        ForEach(CacheSettings.limits, id: \.self) { Text(CacheSettings.label($0)).tag($0) }
+                    }.disabled(!model.cache.enabled)
+                    LabeledContent(L10n.text("mobile.cacheUsed"), value: CacheSettings.size(cacheUsed))
+                        .accessibilityIdentifier("cache.used")
+                    if cleared {
+                        Text(L10n.text("mobile.cacheCleared")).font(Theme.body(13)).foregroundStyle(Theme.dim)
+                    }
+                    Toggle(L10n.text("mobile.preloadNext"), isOn: $model.cache.preloadNext)
+                        .disabled(!model.cache.enabled)
+                    Button(L10n.text("mobile.clearCache"), role: .destructive) {
+                        model.clearCache()
+                        cacheUsed = 0
+                        cleared = true
+                    }.accessibilityIdentifier("cache.clear")
+                } header: { Text(L10n.text("mobile.cache")) } footer: {
+                    Text(L10n.text(model.cache.enabled ? "mobile.cacheHint" : "mobile.cacheOffNotice"))
                 }.listRowBackground(Theme.surface)
                 Section {
                     Text(L10n.text("mobile.m0Notice"))
@@ -119,6 +148,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden).background(Theme.background)
             .navigationTitle(L10n.text("mobile.settings")).navigationBarTitleDisplayMode(.inline)
+            .task { cacheUsed = model.cacheUsage }
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
             .confirmationDialog(L10n.text("mobile.disconnectConfirm"), isPresented: $confirmDisconnect, titleVisibility: .visible) {
                 Button(L10n.text("login.signOut"), role: .destructive) { dismiss(); model.disconnect() }
