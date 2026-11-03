@@ -34,7 +34,7 @@ jobs:
           mkdir -p ios/TestFixtures ios/Resources/ThirdParty
           ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a libmp3lame -q:a 3 ios/TestFixtures/tone.mp3
           ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a flac ios/TestFixtures/tone.flac
-          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a libvorbis -q:a 4 ios/TestFixtures/tone.ogg
+          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a vorbis -strict experimental -q:a 4 ios/TestFixtures/tone.ogg
           xcodegen generate --spec ios/project.yml
           if [ -f ios/Package.resolved ]; then
             mkdir -p ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm

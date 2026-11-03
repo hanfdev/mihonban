@@ -272,6 +272,7 @@
                 if (count <= 0) { _failure = [NSError errorWithDomain:NSPOSIXErrorDomain code:errno ?: EIO userInfo:nil]; break; }
                 written += count;
             }
+            if (_failure) [_task cancel];
             [_available addIndexesInRange:NSMakeRange((NSUInteger)_writeOffset, written)];
             _writeOffset += written;
         }
