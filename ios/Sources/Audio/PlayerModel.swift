@@ -134,15 +134,7 @@ final class PlayerModel: NSObject {
                 let decoder: AudioDecoder
                 if let local { decoder = try AudioDecoder(url: local) }
                 else if let source = sourceBox.value {
-                    let suffix: String
-                    switch track.fileExtension {
-                    case "flac": suffix = "FLAC"
-                    case "ogg", "oga": suffix = "OggVorbis"
-                    case "opus": suffix = "OggOpus"
-                    default: suffix = "CoreAudio"
-                    }
-                    decoder = try AudioDecoder(inputSource: source,
-                        decoderName: AudioDecoder.Name(rawValue: "org.sbooth.AudioEngine.Decoder." + suffix))
+                    decoder = try AudioDecoder(inputSource: source, decoderName: MBDecoderNameForExtension(track.fileExtension))
                 } else { throw ClientError.connection }
                 try decoder.open()
                 if position > 0 && decoder.supportsSeeking {

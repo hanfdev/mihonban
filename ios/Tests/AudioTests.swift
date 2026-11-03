@@ -5,9 +5,9 @@ import AVFAudio
 
 final class AudioTests: XCTestCase {
     func testMP3FLACAndVorbisDecodeAndSeek() throws {
-        for (ext, name) in [("mp3", "CoreAudio"), ("flac", "FLAC"), ("ogg", "OggVorbis")] {
+        for ext in ["mp3", "flac", "ogg"] {
             let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "tone", withExtension: ext))
-            let decoder = try AudioDecoder(url: url, decoderName: .init(rawValue: "org.sbooth.AudioEngine.Decoder." + name))
+            let decoder = try AudioDecoder(url: url, decoderName: MBDecoderNameForExtension(ext))
             try decoder.open()
             let format = decoder.processingFormat
             let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096))
@@ -38,7 +38,7 @@ final class AudioTests: XCTestCase {
         let tail = try source.read(length: 16)
         XCTAssertEqual(tail.count, 16)
         try source.seek(toOffset: 0)
-        let decoder = try AudioDecoder(inputSource: source, decoderName: .init(rawValue: "org.sbooth.AudioEngine.Decoder.FLAC"))
+        let decoder = try AudioDecoder(inputSource: source, decoderName: MBDecoderNameForExtension("flac"))
         try decoder.open()
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: decoder.processingFormat, frameCapacity: 4096))
         var frames = 0
