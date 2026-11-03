@@ -79,6 +79,14 @@ jobs:
           if [ -d build/Tests.xcresult ]; then
             xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/screenshots || true
           fi
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-screenshots-${{ github.run_number }}
+          path: build/screenshots
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
