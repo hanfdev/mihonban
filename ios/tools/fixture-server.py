@@ -1,6 +1,7 @@
 import argparse
 import json
 import re
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -146,6 +147,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/health":
             return self.reply(200, {"ok": True})
+        if path == "/fixture/media-cookies":
+            return self.reply(200, {"cookies": self.server.media_cookies})
         if path == "/api/me":
             return self.reply(200, {"ok": self.authorized(), "role": self.role(), "guest": False})
         if path.startswith("/api/") and not self.authorized():
@@ -177,9 +180,14 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/artist-art/") or path.startswith("/api/image/"):
             return self.reply(302, b"", headers={"Location": "/artwork/cover.png"})
         if path.startswith("/api/stream/network-"):
-            ext = path.rsplit("-", 1)[-1]
+            parts = path.rsplit("/", 1)[-1].split("-")
+            ext = parts[1] if len(parts) > 1 else ""
             if ext not in FORMATS:
                 return self.reply(404, {})
+            # "-remote" ids redirect to another origin (the next port), like a storage backend.
+            if parts[-1] == "remote":
+                port = self.server.server_address[1] + 1
+                return self.reply(307, b"", headers={"Location": f"http://127.0.0.1:{port}/media/tone.{ext}"})
             return self.reply(307, b"", headers={"Location": f"/media/tone.{ext}"})
         if path.startswith("/api/art/"):
             return self.reply(302, b"", headers={"Location": "/artwork/cover.png"})
@@ -191,6 +199,10 @@ class Handler(BaseHTTPRequestHandler):
         name = path.rsplit("/", 1)[-1]
         if name not in {"tone.mp3", "tone.flac", "tone.ogg"}:
             return self.reply(404, {})
+        # Records which host received a session cookie on a storage request.
+        if path.startswith("/media/"):
+            self.server.media_cookies.append({"port": self.server.server_address[1],
+                                              "cookie": "mihonban_session" in self.headers.get("Cookie", "")})
         data = (self.server.fixtures / name).read_bytes()
         start, end = 0, len(data) - 1
         ranged = "Range" in self.headers and not path.startswith("/no-range/")
@@ -224,11 +236,17 @@ def main():
     parser.add_argument("--port", type=int, default=8766)
     args = parser.parse_args()
     root = args.fixtures.resolve()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    server.fixtures = root
-    server.favorites = {"album": ["network-mp3", "network-ogg"], "track": ["network-flac"]}
-    server.cover = root.parent / "Resources/Assets.xcassets/Logo.imageset/logo.png"
-    server.serve_forever()
+    favorites = {"album": ["network-mp3", "network-ogg"], "track": ["network-flac"]}
+    media_cookies = []
+    servers = [ThreadingHTTPServer(("127.0.0.1", port), Handler) for port in (args.port, args.port + 1)]
+    for server in servers:
+        server.fixtures = root
+        server.favorites = favorites
+        server.media_cookies = media_cookies
+        server.cover = root.parent / "Resources/Assets.xcassets/Logo.imageset/logo.png"
+    # The second port stands in for a storage host on a different origin.
+    threading.Thread(target=servers[1].serve_forever, daemon=True).start()
+    servers[0].serve_forever()
 
 
 if __name__ == "__main__":

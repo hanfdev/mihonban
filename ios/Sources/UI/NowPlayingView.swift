@@ -63,7 +63,7 @@ struct NowPlayingView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if let track = player.current {
                         Menu { TrackActions(track: track, model: model) } label: { Image(systemName: "ellipsis") }
-                            .accessibilityLabel(L10n.text("common.more")).accessibilityIdentifier("player.more")
+                            .accessibilityLabel(L10n.text("mobile.moreActions")).accessibilityIdentifier("player.more")
                     }
                 }
             }

@@ -38,7 +38,7 @@ struct AlbumView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 if let album {
                     Menu { AlbumActions(album: album, model: model) } label: { Image(systemName: "ellipsis") }
-                        .accessibilityLabel(L10n.text("common.more"))
+                        .accessibilityLabel(L10n.text("mobile.moreActions"))
                 }
             }
         }
@@ -93,6 +93,7 @@ struct AlbumView: View {
                     }.buttonStyle(.plain).accessibilityLabel(L10n.text(faved ? "common.unfav" : "common.fav"))
                         .accessibilityIdentifier("album.favorite")
                 }
+                if let downloads = model.downloads { AlbumDownloadButton(album: album, downloads: downloads) }
             }.padding(.top, 8).disabled(album.normalizedTracks.isEmpty)
         }
     }

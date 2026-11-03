@@ -36,6 +36,10 @@ struct CatalogTrackRow: View {
                     Image(systemName: "heart.fill").font(.caption).foregroundStyle(Theme.accent)
                         .accessibilityLabel(L10n.text("common.faved"))
                 }
+                if model.downloads?.records[track.id]?.state == .done {
+                    Image(systemName: "arrow.down.circle.fill").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.text("mobile.downloaded"))
+                }
                 Text(timestamp(track.duration ?? 0)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }.padding(.vertical, 4).frame(minHeight: hideArtist ? 44 : 52).contentShape(Rectangle())
         }.buttonStyle(.plain)
@@ -65,6 +69,13 @@ struct TrackActions: View {
         }
         Button(L10n.text("mobile.addToQueue"), systemImage: "text.badge.plus") {
             model.player.enqueue([track], next: false)
+        }
+        if let downloads = model.downloads {
+            if downloads.records[track.id] != nil {
+                Button(L10n.text("mobile.removeDownload"), systemImage: "trash") { downloads.remove(track.id) }
+            } else {
+                Button(L10n.text("mobile.download"), systemImage: "arrow.down.circle") { Task { await model.download(track) } }
+            }
         }
         if model.sessionStore.isAdmin {
             let faved = model.favorites.contains(.track, id: track.id)

@@ -37,24 +37,70 @@ final class CacheTests: XCTestCase {
         XCTAssertEqual(CacheSettings.label(0), "0 MB")
     }
 
-    func testUsagePruneAndClear() throws {
-        let (_, directory) = scratch()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        for (index, size) in [1000, 2000, 4000].enumerated() {
-            let file = directory.appendingPathComponent("track\(index).mp3")
-            try Data(repeating: 0, count: size).write(to: file)
-            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: Double(index) * 60)],
-                                                  ofItemAtPath: file.path)
-        }
-        try Data(repeating: 0, count: 10).write(to: directory.appendingPathComponent("half.uuid.part"))
-        XCTAssertEqual(AudioCache.usedBytes(directory), 7010)
-        AudioCache.prune(directory, limit: 5000, enabled: true)
-        let remaining = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
-        XCTAssertEqual(remaining, ["track2.mp3"])
-        XCTAssertEqual(AudioCache.usedBytes(directory), 4000)
-        AudioCache.prune(directory, limit: 5000, enabled: false)
-        XCTAssertEqual(AudioCache.usedBytes(directory), 0)
-        AudioCache.remove(directory)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+    private func write(_ size: Int, to file: URL, age minutes: Double) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(repeating: 1, count: size).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -minutes * 60)], ofItemAtPath: file.path)
+    }
+
+    func testPruneIsLeastRecentlyUsedAndKeepsProtectedFiles() throws {
+        let (_, root) = scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let generation = root.appendingPathComponent("gaaaaaaaa")
+        let audio = generation.appendingPathComponent("audio")
+        let artwork = generation.appendingPathComponent("artwork")
+        try write(1000, to: audio.appendingPathComponent("old.mp3"), age: 50)
+        try write(2000, to: audio.appendingPathComponent("playing.mp3"), age: 40)
+        try write(3000, to: audio.appendingPathComponent("recent.mp3"), age: 1)
+        try write(500, to: artwork.appendingPathComponent("cover.img"), age: 30)
+        try write(10, to: audio.appendingPathComponent("live.mp3.A.part"), age: 2)
+        try write(10, to: audio.appendingPathComponent("stale.mp3.B.part"), age: 120)
+        try write(10, to: root.appendingPathComponent("gbbbbbbbb/audio/other.mp3"), age: 1)
+        XCTAssertEqual(CacheFiles.usage(generation).audio, 6000)
+        XCTAssertEqual(CacheFiles.usage(generation).artwork, 500)
+
+        XCTAssertTrue(CacheFiles.prune(root: root, generation: "gaaaaaaaa", limit: 5000, enabled: true, protected: ["playing.mp3"]))
+        let names = Set(CacheFiles.entries(audio).map { $0.0.lastPathComponent } + CacheFiles.entries(artwork).map { $0.0.lastPathComponent })
+        // Oldest first: old.mp3 goes (5500 left), playing.mp3 is protected, the cover then reaches the 5000 limit.
+        XCTAssertEqual(names, ["playing.mp3", "recent.mp3", "live.mp3.A.part"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("gbbbbbbbb").path), "other generations are removed")
+
+        XCTAssertTrue(CacheFiles.prune(root: root, generation: "gaaaaaaaa", limit: 5600, enabled: false, protected: []))
+        XCTAssertEqual(CacheFiles.usage(generation).cached, 0)
+    }
+
+    func testClearSwitchesGenerationSoOldTransfersCannotWriteBack() async throws {
+        let (defaults, root) = scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = MediaCache(root: root, settings: CacheSettings(defaults: defaults, prefix: "test"))
+        let oldAudio = media.audioDirectory
+        let partial = oldAudio.appendingPathComponent("song.mp3.X.part")
+        try write(4000, to: oldAudio.appendingPathComponent("done.mp3"), age: 5)
+        try write(4000, to: partial, age: 0)
+        try write(700, to: media.artworkDirectory.appendingPathComponent("a.img"), age: 5)
+        await media.refreshUsage()
+        XCTAssertEqual(media.usage.audio, 4000)
+        XCTAssertEqual(media.usage.artwork, 700)
+        XCTAssertGreaterThanOrEqual(media.usage.buffering, 4000, "partial files count as playback buffer")
+
+        let before = media.generation
+        let cleared = await media.clear()
+        XCTAssertTrue(cleared)
+        XCTAssertNotEqual(media.generation, before)
+        XCTAssertEqual(media.usage, CacheUsage())
+        // A transfer that finishes after the clear renames into a directory that no longer exists.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldAudio.path))
+        XCTAssertNotEqual(rename(partial.path, oldAudio.appendingPathComponent("song.mp3").path), 0)
+        // The generation survives a relaunch.
+        XCTAssertEqual(MediaCache(root: root, settings: CacheSettings(defaults: defaults, prefix: "test")).generation, media.generation)
+    }
+
+    func testDownloadKeysRejectUnsafeValues() {
+        let service = String(repeating: "a", count: 64)
+        let key = DownloadKey(service: service, file: String(repeating: "b", count: 64) + ".flac", attempt: "0123abcd", track: "id|with|bars")
+        XCTAssertEqual(DownloadKey(key.text), key)
+        XCTAssertNil(DownloadKey("v1|\(service)|../../escape.mp3|0123abcd|t"))
+        XCTAssertNil(DownloadKey("v1|short|" + String(repeating: "b", count: 64) + ".mp3|0123abcd|t"))
+        XCTAssertNil(DownloadKey(nil))
     }
 }

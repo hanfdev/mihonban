@@ -59,7 +59,8 @@ struct Cover: View {
             image = nil
             guard let client else { return }
             let result = await ArtworkStore.shared.image(url: client.artworkURL(albumID, size: size, revision: revision),
-                session: client.session, pixels: size <= 160 ? 256 : size <= 480 ? 640 : 1200)
+                session: client.session, pixels: size <= 160 ? 256 : size <= 480 ? 640 : 1200,
+                pinned: MediaPaths.pinnedCover(baseURL: client.baseURL, album: albumID))
             if !Task.isCancelled { image = result }
         }
     }

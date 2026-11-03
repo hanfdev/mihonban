@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct MihonbanApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
@@ -87,8 +88,10 @@ struct SettingsView: View {
     @Bindable var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDisconnect = false
-    @State private var cacheUsed = 0
-    @State private var cleared = false
+    @State private var clearMessage: String?
+    @State private var clearing = false
+
+    private var usage: CacheUsage { model.media?.usage ?? CacheUsage() }
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -116,21 +119,42 @@ struct SettingsView: View {
                     Picker(L10n.text("mobile.cacheLimit"), selection: $model.cache.limitBytes) {
                         ForEach(CacheSettings.limits, id: \.self) { Text(CacheSettings.label($0)).tag($0) }
                     }.disabled(!model.cache.enabled)
-                    LabeledContent(L10n.text("mobile.cacheUsed"), value: CacheSettings.size(cacheUsed))
+                    LabeledContent(L10n.text("mobile.cacheUsed"), value: CacheSettings.size(usage.cached))
                         .accessibilityIdentifier("cache.used")
-                    if cleared {
-                        Text(L10n.text("mobile.cacheCleared")).font(Theme.body(13)).foregroundStyle(Theme.dim)
+                    if usage.cached > 0 || usage.buffering > 0 {
+                        Group {
+                            LabeledContent(L10n.text("mobile.cacheAudio"), value: CacheSettings.size(usage.audio))
+                            LabeledContent(L10n.text("mobile.cacheCovers"), value: CacheSettings.size(usage.artwork))
+                            if usage.buffering > 0 {
+                                LabeledContent(L10n.text("mobile.cacheBuffer"), value: CacheSettings.size(usage.buffering))
+                            }
+                        }.font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    if let clearMessage {
+                        Text(clearMessage).font(Theme.body(13)).foregroundStyle(Theme.dim)
                     }
                     Toggle(L10n.text("mobile.preloadNext"), isOn: $model.cache.preloadNext)
                         .disabled(!model.cache.enabled)
                     Button(L10n.text("mobile.clearCache"), role: .destructive) {
-                        model.clearCache()
-                        cacheUsed = 0
-                        cleared = true
-                    }.accessibilityIdentifier("cache.clear")
+                        clearing = true
+                        Task {
+                            let ok = await model.clearCache()
+                            clearMessage = L10n.text(ok ? "mobile.cacheCleared" : "mobile.cacheClearFailed")
+                            clearing = false
+                        }
+                    }.disabled(clearing).accessibilityIdentifier("cache.clear")
                 } header: { Text(L10n.text("mobile.cache")) } footer: {
                     Text(L10n.text(model.cache.enabled ? "mobile.cacheHint" : "mobile.cacheOffNotice"))
                 }.listRowBackground(Theme.surface)
+                if let downloads = model.downloads {
+                    Section {
+                        NavigationLink {
+                            DownloadsView(model: model, downloads: downloads)
+                        } label: {
+                            LabeledContent(L10n.text("mobile.downloads"), value: CacheSettings.size(Int(downloads.totalBytes)))
+                        }.accessibilityIdentifier("downloads.open")
+                    } footer: { Text(L10n.text("mobile.downloadsHint")) }.listRowBackground(Theme.surface)
+                }
                 Section {
                     Text(L10n.text("mobile.prefetchNotice"))
                     Text("Mihonban " + version).foregroundStyle(Theme.faint)
@@ -141,7 +165,9 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden).background(Theme.background)
             .navigationTitle(L10n.text("mobile.settings")).navigationBarTitleDisplayMode(.inline)
-            .task { cacheUsed = model.cacheUsage }
+            .task { await model.media?.refreshUsage() }
+            .onChange(of: model.cache.enabled) { model.cacheSettingsChanged() }
+            .onChange(of: model.cache.limitBytes) { model.cacheSettingsChanged() }
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
             .confirmationDialog(L10n.text("mobile.disconnectConfirm"), isPresented: $confirmDisconnect, titleVisibility: .visible) {
                 Button(L10n.text("login.signOut"), role: .destructive) { dismiss(); model.disconnect() }

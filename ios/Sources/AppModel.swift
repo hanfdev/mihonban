@@ -18,6 +18,9 @@ final class AppModel {
     let favorites: FavoritesStore
     let catalog: CatalogStore
     let player = PlayerModel()
+    // Per-service storage, present only while signed in to a real service.
+    private(set) var media: MediaCache?
+    private(set) var downloads: DownloadStore?
     @ObservationIgnored private var generation = UUID()
 
     init() {
@@ -35,14 +38,60 @@ final class AppModel {
     var imageClient: APIClient? { demo ? nil : sessionStore.client }
     var signedIn: Bool { sessionStore.info?.ok == true && !sessionStore.needsSignIn }
 
-    var cacheUsage: Int { AudioCache.usedBytes(audioCacheDirectory) }
-
-    private var audioCacheDirectory: URL {
-        (client?.cacheDirectory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
-            .appendingPathComponent("audio", isDirectory: true)
+    // Returns false when some files could not be removed.
+    func clearCache() async -> Bool {
+        client?.session.configuration.urlCache?.removeAllCachedResponses()
+        guard let media else { return true }
+        let ok = await media.clear()
+        await configureArtwork()
+        return ok
     }
 
-    func clearCache() { AudioCache.remove(audioCacheDirectory) }
+    // Applies a changed cache switch or limit at once.
+    func cacheSettingsChanged() {
+        Task { await configureArtwork() }
+        media?.prune(protecting: player.protectedFiles)
+    }
+
+    private func configureArtwork() async {
+        var directory: URL?
+        if let media, cache.enabled {
+            directory = media.artworkDirectory
+            let target = media.artworkDirectory
+            await Task.detached(priority: .utility) {
+                try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true, attributes: MediaPaths.protection)
+            }.value
+        }
+        await ArtworkStore.shared.configure(disk: directory)
+    }
+
+    private func attachStorage(_ api: APIClient) async {
+        downloads?.detach()
+        let media = MediaCache(root: api.cacheDirectory.appendingPathComponent("media", isDirectory: true), settings: cache)
+        let downloads = DownloadStore(client: api)
+        self.media = media
+        self.downloads = downloads
+        player.media = media
+        player.downloads = downloads
+        // Files from the cache layout before generations were introduced.
+        let legacy = api.cacheDirectory.appendingPathComponent("audio", isDirectory: true)
+        Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: legacy) }
+        await configureArtwork()
+        media.prune()
+        await downloads.load()
+    }
+
+    // List rows hold album summaries, so the full track list is loaded first.
+    func downloadAlbum(_ id: String) async {
+        do { await downloads?.download(album: try await catalog.album(id)) }
+        catch { player.error = error.localizedDescription }
+    }
+
+    func download(_ track: Track) async {
+        guard let albumID = track.albumId, !albumID.isEmpty else { return }
+        do { await downloads?.download(album: try await catalog.album(albumID), only: track.id) }
+        catch { player.error = error.localizedDescription }
+    }
 
     func bootstrap() async {
         #if DEBUG
@@ -85,8 +134,9 @@ final class AppModel {
             favorites.reset()
             // Metadata is shown only after authorization, never while signed out.
             sessionStore.connect(api, info: state)
-            AudioCache.prune(audioCacheDirectory, limit: cache.limitBytes, enabled: cache.enabled)
             player.connect(api)
+            await attachStorage(api)
+            guard token == generation else { return }
             await catalog.connect()
         } catch {
             guard token == generation else { return }
@@ -132,6 +182,14 @@ final class AppModel {
     func disconnect() {
         generation = UUID()
         player.stop()
+        // Downloaded files stay on disk for the next sign-in to this service;
+        // they are reachable only through an authorized session's manifest.
+        downloads?.detach()
+        downloads = nil
+        media = nil
+        player.media = nil
+        player.downloads = nil
+        Task { await ArtworkStore.shared.configure(disk: nil) }
         if let client {
             client.clearCookies()
             _ = CredentialStore.save(nil, for: client.baseURL.absoluteString)
@@ -144,38 +202,5 @@ final class AppModel {
         error = nil
         connecting = false
         demo = false
-    }
-}
-
-enum AudioCache {
-    static func usedBytes(_ directory: URL) -> Int {
-        let manager = FileManager.default
-        guard let files = try? manager.contentsOfDirectory(at: directory,
-            includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
-        return files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
-    }
-
-    static func remove(_ directory: URL) {
-        try? FileManager.default.removeItem(at: directory)
-    }
-
-    // Incomplete transfers are always discarded; finished files are dropped
-    // oldest first until the limit holds. Disabling the cache clears it.
-    static func prune(_ directory: URL, limit: Int, enabled: Bool) {
-        let manager = FileManager.default
-        guard let files = try? manager.contentsOfDirectory(at: directory,
-            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]) else { return }
-        var complete: [(URL, Int, Date)] = []
-        for file in files {
-            if file.pathExtension == "part" { try? manager.removeItem(at: file); continue }
-            let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-            complete.append((file, values?.fileSize ?? 0, values?.contentModificationDate ?? .distantPast))
-        }
-        var size = complete.reduce(0) { $0 + $1.1 }
-        let ceiling = enabled ? max(0, limit) : 0
-        for (file, bytes, _) in complete.sorted(by: { $0.2 < $1.2 }) {
-            if enabled && size <= ceiling { break }
-            if (try? manager.removeItem(at: file)) != nil { size -= bytes }
-        }
     }
 }

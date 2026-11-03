@@ -53,6 +53,13 @@ struct AlbumActions: View {
         Button(L10n.text("mobile.addToQueue"), systemImage: "text.badge.plus") {
             Task { await model.enqueueAlbum(album.id, next: false) }
         }
+        if let downloads = model.downloads {
+            if downloads.state(album: album) == .complete {
+                Button(L10n.text("mobile.removeDownload"), systemImage: "trash") { downloads.remove(album: album.id) }
+            } else {
+                Button(L10n.text("mobile.download"), systemImage: "arrow.down.circle") { Task { await model.downloadAlbum(album.id) } }
+            }
+        }
         if model.sessionStore.isAdmin {
             let faved = model.favorites.contains(.album, id: album.id)
             Button(L10n.text(faved ? "common.unfav" : "common.fav"), systemImage: faved ? "heart.slash" : "heart") {

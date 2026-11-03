@@ -89,6 +89,14 @@ final class MihonbanUITests: XCTestCase {
         screenshot("06-network-playback")
         app.buttons["player.collapse"].firstMatch.tap()
 
+        // Downloading the open album finishes and flips the control to "remove".
+        let download = app.buttons["album.download"]
+        XCTAssertTrue(download.waitForExistence(timeout: 10))
+        download.tap()
+        expectation(for: NSPredicate(format: "label == %@", "Remove download"), evaluatedWith: download)
+        waitForExpectations(timeout: 45)
+        screenshot("11-album-downloaded")
+
         // Every tab must decode the worker-shaped fixture responses.
         openTab(app, "Artists")
         let ensemble = element(app, "artist.Test Ensemble")
@@ -106,6 +114,19 @@ final class MihonbanUITests: XCTestCase {
         openTab(app, "Picks")
         XCTAssertTrue(element(app, "favorite.network-mp3").waitForExistence(timeout: 15))
         screenshot("09-picks")
+
+        // The finished download is listed in Settings.
+        app.buttons["settings.open"].firstMatch.tap()
+        let downloads = element(app, "downloads.open")
+        if !downloads.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssertTrue(downloads.waitForExistence(timeout: 10))
+        downloads.tap()
+        XCTAssertTrue(element(app, "download.done.network-mp3").waitForExistence(timeout: 10))
+        screenshot("12-downloads")
+        app.navigationBars["Downloads"].buttons.firstMatch.tap()
+        let done = app.buttons["Done"].firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
 
         // A focused search field collapses the iOS 26 tab bar, so search runs last.
         openTab(app, "Search")

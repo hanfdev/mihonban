@@ -42,6 +42,10 @@ final class PlayerModel: NSObject {
     @ObservationIgnored private var interrupted = false
     @ObservationIgnored private var initialPosition: Double = 0
     @ObservationIgnored var cache: CacheSettings?
+    @ObservationIgnored var media: MediaCache?
+    @ObservationIgnored var downloads: DownloadStore?
+    // Tracks whose streamed file finished, so the cache is pruned once per write.
+    @ObservationIgnored private var completedWrites: Set<String> = []
 
     private struct Entry {
         let audio: PreparedAudio
@@ -112,6 +116,12 @@ final class PlayerModel: NSObject {
         loadArtwork()
         guard current != nil else { return }
         prepare(queue, immediate: true)
+        media?.prune(protecting: protectedFiles)
+    }
+
+    // The current and next track are never evicted while they are in use.
+    var protectedFiles: Set<String> {
+        Set([queue.current, queue.nextSnapshot()?.current].compactMap { $0 }.map(MediaPaths.audioName))
     }
 
     private func prepare(_ snapshot: PlaybackQueue, immediate: Bool) {
@@ -122,9 +132,15 @@ final class PlayerModel: NSObject {
         let position = immediate ? initialPosition : 0
         let source: MBHTTPInputSource?
         if local != nil { source = nil }
-        else {
-            let cacheFile = client.cacheDirectory.appendingPathComponent("audio", isDirectory: true)
-                .appendingPathComponent(digest(track.id)).appendingPathExtension(track.fileExtension)
+        else if let downloaded = downloads?.localFile(track) {
+            // A complete local file is opened directly; the remote URL is only
+            // used if the file disappeared between this check and the open.
+            source = MBHTTPInputSource(remoteURL: client.url("api", "stream", track.id), cacheURL: downloaded, persistent: true)
+            pending[requestID] = source
+        } else {
+            let directory = media?.audioDirectory ?? client.cacheDirectory.appendingPathComponent("audio", isDirectory: true)
+            let cacheFile = directory.appendingPathComponent(MediaPaths.audioName(track))
+            media?.touch(cacheFile)
             source = MBHTTPInputSource(remoteURL: client.url("api", "stream", track.id), cacheURL: cacheFile,
                                        persistent: cache?.enabled ?? true)
             pending[requestID] = source
@@ -366,6 +382,10 @@ final class PlayerModel: NSObject {
         if let total = engine.totalTime, total.isFinite, total > 0 { duration = total }
         if let decoder = engine.nowPlaying, let entry = entries[ObjectIdentifier(decoder as AnyObject)] {
             buffered = entry.audio.source?.downloadedFraction ?? 1
+            if buffered >= 1, entry.audio.source != nil, let id = entry.queue.current?.id,
+               completedWrites.insert(id).inserted {
+                media?.prune(protecting: protectedFiles)
+            }
         }
     }
 
@@ -415,8 +435,9 @@ final class PlayerModel: NSObject {
         artworkTask?.cancel()
         guard let client, let track = current, let album = track.albumId, demoURL == nil else { return }
         artworkTask = Task { [weak self] in
+            let pinned = MediaPaths.pinnedCover(baseURL: client.baseURL, album: album)
             guard let image = await ArtworkStore.shared.image(url: client.artworkURL(album, size: 480),
-                session: client.session, pixels: 640), !Task.isCancelled, self?.current?.id == track.id else { return }
+                session: client.session, pixels: 640, pinned: pinned), !Task.isCancelled, self?.current?.id == track.id else { return }
             self?.artwork = NowPlayingBridge.artwork(image)
             self?.updateNowPlaying()
         }
