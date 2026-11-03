@@ -103,17 +103,18 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(element(app, "track.network-ogg").waitForExistence(timeout: 15))
         screenshot("08-tracks")
 
+        openTab(app, "Picks")
+        XCTAssertTrue(element(app, "favorite.network-mp3").waitForExistence(timeout: 15))
+        screenshot("09-picks")
+
+        // A focused search field collapses the iOS 26 tab bar, so search runs last.
         openTab(app, "Search")
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
         field.typeText("guest")
         XCTAssertTrue(element(app, "search.artist.Guest Singer").waitForExistence(timeout: 10))
-        screenshot("09-search")
-
-        openTab(app, "Picks")
-        XCTAssertTrue(element(app, "favorite.network-mp3").waitForExistence(timeout: 15))
-        screenshot("10-picks")
+        screenshot("10-search")
         XCTAssertEqual(app.state, .runningForeground)
     }
 

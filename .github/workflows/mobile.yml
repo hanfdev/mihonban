@@ -31,6 +31,7 @@ jobs:
           key: ios-spm-${{ runner.arch }}-${{ hashFiles('ios/project.yml', 'ios/Package.resolved') }}
       - name: Prepare synthetic audio and project
         run: |
+          python3 -I ios/tools/check-l10n.py
           mkdir -p ios/TestFixtures ios/Resources/ThirdParty
           ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a libmp3lame -q:a 3 ios/TestFixtures/tone.mp3
           ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a flac ios/TestFixtures/tone.flac

@@ -48,6 +48,14 @@ final class ContractTests: XCTestCase {
 
     func testLocalizedStringsArePresent() {
         XCTAssertNotEqual(L10n.text("mobile.connect"), "mobile.connect")
-        XCTAssertNotEqual(L10n.text("player.seekFailed"), "player.seekFailed")
+        XCTAssertNotEqual(L10n.text("mobile.seekFailed"), "mobile.seekFailed")
+    }
+
+    func testComputedLabelKeysResolve() {
+        // Sort labels are built at runtime, so the source scan cannot see them.
+        let keys = AlbumSort.allCases.map(\.label) + TrackSort.allCases.map(\.label)
+            + ArtistSort.allCases.map(\.label) + FavoriteSort.allCases.map(\.label)
+            + ["player.repeatOff", "player.repeatAll", "player.repeatOne"]
+        for key in keys { XCTAssertNotEqual(L10n.text(key), key, "missing localization for \(key)") }
     }
 }

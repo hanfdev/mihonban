@@ -285,7 +285,7 @@ final class PlayerModel: NSObject {
         if engine.seek(time: min(max(0, value), max(0, duration - 0.05))) {
             elapsed = value
             updateNowPlaying()
-        } else { isSeeking = false; error = L10n.text("player.seekFailed") }
+        } else { isSeeking = false; error = L10n.text("mobile.seekFailed") }
     }
 
     func toggleShuffle() {
