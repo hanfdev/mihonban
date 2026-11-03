@@ -56,6 +56,10 @@ jobs:
         run: |
           mkdir -p build/export/Payload
           cp -R build/Mihonban.xcarchive/Products/Applications/Mihonban.app build/export/Payload/
+          # SideStore compares these values, so a stale 1.0 (1) would hide updates.
+          plist=build/export/Payload/Mihonban.app/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$plist")" = "${{ github.run_number }}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$plist")" = "$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"$/\1/p' ios/project.yml)"
           cd build/export
           zip -qry Mihonban.ipa Payload
           shasum -a 256 Mihonban.ipa > SHA256SUMS

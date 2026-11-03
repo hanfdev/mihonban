@@ -50,6 +50,8 @@ targets:
       path: Generated/Info.plist
       properties:
         CFBundleDisplayName: 見本盤
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleLocalizations: [en, ja, ko, fr, es, zh-Hans, zh-Hant]
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes: [audio]
