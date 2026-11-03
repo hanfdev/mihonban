@@ -359,41 +359,50 @@ final class PlayerModel: NSObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
-    // Keep construction in one place so tests exercise the actual system callback.
-    static func makeArtwork(_ image: UIImage) -> MPMediaItemArtwork {
-        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-    }
-
     private func loadArtwork() {
         artworkTask?.cancel()
         guard let client, let track = current, let album = track.albumId, demoURL == nil else { return }
         artworkTask = Task { [weak self] in
             guard let image = await ArtworkStore.shared.image(url: client.artworkURL(album, size: 480),
                 session: client.session, pixels: 640), !Task.isCancelled, self?.current?.id == track.id else { return }
-            self?.artwork = Self.makeArtwork(image)
+            self?.artwork = NowPlayingBridge.artwork(image)
             self?.updateNowPlaying()
+        }
+    }
+
+    private enum RemoteAction: Sendable { case play, pause, toggle, next, previous }
+
+    private func perform(_ action: RemoteAction) {
+        switch action {
+        case .play: resume()
+        case .pause: pause()
+        case .toggle: toggle()
+        case .next: next()
+        case .previous: previous()
         }
     }
 
     private func installRemoteCommands() {
         let commands = MPRemoteCommandCenter.shared()
-        let actions: [(MPRemoteCommand, @MainActor (PlayerModel) -> Void)] = [
-            (commands.playCommand, { $0.resume() }), (commands.pauseCommand, { $0.pause() }),
-            (commands.togglePlayPauseCommand, { $0.toggle() }),
-            (commands.nextTrackCommand, { $0.next() }), (commands.previousTrackCommand, { $0.previous() })]
+        let actions: [(MPRemoteCommand, RemoteAction)] = [
+            (commands.playCommand, .play), (commands.pauseCommand, .pause),
+            (commands.togglePlayPauseCommand, .toggle),
+            (commands.nextTrackCommand, .next), (commands.previousTrackCommand, .previous)]
         for (command, action) in actions {
             command.isEnabled = true
-            let token = command.addTarget { [weak self] _ in
-                Task { @MainActor in if let self { action(self) } }
+            // Handlers are nonisolated and hop to the main actor explicitly.
+            let token = NowPlayingBridge.addTarget(command) { [weak self] _ in
+                guard let player = self else { return .commandFailed }
+                Task { @MainActor in player.perform(action) }
                 return .success
             }
             remoteTargets.append((command, token))
         }
         commands.changePlaybackPositionCommand.isEnabled = true
-        let token = commands.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+        let token = NowPlayingBridge.addTarget(commands.changePlaybackPositionCommand) { [weak self] event in
+            guard let player = self, let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let time = event.positionTime
-            Task { @MainActor in self?.seek(to: time) }
+            Task { @MainActor in player.seek(to: time) }
             return .success
         }
         remoteTargets.append((commands.changePlaybackPositionCommand, token))

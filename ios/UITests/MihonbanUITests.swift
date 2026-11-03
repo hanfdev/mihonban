@@ -69,7 +69,9 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(expand.waitForExistence(timeout: 20))
         expand.tap()
         XCTAssertTrue(app.staticTexts["player.title"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["0:02"].waitForExistence(timeout: 15))
+        // Elapsed time is polled twice a second, so accept any label past two seconds.
+        let elapsed = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "0:0[2-9]")).firstMatch
+        XCTAssertTrue(elapsed.waitForExistence(timeout: 20))
         XCTAssertEqual(app.state, .runningForeground)
         screenshot("06-network-playback")
     }

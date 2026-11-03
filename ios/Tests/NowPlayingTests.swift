@@ -17,7 +17,7 @@ final class NowPlayingTests: XCTestCase {
             UIColor.orange.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
         }
-        let artwork = ArtworkBox(PlayerModel.makeArtwork(image))
+        let artwork = ArtworkBox(NowPlayingBridge.artwork(image))
         let requested = expectation(description: "Artwork requested from a system callback queue")
         DispatchQueue.global(qos: .userInitiated).async {
             let result = artwork.value.image(at: CGSize(width: 32, height: 32))
