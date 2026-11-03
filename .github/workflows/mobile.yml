@@ -73,10 +73,14 @@ jobs:
           FIXTURE_PID=$!
           trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"] == "iPhone 17"))')
+          echo "SIM_DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          # Ad-hoc signing binds the bundle identifier into the signature; an unsigned
+          # build may be refused as a background transfer client (run 15/16, error -1).
           xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
-            -resultBundlePath build/Tests.xcresult CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath build/Tests.xcresult \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-simulator.log
       - name: Preserve crash diagnostics and symbols
         if: always()
@@ -89,7 +93,9 @@ jobs:
             cp -R build/Mihonban.xcarchive/dSYMs build/diagnostics/dSYMs
           fi
           # App and background transfer daemon messages, for transfer failures.
-          xcrun simctl spawn booted log show --last 20m --style compact \
+          # The simulator is shut down after testing, so it is booted again to read its log.
+          if [ -n "${SIM_DEVICE:-}" ]; then xcrun simctl bootstatus "$SIM_DEVICE" -b > /dev/null 2>&1 || true; fi
+          xcrun simctl spawn "${SIM_DEVICE:-booted}" log show --last 20m --style compact \
             --predicate 'subsystem == "org.mihonban.ios" OR process == "nsurlsessiond" OR (process == "Mihonban" AND subsystem == "com.apple.CFNetwork")' \
             > build/diagnostics/simulator.log 2>&1 || true
       - name: Upload crash diagnostics
