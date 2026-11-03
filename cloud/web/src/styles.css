@@ -35,8 +35,12 @@
   --gold: #e3b34c;
   --gold-dim: #a5813a;
   --serif-ja: "Shippori Mincho", "GenRyu Mincho Fallback", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --serif-zh-hans: "Shippori Mincho", "GenRyu Mincho Fallback", "Songti SC", STSong, "Noto Serif CJK SC", "Source Han Serif SC", SimSun, serif;
-  --serif-zh-hant: "Shippori Mincho", "GenRyu Mincho Fallback", "Songti TC", "Noto Serif CJK TC", "Source Han Serif TC", PMingLiU, serif;
+  /* Chinese text needs one complete serif face. Shippori Mincho only covers
+     Japanese kanji, so leading with it split every Chinese line between two
+     fonts of different weight and design. Shippori stays the brand face via
+     --serif-ja (logo, Japanese content). */
+  --serif-zh-hans: "Noto Serif SC", "Noto Serif KR", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", STSong, SimSun, "GenRyu Mincho Fallback", serif;
+  --serif-zh-hant: "Noto Serif TC", "Noto Serif KR", "Songti TC", "Noto Serif CJK TC", "Source Han Serif TC", PMingLiU, "GenRyu Mincho Fallback", serif;
   --serif-ko: "Noto Serif KR", Batang, AppleMyungjo, serif;
   --sans-ja: "Inter", "Noto Sans JP", system-ui, sans-serif;
   --sans-zh-hans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;

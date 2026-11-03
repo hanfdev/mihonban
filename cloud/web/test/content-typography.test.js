@@ -7,8 +7,18 @@ const styles = readSource('../src/styles.css')
 
 test('CJK content uses language-specific font stacks while the brand stays Japanese', () => {
   assert.match(styles, /--serif-ja:\s*"Shippori Mincho",\s*"GenRyu Mincho Fallback"/)
-  assert.match(styles, /--serif-zh-hans:\s*"Shippori Mincho",\s*"GenRyu Mincho Fallback"/)
-  assert.match(styles, /--serif-zh-hant:\s*"Shippori Mincho",\s*"GenRyu Mincho Fallback"/)
+  // Chinese content must lead with a complete Chinese serif, not the Japanese
+  // brand face, or Simplified-only glyphs render in a different fallback font.
+  assert.match(styles, /--serif-zh-hans:\s*"Noto Serif SC",/)
+  assert.match(styles, /--serif-zh-hant:\s*"Noto Serif TC",/)
+  assert.doesNotMatch(styles, /--serif-zh-han[st]:[^;]*Shippori/)
+  const html = readSource('../index.html')
+  assert.match(html, /family=Noto\+Serif\+SC:wght@400;600;700/)
+  assert.match(html, /family=Noto\+Serif\+TC:wght@400;600;700/)
+  // Korean serif is loaded so Korean content and Hangul quoted inside Chinese text
+  // do not fall back to a system sans face.
+  assert.match(html, /family=Noto\+Serif\+KR:wght@400;600;700/)
+  assert.match(styles, /--serif-zh-hans:\s*"Noto Serif SC",\s*"Noto Serif KR",/)
   assert.match(styles, /@font-face \{[\s\S]+?genryu-mincho-shippori-fallback\.woff2/)
   assert.match(styles, /--serif-zh-hans:[^;]*"Songti SC"/)
   assert.match(styles, /--serif-zh-hant:[^;]*"Songti TC"/)
