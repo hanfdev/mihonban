@@ -20,7 +20,7 @@ import { installTrackMediaSessionHandlers } from './media-session.js'
 import { adjacentQueuePosition } from './player-queue.js'
 import { needsAdminElevation, sessionAfterLogout } from './session.js'
 import { visibleAlbumCount } from './visibility.js'
-import { isCurrentHash, scrollToTop } from './navigation.js'
+import { isCurrentHash, restoreScroll, scrollMemoryKey, scrollToTop } from './navigation.js'
 import { addFavoriteToFront } from './favorites.js'
 import { artistIdentityKey, renameArtistCredits, renameArtistRecord } from './artist-credit.js'
 
@@ -110,7 +110,6 @@ export default function App() {
   const [scrolled, setScrolled] = useState(false)  // Add a header shadow after content scrolls
   const scrolledRef = useRef(false)
   const mainRef = useRef(null)
-  const navScrollRef = useRef('auto')
 
   // ---- Player state ----
   const audioRef = useRef(null)
@@ -126,6 +125,13 @@ export default function App() {
   currentRef.current = current
   queueRef.current = queue
 
+  // A pending scroll restore yields as soon as the user scrolls by hand.
+  const restoreScrollRef = useRef(() => {})
+  const stopRestoreScroll = useCallback(() => {
+    restoreScrollRef.current()
+    restoreScrollRef.current = () => {}
+  }, [])
+
   const handleMainScroll = useCallback((event) => {
     const next = event.currentTarget.scrollTop > 4
     if (next === scrolledRef.current) return
@@ -134,16 +140,33 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    // All views share one scroll container, so each browsing page's offset is
+    // saved when leaving it and restored when returning.
+    const positions = new Map()
+    let previousKey = scrollMemoryKey(location.hash)
     const onHash = () => {
+      stopRestoreScroll()
+      if (previousKey && mainRef.current) {
+        positions.set(previousKey, mainRef.current.scrollTop)
+      }
+      const nextKey = scrollMemoryKey(location.hash)
+      previousKey = nextKey
       setRoute(parseHash())
-      const behavior = navScrollRef.current
-      navScrollRef.current = 'auto'
-      // Wait for the destination view to render before moving its scroll container.
-      requestAnimationFrame(() => scrollToTop(mainRef.current, behavior))
+      const saved = nextKey ? positions.get(nextKey) || 0 : 0
+      if (saved > 0) {
+        restoreScrollRef.current = restoreScroll(mainRef.current, saved)
+        return
+      }
+      // Wait for the destination view to render, then start it at the top
+      // without animating through the previous page's offset.
+      requestAnimationFrame(() => scrollToTop(mainRef.current, 'auto'))
     }
     window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
-  }, [])
+    return () => {
+      stopRestoreScroll()
+      window.removeEventListener('hashchange', onHash)
+    }
+  }, [stopRestoreScroll])
 
   const refreshLibrary = useCallback(async (options = {}) => {
     const requestId = ++libraryRequestRef.current
@@ -714,7 +737,6 @@ export default function App() {
       scrollToTop(mainRef.current)
       return
     }
-    navScrollRef.current = 'smooth'
     navigate(hash)
   }
 
@@ -853,7 +875,9 @@ export default function App() {
       )}
 
       <main className="main" ref={mainRef}
-            onScroll={handleMainScroll}>
+            onScroll={handleMainScroll} onWheel={stopRestoreScroll}
+            onTouchStart={stopRestoreScroll} onPointerDown={stopRestoreScroll}
+            onKeyDown={stopRestoreScroll}>
         {['library', 'genre'].includes(route.view) && !albums
           && loadErrors.library && (
           <LoadFailed message={loadErrors.library}
