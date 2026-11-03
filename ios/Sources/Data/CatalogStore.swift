@@ -178,7 +178,7 @@ final class CatalogStore {
 
     func biography(_ name: String) async throws -> String {
         if offline { return "" }
-        try await session.perform { try await $0.biography(artist: name) }
+        return try await session.perform { try await $0.biography(artist: name) }
     }
 
     private func applyTracks(_ value: Versioned<[Track]>) {
