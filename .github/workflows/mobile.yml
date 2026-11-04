@@ -74,6 +74,9 @@ jobs:
           trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"] == "iPhone 17"))')
           echo "SIM_DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          # The audio engine opens during app initialization. Finish the simulator's
+          # first boot before launching the test host and its CoreAudio connection.
+          xcrun simctl bootstatus "$DEVICE" -b
           # Ad-hoc signing binds the bundle identifier into the signature; an unsigned
           # build may be refused as a background transfer client (run 15/16, error -1).
           xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \

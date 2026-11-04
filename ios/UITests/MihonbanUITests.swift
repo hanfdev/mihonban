@@ -231,10 +231,17 @@ final class MihonbanUITests: XCTestCase {
 
         // The finished download is listed in Settings.
         app.buttons["settings.open"].firstMatch.tap()
-        let downloads = element(app, "downloads.open")
-        if !downloads.waitForExistence(timeout: 5) { app.swipeUp() }
+        let downloads = app.buttons["downloads.open"]
+        // Lazy list rows can exist while their tap centre is below the safe area.
+        for _ in 0..<3 {
+            if downloads.exists && downloads.isHittable && downloads.frame.maxY < app.frame.maxY - 34 { break }
+            app.swipeUp()
+        }
         XCTAssertTrue(downloads.waitForExistence(timeout: 10))
+        XCTAssertTrue(downloads.isHittable)
+        XCTAssertLessThan(downloads.frame.maxY, app.frame.maxY - 34)
         downloads.tap()
+        XCTAssertTrue(app.navigationBars["Downloads"].waitForExistence(timeout: 10))
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "download.")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         screenshot("12-downloads")
