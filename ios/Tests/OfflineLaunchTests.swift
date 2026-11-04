@@ -60,6 +60,12 @@ final class OfflineLaunchTests: XCTestCase {
     func testUnreachableServiceReopensTheSavedLibrary() async throws {
         let (defaults, name) = try suite()
         defer { defaults.removePersistentDomain(forName: name) }
+        // Other suites share the host app's container and may have opened albums
+        // against the same fixture, so start from an empty offline catalog.
+        let base = try APIClient(address: "http://127.0.0.1:8766").baseURL.absoluteString
+        let catalog = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Mihonban/" + digest(base) + "/catalog", isDirectory: true)
+        try? FileManager.default.removeItem(at: catalog)
         let online = try await signIn(defaults)
         let detail = try await online.catalog.album("network-mp3")
         leave(online)

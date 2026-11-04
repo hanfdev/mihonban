@@ -113,6 +113,7 @@ struct SettingsView: View {
                     Text(model.demo ? "Demo" : model.address).font(Theme.body(14)).textSelection(.enabled)
                     LabeledContent(L10n.text("login.menuTitle"), value: roleName)
                     Button(L10n.text("login.signOut"), role: .destructive) { confirmDisconnect = true }
+                        .accessibilityIdentifier("settings.signOut")
                 }.listRowBackground(Theme.surface)
                 Section {
                     Toggle(L10n.text("mobile.cacheEnable"), isOn: $model.cache.enabled)
@@ -171,6 +172,7 @@ struct SettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
             .confirmationDialog(L10n.text("mobile.disconnectConfirm"), isPresented: $confirmDisconnect, titleVisibility: .visible) {
                 Button(L10n.text("login.signOut"), role: .destructive) { dismiss(); model.disconnect() }
+                    .accessibilityIdentifier("settings.signOutConfirm")
             }
         }.tint(Theme.accent)
     }

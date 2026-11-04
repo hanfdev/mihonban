@@ -53,14 +53,26 @@ final class MihonbanUITests: XCTestCase {
         wait(for: [skipped], timeout: 10)
     }
 
+    // Earlier tests may leave a remembered session, which reopens the library on
+    // launch. Signing out returns to the connection screen in any language.
+    private func signOutIfNeeded(_ app: XCUIApplication) {
+        let address = app.textFields["connection.address"]
+        guard !address.waitForExistence(timeout: 5) else { return }
+        let settings = app.buttons["settings.open"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 15))
+        settings.tap()
+        let signOut = app.buttons["settings.signOut"]
+        if !signOut.waitForExistence(timeout: 5) { app.swipeUp() }
+        signOut.tap()
+        let confirm = app.buttons["settings.signOutConfirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+    }
+
     // Signs out any remembered session first, so each test chooses its role.
     private func signIn(_ app: XCUIApplication, password secret: String) {
         let address = app.textFields["connection.address"]
-        if !address.waitForExistence(timeout: 5) {
-            app.buttons["settings.open"].firstMatch.tap()
-            app.buttons["Sign out"].tap()
-            app.buttons["Sign out"].firstMatch.tap()
-        }
+        signOutIfNeeded(app)
         XCTAssertTrue(address.waitForExistence(timeout: 10))
         address.tap()
         address.press(forDuration: 1.2)
@@ -196,6 +208,7 @@ final class MihonbanUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)"]
         app.launch()
+        signOutIfNeeded(app)
         XCTAssertTrue(app.textFields["connection.address"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["connection.connect"].isEnabled)
         screenshot("00-connect-zh")
