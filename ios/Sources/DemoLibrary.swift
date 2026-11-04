@@ -22,6 +22,15 @@ enum DemoLibrary {
             tracks[2].artist = "Studio Ensemble"
             result[0].tracks = tracks
         }
+        if arguments.contains("--demo-queue-layout") {
+            var tracks = result[0].normalizedTracks
+            for index in 1..<tracks.count {
+                tracks[index].title = "Queue \(index): " + String(repeating: "A long song title ", count: 6)
+                tracks[index].artist = rawCredits
+                tracks[index].artists = nil
+            }
+            result[0].tracks = tracks
+        }
         if arguments.contains("--demo-small-credits") {
             var tracks = result[0].normalizedTracks
             tracks[0].artists = ["First Artist", "Second Artist", "Third Artist"].map { ArtistCredit(name: $0) }
@@ -29,6 +38,9 @@ enum DemoLibrary {
             tracks[1].artists = ["First Artist", "Second Artist"].map { ArtistCredit(name: $0) }
             tracks[1].artist = "First Artist, Second Artist"
             result[0].tracks = tracks
+        }
+        if arguments.contains("--demo-markdown") {
+            result[0].note = markdownSample
         }
         if arguments.contains("--demo-reading") {
             result[0].note = (1...40).map { "Paragraph \($0). A quiet evening in the recording studio, with notes about the musicians and this edition." }.joined(separator: "\n\n")
@@ -46,6 +58,47 @@ enum DemoLibrary {
         }
         return result
     }
+
+    static var artists: [Artist] {
+        guard ProcessInfo.processInfo.arguments.contains("--demo-markdown") else { return [] }
+        return [Artist(name: "見本盤スタジオ", note: markdownSample)]
+    }
+
+    static let markdownSample = """
+    # Session notes
+
+    A **careful** recording with *quiet* passages and ~~discarded~~ ideas.
+    Listen to `take_02` before the final mix.
+
+    ## Recording details
+
+    - First session
+    - Second session
+      - Guest strings
+
+    1. Record the ensemble
+    2. Listen together
+
+    > Keep the room sound.
+
+    ```text
+    take_01  00:42
+      preserve this indentation
+    ```
+
+    | Track | Duration |
+    | --- | ---: |
+    | First light | 3:42 |
+    | Interlude | 1:20 |
+
+    ---
+
+    [Session archive](https://example.invalid/archive)
+    [Unsafe link](javascript:alert(1))
+    ![Studio photograph](https://example.invalid/studio.jpg)
+
+    Final listening note.
+    """
 
     static let creditNames = ["Studio Ensemble with a deliberately long display name", "Guest Singer",
                               "弦楽アンサンブル", "Session Player", "María Silva", "김민수", "Brass Ensemble", "Final Artist"]

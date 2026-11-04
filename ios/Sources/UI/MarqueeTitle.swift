@@ -24,14 +24,27 @@ struct MarqueeMotion {
     }
 }
 
+private struct MarqueeSuspendedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var marqueeSuspended: Bool {
+        get { self[MarqueeSuspendedKey.self] }
+        set { self[MarqueeSuspendedKey.self] = newValue }
+    }
+}
+
 struct PlaybackTitleButton: View {
     let track: Track?
     let openAlbum: () -> Void
     @State private var showingFullTitle = false
+    @Environment(\.marqueeSuspended) private var suspended
 
     var body: some View {
         MarqueeTitle(text: track?.title ?? "", identity: track?.id ?? "", canOpenAlbum: track?.albumId != nil,
                      openAlbum: openAlbum, showFullTitle: { showingFullTitle = true })
+            .environment(\.marqueeSuspended, suspended || showingFullTitle)
             .frame(maxWidth: .infinity, alignment: .leading)
             .sheet(isPresented: $showingFullTitle) {
                 NavigationStack {
@@ -60,6 +73,7 @@ struct MarqueeTitle: UIViewRepresentable {
     let showFullTitle: () -> Void
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.marqueeSuspended) private var suspended
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.layoutDirection) private var direction
@@ -78,8 +92,9 @@ struct MarqueeTitle: UIViewRepresentable {
         view.openAlbum = openAlbum
         view.showFullTitle = showFullTitle
         view.isEnabled = canOpenAlbum
+        view.titleDisplay.setSuspended(suspended || scenePhase != .active)
         view.configure(text: text, identity: identity, font: font,
-                       animated: scenePhase == .active && !reduceMotion && !voiceOver && direction == .leftToRight)
+                       animated: !reduceMotion && !voiceOver && direction == .leftToRight)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: MarqueeTitleControl, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? uiView.titleDisplay.naturalWidth, height: uiView.titleHeight)
@@ -129,7 +144,9 @@ final class MarqueeTitleControl: UIButton {
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: titleHeight) }
     override func layoutSubviews() {
         super.layoutSubviews()
-        titleDisplay.frame = bounds
+        // System sheet transitions must not interpolate the glyph container's
+        // frame. The marquee animates translation only, never scale or bounds.
+        UIView.performWithoutAnimation { titleDisplay.frame = bounds }
     }
     override func accessibilityActivate() -> Bool {
         guard isEnabled, let openAlbum else { return false }
@@ -184,10 +201,15 @@ final class MarqueeTitleView: UIView {
     private let second = MarqueeGlyphView(frame: .zero)
     private var identity = ""
     private var animated = false
+    private var suspended = false
     private var lastSize = CGSize.zero
+    private(set) var animationGeneration = 0
     var naturalWidth: CGFloat { first.naturalWidth }
     var lineHeight: CGFloat { ceil(first.font.lineHeight) }
-    var isAnimating: Bool { strip.layer.animation(forKey: "title.scroll") != nil }
+    var hasScrollAnimation: Bool { strip.layer.animation(forKey: "title.scroll") != nil }
+    var isAnimating: Bool { hasScrollAnimation && strip.layer.speed != 0 && window != nil }
+    var isScrollPaused: Bool { hasScrollAnimation && strip.layer.speed == 0 }
+    var scrollTime: CFTimeInterval { strip.layer.convertTime(CACurrentMediaTime(), from: nil) }
 
     init() {
         super.init(frame: .zero)
@@ -212,34 +234,84 @@ final class MarqueeTitleView: UIView {
         setNeedsLayout()
     }
 
+    func setSuspended(_ value: Bool) {
+        guard suspended != value else { return }
+        suspended = value
+        updatePlaybackState()
+        if !value { setNeedsLayout() }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
+        // A transient zero size or presentation frame is not a new text layout.
+        guard bounds.width > 0, bounds.height > 0, !suspended, window != nil || !hasScrollAnimation else { return }
         guard bounds.size != lastSize else { return }
         lastSize = bounds.size
         restart()
     }
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { stop() } else { restart() }
+        if window != nil {
+            setNeedsLayout()
+            layoutIfNeeded()
+            if animated && !hasScrollAnimation && bounds.width > 0 { restart() }
+        }
+        updatePlaybackState()
     }
-    func stop() { strip.layer.removeAnimation(forKey: "title.scroll"); strip.transform = .identity }
+    func stop() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        strip.layer.removeAnimation(forKey: "title.scroll")
+        strip.layer.speed = 1
+        strip.layer.timeOffset = 0
+        strip.layer.beginTime = 0
+        strip.layer.transform = CATransform3DIdentity
+        CATransaction.commit()
+    }
+
+    private func updatePlaybackState() {
+        guard hasScrollAnimation else { return }
+        let pause = suspended || window == nil
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if pause && strip.layer.speed != 0 {
+            let elapsed = strip.layer.convertTime(CACurrentMediaTime(), from: nil)
+            strip.layer.speed = 0
+            strip.layer.timeOffset = elapsed
+        } else if !pause && strip.layer.speed == 0 {
+            let elapsed = strip.layer.timeOffset
+            strip.layer.speed = 1
+            strip.layer.timeOffset = 0
+            strip.layer.beginTime = 0
+            strip.layer.beginTime = strip.layer.convertTime(CACurrentMediaTime(), from: nil) - elapsed
+        }
+        CATransaction.commit()
+    }
 
     private func restart() {
         stop()
         let width = ceil(naturalWidth)
-        strip.frame = CGRect(x: 0, y: 0, width: max(width, bounds.width) * 2 + 40, height: bounds.height)
         let motion = animated && window != nil ? MarqueeMotion(textWidth: width, viewport: bounds.width) : nil
-        first.lineBreakMode = motion == nil ? .byTruncatingTail : .byClipping
-        first.frame = CGRect(x: 0, y: 0, width: motion == nil ? bounds.width : width, height: bounds.height)
-        second.frame = CGRect(x: width + 40, y: 0, width: width, height: bounds.height)
-        second.isHidden = motion == nil
+        UIView.performWithoutAnimation {
+            strip.bounds = CGRect(x: 0, y: 0, width: max(width, bounds.width) * 2 + 40, height: bounds.height)
+            strip.center = CGPoint(x: strip.bounds.width / 2, y: bounds.height / 2)
+            first.lineBreakMode = motion == nil ? .byTruncatingTail : .byClipping
+            first.frame = CGRect(x: 0, y: 0, width: motion == nil ? bounds.width : width, height: bounds.height)
+            second.frame = CGRect(x: width + 40, y: 0, width: width, height: bounds.height)
+            second.isHidden = motion == nil
+        }
         guard let motion else { return }
+        // Keep an explicit local start time so suspend/resume preserves the
+        // same cycle, including its initial and trailing reading pauses.
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
         animation.values = [0, 0, -motion.overflow, -motion.overflow, -motion.distance]
         animation.keyTimes = motion.keyTimes
         animation.duration = motion.duration
+        animation.beginTime = strip.layer.convertTime(CACurrentMediaTime(), from: nil)
         animation.calculationMode = .linear
         animation.repeatCount = .infinity
         strip.layer.add(animation, forKey: "title.scroll")
+        animationGeneration += 1
+        updatePlaybackState()
     }
 }

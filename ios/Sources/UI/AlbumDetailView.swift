@@ -6,6 +6,7 @@ struct AlbumView: View {
     @State private var album: Album?
     @State private var error: String?
     @State private var readingNote = false
+    @State private var noteDocument: MarkdownDocument?
     @State private var expandedDescriptors = false
     @State private var gallery: String?
     @State private var editing = false
@@ -62,6 +63,11 @@ struct AlbumView: View {
         }
         .refreshable { await load(refresh: true) }
         .task(id: albumID) { await load() }
+        .task(id: album?.note) {
+            guard let source = album?.note, !source.isEmpty else { noteDocument = nil; return }
+            let prepared = await MarkdownDocument.prepare(source)
+            if !Task.isCancelled { noteDocument = prepared }
+        }
         .onChange(of: albumID) { _, _ in expandedDescriptors = false }
         .sheet(item: Binding(get: { gallery.map(GallerySelection.init) }, set: { gallery = $0?.id })) { selection in
             GalleryViewer(images: album?.images ?? [], client: model.imageClient, selection: selection.id)
@@ -227,7 +233,10 @@ struct AlbumView: View {
         if let note = album.note?.nonEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeading(title: L10n.text("albumPage.note"))
-                MarkdownText(source: note).lineLimit(6).accessibilityIdentifier("album.note.preview")
+                if let document = noteDocument, document.source == note {
+                    Text(document.plainPreview).font(.callout).foregroundStyle(Theme.dim).lineSpacing(4)
+                        .lineLimit(6).accessibilityIdentifier("album.note.preview")
+                } else { ProgressView() }
                 Button(L10n.text("md.expand")) { readingNote = true }.accessibilityIdentifier("album.note.read")
             }
         }

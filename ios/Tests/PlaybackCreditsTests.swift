@@ -28,6 +28,19 @@ final class PlaybackCreditsTests: XCTestCase {
         XCTAssertEqual(credits.compactText, credits.firstName)
     }
 
+    func testBlankAndDuplicateStructuredCreditsStillPermitDirectNavigation() {
+        let track = Track(id: "one", title: "", artist: "Display text", artists: [
+            ArtistCredit(name: " "), ArtistCredit(name: " Solo "), ArtistCredit(name: "Solo")])
+        let credits = PlaybackCredits(track: track)
+        XCTAssertEqual(credits.names, ["Solo"])
+        XCTAssertEqual(credits.singleArtist, "Solo")
+        XCTAssertFalse(credits.summarizesNames)
+        let duo = PlaybackCredits(track: Track(id: "two", title: "", artists: [
+            ArtistCredit(name: "Solo"), ArtistCredit(name: "Guest")]))
+        XCTAssertNil(duo.singleArtist)
+        XCTAssertEqual(duo.displayNames, "Solo · Guest")
+    }
+
     func testRawCreditIsReadableButNeverInventsArtists() {
         let text = "Earth, Wind & Fire, Guest Singer / Studio Ensemble & Final Contributor"
         let alternatives: [[ArtistCredit]?] = [nil, [], [ArtistCredit(name: " ")]]

@@ -44,13 +44,15 @@ struct PlaybackCreditsButton: View {
                         Text(credits.moreText).fixedSize()
                             .accessibilityIdentifier("player.artists.count")
                     }
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).accessibilityHidden(true)
+                    if credits.singleArtist == nil {
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).accessibilityHidden(true)
+                    }
                 }.font(Theme.body(17)).foregroundStyle(Theme.dim)
                     .frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("player.artist")
                 .accessibilityLabel(credits.fullText)
                 .accessibilityValue(credits.summarizesNames ? credits.moreText : "")
-                .accessibilityHint(L10n.text("mobile.viewCredits"))
+                .accessibilityHint(L10n.text(credits.singleArtist == nil ? "mobile.viewCredits" : "mobile.viewArtist"))
         }
     }
 }

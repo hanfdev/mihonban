@@ -134,7 +134,7 @@ final class AppModel {
             demo = true
             sessionStore.connect(api, info: SessionInfo(ok: true, role: "user", guest: true))
             let albums = DemoLibrary.albums
-            catalog.seed(albums: albums, artists: [], tracks: albums.flatMap(\.normalizedTracks))
+            catalog.seed(albums: albums, artists: DemoLibrary.artists, tracks: albums.flatMap(\.normalizedTracks))
             player.connect(api, demoURL: try? DemoLibrary.tone())
             return
         }

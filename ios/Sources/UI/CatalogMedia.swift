@@ -95,21 +95,6 @@ struct Chip: View {
     }
 }
 
-// Notes and biographies are Markdown on the web. Inline syntax is rendered
-// natively; block structure is kept as plain paragraphs.
-struct MarkdownText: View {
-    let source: String
-    var body: some View {
-        Text(Self.attributed(source)).font(.callout).foregroundStyle(Theme.dim).lineSpacing(4)
-            .tint(Theme.accent).textSelection(.enabled)
-    }
-
-    static func attributed(_ source: String) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: source, options: options)) ?? AttributedString(source)
-    }
-}
-
 struct GalleryViewer: View {
     let images: [String]
     let client: APIClient?

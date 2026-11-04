@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import AVKit
 @testable import Mihonban
 
 final class MarqueeTests: XCTestCase {
@@ -40,6 +41,127 @@ final class MarqueeTests: XCTestCase {
         XCTAssertTrue(view.isAnimating)
         view.removeFromSuperview()
         XCTAssertFalse(view.isAnimating)
+    }
+
+    @MainActor
+    func testAirPlayPresentationPausesTheSameAnimationClock() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        let view = MarqueeTitleView()
+        view.configure(text: String(repeating: "Long Title ", count: 20), identity: "a",
+                       font: .systemFont(ofSize: 27), animated: true)
+        view.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
+        window.addSubview(view)
+        view.layoutIfNeeded()
+        let generation = view.animationGeneration
+        let coordinator = RoutePicker.Coordinator { view.setSuspended($0) }
+        let picker = AVRoutePickerView()
+        let beforePause = view.scrollTime
+        coordinator.routePickerViewWillBeginPresentingRoutes(picker)
+        XCTAssertTrue(view.isScrollPaused)
+        XCTAssertFalse(view.isAnimating)
+        let pausedTime = view.scrollTime
+        XCTAssertGreaterThanOrEqual(pausedTime, beforePause)
+        // Deliberately wait while suspended to prove the clock is frozen, not
+        // merely recreated at zero when the route picker closes.
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(view.scrollTime, pausedTime, accuracy: 0.001)
+        let resumedAt = CACurrentMediaTime()
+        coordinator.routePickerViewDidEndPresentingRoutes(picker)
+        XCTAssertTrue(view.isAnimating)
+        XCTAssertFalse(view.isScrollPaused)
+        XCTAssertEqual(view.animationGeneration, generation)
+        XCTAssertGreaterThanOrEqual(view.scrollTime, pausedTime)
+        let timeAfterResume = view.scrollTime
+        XCTAssertLessThanOrEqual(timeAfterResume - pausedTime, CACurrentMediaTime() - resumedAt + 0.005)
+        view.removeFromSuperview()
+    }
+
+    @MainActor
+    func testRepeatedInactivityAndTemporaryDetachmentDoNotRestart() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        let view = MarqueeTitleView()
+        let title = String(repeating: "Long Title ", count: 20)
+        let font = UIFont.systemFont(ofSize: 27)
+        view.configure(text: title, identity: "a", font: font, animated: true)
+        view.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
+        window.addSubview(view)
+        view.layoutIfNeeded()
+        let generation = view.animationGeneration
+        view.setSuspended(true)
+        let paused = view.scrollTime
+        view.setSuspended(true)
+        view.configure(text: title, identity: "a", font: font, animated: true)
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        XCTAssertEqual(view.scrollTime, paused, accuracy: 0.001)
+        view.removeFromSuperview()
+        XCTAssertTrue(view.hasScrollAnimation)
+        XCTAssertTrue(view.isScrollPaused)
+        window.addSubview(view)
+        view.layoutIfNeeded()
+        XCTAssertTrue(view.isScrollPaused, "reattaching behind AirPlay must not resume prematurely")
+        view.setSuspended(false)
+        view.layoutIfNeeded()
+        XCTAssertEqual(view.animationGeneration, generation)
+        XCTAssertTrue(view.isAnimating)
+        view.removeFromSuperview()
+    }
+
+    @MainActor
+    func testOnlyRealLayoutOrTrackChangesRestartTheCycle() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        let view = MarqueeTitleView()
+        let title = String(repeating: "Long Title ", count: 20)
+        let font = UIFont.systemFont(ofSize: 27)
+        view.configure(text: title, identity: "a", font: font, animated: true)
+        view.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
+        window.addSubview(view)
+        view.layoutIfNeeded()
+        let generation = view.animationGeneration
+        view.setSuspended(true)
+        view.frame.size = .zero
+        view.layoutIfNeeded()
+        view.frame.size = CGSize(width: 250, height: 44)
+        view.layoutIfNeeded()
+        view.setSuspended(false)
+        view.layoutIfNeeded()
+        XCTAssertEqual(view.animationGeneration, generation, "transient presentation geometry is not a resize")
+        view.frame.size.width = 280
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        XCTAssertEqual(view.animationGeneration, generation + 1)
+        view.setSuspended(true)
+        view.configure(text: title, identity: "b", font: font, animated: true)
+        XCTAssertFalse(view.hasScrollAnimation, "a new track must not inherit the previous track's phase")
+        view.setSuspended(false)
+        view.layoutIfNeeded()
+        XCTAssertEqual(view.animationGeneration, generation + 2)
+        view.removeFromSuperview()
+    }
+
+    @MainActor
+    func testPresentationUpdatesNeverAddStretchAnimations() {
+        let control = MarqueeTitleControl(frame: CGRect(x: 0, y: 0, width: 250, height: 44))
+        control.configure(text: "A long title repeated for animation", identity: "a",
+                          font: .systemFont(ofSize: 27), animated: true)
+        control.layoutIfNeeded()
+        control.titleDisplay.layoutIfNeeded()
+        UIView.animate(withDuration: 0.4) {
+            control.bounds.size.width = 280
+            control.setNeedsLayout()
+            control.layoutIfNeeded()
+            control.titleDisplay.layoutIfNeeded()
+        }
+        var nodes = [control.titleDisplay as UIView]
+        var index = 0
+        while index < nodes.count {
+            let node = nodes[index]
+            XCTAssertFalse((node.layer.animationKeys() ?? []).contains { $0 != "title.scroll" },
+                           "only marquee translation may animate, not glyph bounds or scale")
+            nodes += node.subviews
+            index += 1
+        }
+        XCTAssertEqual(control.titleDisplay.frame, control.bounds)
     }
 
     @MainActor

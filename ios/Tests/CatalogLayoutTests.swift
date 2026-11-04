@@ -178,6 +178,35 @@ final class CatalogLayoutTests: XCTestCase {
         }
     }
 
+    func testQueueRowsDoNotGrowWhenEditingNarrowsTheContent() {
+        let track = Track(id: "long", title: String(repeating: "A long song title ", count: 12),
+                          artist: String(repeating: "Ensemble and Guest Artist ", count: 12))
+        for textSize in [DynamicTypeSize.large, .accessibility3, .accessibility5] {
+            for width in [CGFloat(260), 346, 600] {
+                let normal = size(QueueTrackRow(track: track).environment(\.dynamicTypeSize, textSize), width: width)
+                let editing = size(QueueTrackRow(track: track).environment(\.dynamicTypeSize, textSize), width: width - 80)
+                XCTAssertEqual(normal.height, editing.height, accuracy: 0.5)
+                XCTAssertGreaterThanOrEqual(editing.height, 44)
+                XCTAssertLessThanOrEqual(editing.width, width - 79.5)
+            }
+        }
+    }
+
+    func testMarkdownBlocksKeepWideCodeAndTablesInsideReaderWidth() {
+        let code = "let recording = \"" + String(repeating: "long-content-", count: 30) + "\""
+        let source = "# Recording notes\n\nA **bold** introduction.\n\n> Quiet room.\n\n- First take\n- Final take\n\n```swift\n" + code
+            + "\n```\n\n| Track | Duration |\n| --- | ---: |\n| First light | 3:42 |"
+        let document = MarkdownDocument.parse(source)
+        for width in [CGFloat(264), 600] {
+            for textSize in [DynamicTypeSize.large, .accessibility3] {
+                let measured = size(MarkdownContent(document: document).environment(\.dynamicTypeSize, textSize), width: width)
+                XCTAssertLessThanOrEqual(measured.width, width + 0.5, "only individual code and table blocks may scroll horizontally")
+                XCTAssertGreaterThan(measured.height, 0)
+                XCTAssertTrue(measured.height.isFinite)
+            }
+        }
+    }
+
     func testCountsUseTheSingularForOne() {
         XCTAssertEqual(L10n.count("count.tracks", 1), L10n.text("mobile.oneTrack"))
         XCTAssertEqual(L10n.count("count.albums", 1), L10n.text("mobile.oneAlbum"))

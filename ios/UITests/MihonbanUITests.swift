@@ -465,14 +465,11 @@ final class MihonbanUITests: XCTestCase {
 
         app.buttons["player.next"].tap()
         waitForLabel(app.buttons["player.title"], "After the rain")
+        XCTAssertEqual(artist.images.count, 0, "a single artist has no disclosure arrow")
         artist.tap()
-        let single = app.buttons["player.credit.0"]
-        XCTAssertTrue(single.waitForExistence(timeout: 10))
-        XCTAssertEqual(single.label, "Studio Ensemble")
-        XCTAssertFalse(app.buttons["player.credit.1"].exists)
-        single.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 10))
-        XCTAssertEqual(title.label, "Studio Ensemble", "a single artist uses the same picker without inventing names")
+        XCTAssertEqual(title.label, "Studio Ensemble", "a single artist opens directly without a picker")
+        XCTAssertFalse(app.buttons["player.credit.0"].exists)
         XCTAssertFalse(app.buttons["player.credits.done"].exists)
     }
 
@@ -655,9 +652,10 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(descriptors.label.contains("1"))
     }
 
-    private func launchCreditsPlayer(largeText: Bool = false) -> XCUIApplication {
+    private func launchCreditsPlayer(largeText: Bool = false, queueStress: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--demo", "--demo-credits", "-AppleLanguages", "(en)"]
+        if queueStress { app.launchArguments.append("--demo-queue-layout") }
         if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch()
         let album = app.buttons["album.demo-1"]
@@ -720,6 +718,43 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertEqual(element(app, "tile.footer.demo-1").frame.minY,
                        element(app, "tile.footer.demo-2").frame.minY, accuracy: 1)
         screenshot("26-caption-grouping")
+    }
+
+    func testQueueEditKeepsLongRowsAtTheSameHeightAndPosition() {
+        let app = launchCreditsPlayer(queueStress: true)
+        app.buttons["player.queue"].tap()
+        let first = element(app, "queue.0")
+        let second = element(app, "queue.1")
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        XCTAssertTrue(second.exists)
+        let frames = [first.frame, second.frame]
+        let labels = [first.label, second.label]
+        let edit = app.buttons["queue.edit"]
+        let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder"))
+        for _ in 0..<3 {
+            edit.tap()
+            XCTAssertTrue(handles.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(handles.count, 2)
+            for (index, row) in [first, second].enumerated() {
+                XCTAssertEqual(row.frame.height, frames[index].height, accuracy: 1)
+                XCTAssertEqual(row.frame.minY, frames[index].minY, accuracy: 1,
+                               "editing controls must not make long titles wrap and move the following rows")
+                XCTAssertEqual(row.label, labels[index])
+            }
+            edit.tap()
+            let finished = expectation(for: NSPredicate(format: "label == %@", "Edit"), evaluatedWith: edit)
+            wait(for: [finished], timeout: 5)
+            for (index, row) in [first, second].enumerated() {
+                XCTAssertEqual(row.frame.height, frames[index].height, accuracy: 1)
+                XCTAssertEqual(row.frame.minY, frames[index].minY, accuracy: 1)
+                XCTAssertEqual(row.label, labels[index])
+            }
+        }
+        screenshot("40-queue-edit-stable")
+        app.buttons["queue.done"].tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["player.title"].label.hasPrefix("A very long"))
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
     }
 
     func testQueueDragKeepsRowsAndPlaybackIntact() {
@@ -794,14 +829,98 @@ final class MihonbanUITests: XCTestCase {
         read.tap()
         let done = app.buttons["reader.done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
-        let content = app.staticTexts["reader.content"]
-        XCTAssertTrue(content.label.contains("Paragraph 40."))
-        app.scrollViews["reader.scroll"].swipeUp()
+        let scroll = app.scrollViews["reader.scroll"]
+        let last = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Paragraph 40.")).firstMatch
+        for _ in 0..<30 {
+            if last.exists && last.isHittable { break }
+            scroll.swipeUp()
+        }
+        XCTAssertTrue(last.exists, "all paragraphs must be retained in the rendered document")
+        XCTAssertTrue(last.isHittable)
         XCTAssertTrue(done.isHittable, "closing must not require reaching the end of the note")
         screenshot("32-album-reading")
         done.tap()
         XCTAssertTrue(read.waitForExistence(timeout: 5))
         XCTAssertEqual(read.frame.minY, before.minY, accuracy: 2)
+    }
+
+    func testAlbumAndArtistDescriptionsRenderMarkdownNatively() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-markdown", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
+        app.buttons["album.demo-1"].tap()
+        let read = app.buttons["album.note.read"]
+        reveal(read, in: app, scrolling: app.scrollViews["album.scroll"])
+        read.tap()
+        let done = app.buttons["reader.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        assertMarkdownSample(app, scroll: app.scrollViews["reader.scroll"])
+        screenshot("41-album-markdown")
+        XCTAssertTrue(done.isHittable)
+        done.tap()
+        XCTAssertTrue(read.waitForExistence(timeout: 5))
+        openTab(app, "Artists")
+        let artist = element(app, "artist.見本盤スタジオ")
+        XCTAssertTrue(artist.waitForExistence(timeout: 10))
+        artist.tap()
+        assertMarkdownSample(app, scroll: app.scrollViews["artist.scroll"])
+        screenshot("42-artist-markdown")
+        XCTAssertEqual(app.webViews.count, 0, "descriptions stay native rather than using a web view")
+    }
+
+    private func assertMarkdownSample(_ app: XCUIApplication, scroll: XCUIElement) {
+        let heading = app.staticTexts["Session notes"]
+        reveal(heading, in: app, scrolling: scroll)
+        XCTAssertTrue(heading.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["# Session notes"].exists)
+        let details = app.staticTexts["Recording details"]
+        reveal(details, in: app, scrolling: scroll)
+        XCTAssertTrue(details.isHittable)
+        let quotation = app.staticTexts["Keep the room sound."]
+        reveal(quotation, in: app, scrolling: scroll)
+        XCTAssertTrue(quotation.isHittable)
+        let code = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "take_01  00:42")).firstMatch
+        reveal(code, in: app, scrolling: scroll)
+        XCTAssertTrue(code.exists)
+        XCTAssertTrue(code.label.contains("  preserve this indentation"))
+        let table = app.staticTexts["3:42"]
+        reveal(table, in: app, scrolling: scroll)
+        XCTAssertTrue(table.isHittable)
+        let last = app.staticTexts["Final listening note."]
+        reveal(last, in: app, scrolling: scroll)
+        XCTAssertTrue(last.isHittable)
+        XCTAssertFalse(app.links["Unsafe link"].exists, "executable URL schemes are not interactive")
+    }
+
+    func testAirPlayDismissalKeepsTitleAndArtworkGeometry() {
+        let app = launchCreditsPlayer()
+        let title = app.buttons["player.title"]
+        let cover = element(app, "player.cover")
+        let route = element(app, "player.route")
+        XCTAssertTrue(route.waitForExistence(timeout: 5))
+        XCTAssertEqual(route.value as? String, "Collapsed")
+        let fullTitle = title.label
+        let titleFrame = title.frame
+        let coverFrame = cover.frame
+        for _ in 0..<2 {
+            route.buttons.firstMatch.tap()
+            let presented = expectation(for: NSPredicate(format: "value == %@", "Expanded"), evaluatedWith: route)
+            wait(for: [presented], timeout: 10)
+            screenshot("38-airplay-title-suspended")
+            // Tap above the system route sheet, without selecting or changing an output device.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap()
+            let dismissed = expectation(for: NSPredicate(format: "value == %@", "Collapsed"), evaluatedWith: route)
+            wait(for: [dismissed], timeout: 10)
+            XCTAssertTrue(title.isHittable)
+            XCTAssertEqual(title.label, fullTitle)
+            XCTAssertEqual(title.frame.width, titleFrame.width, accuracy: 0.5)
+            XCTAssertEqual(title.frame.height, titleFrame.height, accuracy: 0.5)
+            XCTAssertEqual(cover.frame.width, coverFrame.width, accuracy: 0.5)
+            XCTAssertEqual(cover.frame.minY, coverFrame.minY, accuracy: 0.5)
+            XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play", "closing AirPlay cannot resume a paused song")
+        }
+        screenshot("39-airplay-title-resumed")
     }
 
     func testFullTitleIsReadableWithoutWaitingForScrolling() {

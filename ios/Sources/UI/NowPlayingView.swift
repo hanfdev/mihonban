@@ -35,6 +35,7 @@ struct NowPlayingView: View {
     @State private var scrubbing = false
     @State private var scrubTime: Double = 0
     @State private var controlsHeight: CGFloat = 330
+    @State private var routePickerPresented = false
 
     private var player: PlayerModel { model.player }
     var body: some View {
@@ -101,7 +102,8 @@ struct NowPlayingView: View {
     private func openArtists() {
         guard let track = player.current else { return }
         let credits = PlaybackCredits(track: track)
-        if !credits.isEmpty { creditsSheet = CreditsSelection(id: track.id, credits: credits) }
+        if let name = credits.singleArtist { model.pendingRoute = .artist(name) }
+        else if !credits.isEmpty { creditsSheet = CreditsSelection(id: track.id, credits: credits) }
     }
 
     private func finishArtistSelection() {
@@ -131,6 +133,7 @@ struct NowPlayingView: View {
             NowPlayingHeading(track: player.current, openAlbum: {
                 if let album = player.current?.albumId { model.pendingRoute = .album(album) }
             }, openArtists: openArtists, favorite: favoriteButton)
+                .environment(\.marqueeSuspended, routePickerPresented || queueVisible || creditsSheet != nil)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
                                       set: { scrubTime = $0 }),
@@ -162,8 +165,10 @@ struct NowPlayingView: View {
             }.padding(.vertical, 4)
             // Icons only, under shuffle and repeat, as in the system music app.
             HStack {
-                RoutePicker().frame(width: 44, height: 44).accessibilityLabel(L10n.text("mobile.audioOutput"))
+                RoutePicker { routePickerPresented = $0 }
+                    .frame(width: 44, height: 44).accessibilityLabel(L10n.text("mobile.audioOutput"))
                     .accessibilityIdentifier("player.route")
+                    .accessibilityValue(L10n.text(routePickerPresented ? "mobile.expanded" : "mobile.collapsed"))
                 Spacer()
                 IconButton(symbol: "list.bullet", label: L10n.text("mobile.queue")) { queueVisible = true }
                     .accessibilityIdentifier("player.queue")
@@ -181,6 +186,7 @@ struct NowPlayingView: View {
 struct QueueView: View {
     let player: PlayerModel
     @Environment(\.dismiss) private var dismiss
+    @State private var editMode = EditMode.inactive
     var body: some View {
         NavigationStack {
             List {
@@ -190,12 +196,12 @@ struct QueueView: View {
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                 }
                 if let current = player.current {
-                    Section { row(current).foregroundStyle(Theme.accent).listRowBackground(Theme.surface) } header: { header(L10n.text("mobile.nowPlaying")) }
+                    Section { QueueTrackRow(track: current).foregroundStyle(Theme.accent).listRowBackground(Theme.surface) } header: { header(L10n.text("mobile.nowPlaying")) }
                 }
                 Section {
                     let entries = player.queue.upcomingEntries
                     ForEach(Array(entries.enumerated()), id: \.element.id) { offset, entry in
-                        Button { player.jumpToUpcoming(entry.id) } label: { row(entry.track) }
+                        Button { player.jumpToUpcoming(entry.id) } label: { QueueTrackRow(track: entry.track) }
                             .buttonStyle(.plain).listRowBackground(Theme.background).accessibilityIdentifier("queue.\(offset)")
                     }
                     .onMove { source, destination in
@@ -209,9 +215,18 @@ struct QueueView: View {
                 } header: { header(L10n.text("mobile.upNext")) }
             }.scrollContentBackground(.hidden).background(Theme.background)
                 .accessibilityIdentifier("queue.list")
+                .environment(\.editMode, $editMode)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) { EditButton().accessibilityIdentifier("queue.edit") }
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(L10n.text(editMode.isEditing ? "common.done" : "common.edit")) {
+                            // Only the edit-mode transition is nonanimated. Keep
+                            // native move/delete animations and stable entry IDs.
+                            var transaction = Transaction(animation: nil)
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { editMode = editMode.isEditing ? .inactive : .active }
+                        }.accessibilityIdentifier("queue.edit")
+                    }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(L10n.text("common.done")) { dismiss() }.accessibilityIdentifier("queue.done")
                     }
@@ -221,21 +236,56 @@ struct QueueView: View {
     private func header(_ text: String) -> some View {
         Text(text).font(Theme.body(12)).foregroundStyle(Theme.faint).textCase(nil)
     }
-    private func row(_ track: Track) -> some View {
+}
+
+// Editing narrows a List row to make room for delete and reorder controls.
+// Keep both text lines stable across that width change, without fixing their
+// point height or preventing Dynamic Type from growing them.
+struct QueueTrackRow: View {
+    let track: Track
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(track.title).font(Theme.body(15))
-            Text(track.artist ?? "").font(Theme.body(12)).foregroundStyle(Theme.dim)
-        }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            Text(track.title).font(Theme.body(15)).lineLimit(1)
+            Text(PlaybackCredits(track: track).compactText).font(Theme.body(12))
+                .foregroundStyle(Theme.dim).lineLimit(1)
+        }.fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 6).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(track.title + ", " + PlaybackCredits(track: track).fullText)
     }
 }
 
 struct RoutePicker: UIViewRepresentable {
+    var onPresentationChange: (Bool) -> Void = { _ in }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPresentationChange: onPresentationChange) }
+
     func makeUIView(context: Context) -> AVRoutePickerView {
         let view = AVRoutePickerView()
         view.tintColor = UIColor(Theme.dim)
         view.activeTintColor = UIColor(Theme.accent)
         view.prioritizesVideoDevices = false
+        view.delegate = context.coordinator
         return view
     }
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        context.coordinator.onPresentationChange = onPresentationChange
+    }
+    static func dismantleUIView(_ uiView: AVRoutePickerView, coordinator: Coordinator) { uiView.delegate = nil }
+
+    @MainActor
+    final class Coordinator: NSObject, AVRoutePickerViewDelegate {
+        var onPresentationChange: (Bool) -> Void
+
+        init(onPresentationChange: @escaping (Bool) -> Void) { self.onPresentationChange = onPresentationChange }
+
+        func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+            onPresentationChange(true)
+        }
+        func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+            onPresentationChange(false)
+        }
+    }
 }

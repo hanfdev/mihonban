@@ -7,6 +7,7 @@ struct ArtistScreen: View {
     @State private var biography = ""
     @State private var readingBio = false
     @State private var error: String?
+    @State private var noteDocument: MarkdownDocument?
 
     private var artist: Artist { model.catalog.artist(name) ?? Artist(name: name) }
     private var albums: [Album] {
@@ -42,10 +43,15 @@ struct ArtistScreen: View {
                 }
             }.padding(.horizontal, 20).padding(.vertical, 16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
         }
-        .background(Theme.background)
+        .background(Theme.background).accessibilityIdentifier("artist.scroll")
         .navigationTitle(name).navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
         .task(id: name) { await load() }
+        .task(id: artist.note) {
+            guard let source = artist.note, !source.isEmpty else { noteDocument = nil; return }
+            let prepared = await MarkdownDocument.prepare(source)
+            if !Task.isCancelled { noteDocument = prepared }
+        }
         .sheet(isPresented: $readingBio) { MarkdownReaderSheet(title: name, text: biography) }
     }
 
@@ -70,7 +76,9 @@ struct ArtistScreen: View {
                 ShuffleToggle(player: model.player, identifier: "artist.shuffle")
             }.disabled(albums.isEmpty && featured.isEmpty)
             if let note = artist.note?.nonEmpty {
-                MarkdownText(source: note).multilineTextAlignment(.leading).frame(maxWidth: 640, alignment: .leading)
+                if let document = noteDocument, document.source == note {
+                    MarkdownContent(document: document).frame(maxWidth: 640, alignment: .leading)
+                } else { ProgressView() }
             }
             if !biography.isEmpty {
                 Button(L10n.text("artistPage.readBio")) { readingBio = true }.accessibilityIdentifier("artist.bio")

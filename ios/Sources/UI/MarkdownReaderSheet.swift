@@ -6,11 +6,16 @@ struct MarkdownReaderSheet: View {
     let title: String
     let text: String
     @Environment(\.dismiss) private var dismiss
+    @State private var document: MarkdownDocument?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                MarkdownText(source: text).padding(20).frame(maxWidth: 680, alignment: .leading)
+                Group {
+                    if let document, document.source == text {
+                        MarkdownContent(document: document)
+                    } else { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40) }
+                }.padding(20).frame(maxWidth: 680, alignment: .leading)
                     .frame(maxWidth: .infinity).accessibilityIdentifier("reader.content")
             }.background(Theme.background).accessibilityIdentifier("reader.scroll")
                 .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
@@ -20,5 +25,9 @@ struct MarkdownReaderSheet: View {
                     }
                 }
         }.presentationDragIndicator(.visible).tint(Theme.accent)
+            .task(id: text) {
+                let result = await MarkdownDocument.prepare(text)
+                if !Task.isCancelled { document = result }
+            }
     }
 }
