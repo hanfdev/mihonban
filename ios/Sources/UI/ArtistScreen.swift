@@ -46,7 +46,7 @@ struct ArtistScreen: View {
         .navigationTitle(name).navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
         .task(id: name) { await load() }
-        .sheet(isPresented: $readingBio) { BiographySheet(name: name, text: biography) }
+        .sheet(isPresented: $readingBio) { MarkdownReaderSheet(title: name, text: biography) }
     }
 
     private var header: some View {
@@ -85,19 +85,5 @@ struct ArtistScreen: View {
             if artist.hasBio == true { biography = (try? await model.catalog.biography(name)) ?? "" }
         } catch is CancellationError {
         } catch { self.error = error.localizedDescription }
-    }
-}
-
-private struct BiographySheet: View {
-    let name: String
-    let text: String
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            ScrollView { MarkdownText(source: text).padding(20).frame(maxWidth: 680, alignment: .leading) }
-                .frame(maxWidth: .infinity).background(Theme.background)
-                .navigationTitle(name).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
-        }.presentationDragIndicator(.visible)
     }
 }

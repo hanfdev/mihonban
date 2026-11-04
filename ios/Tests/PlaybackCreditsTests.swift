@@ -41,14 +41,17 @@ final class PlaybackCreditsTests: XCTestCase {
         }
     }
 
-    func testCompactCountForTwoAndEightArtists() {
-        for count in [2, 8] {
+    func testUpToThreeArtistsShowEveryNameAndLargerGroupsShowACount() {
+        for count in [1, 2, 3, 4, 8] {
             let names = (1...count).map { ArtistCredit(name: "Artist \($0)") }
             let credits = PlaybackCredits(track: Track(id: "t", title: "", artists: names))
             XCTAssertEqual(credits.additionalCount, count - 1)
-            XCTAssertEqual(credits.compactText, "Artist 1 · " + L10n.text("mobile.moreArtists", String(count - 1)))
+            XCTAssertEqual(credits.summarizesNames, count > 3)
+            let full = names.map(\.name).joined(separator: " · ")
+            XCTAssertEqual(credits.displayNames, count > 3 ? "Artist 1" : full)
+            XCTAssertEqual(credits.compactText, count > 3 ? "Artist 1 · " + credits.moreText : full)
             XCTAssertFalse(credits.moreText.contains("{0}"))
-            XCTAssertEqual(credits.fullText, names.map(\.name).joined(separator: " · "))
+            XCTAssertEqual(credits.fullText, full)
         }
     }
 }

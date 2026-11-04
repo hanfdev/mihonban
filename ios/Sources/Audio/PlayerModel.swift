@@ -244,6 +244,21 @@ final class PlayerModel: NSObject {
         queueEdited()
     }
 
+    func moveUpcoming(entries: [PlaybackQueue.Entry.ID], before anchor: PlaybackQueue.Entry.ID?) {
+        queue.moveUpcoming(entries: entries, before: anchor)
+        queueEdited()
+    }
+
+    func removeUpcoming(entries: [PlaybackQueue.Entry.ID]) {
+        queue.removeUpcoming(entries: entries)
+        queueEdited()
+    }
+
+    func jumpToUpcoming(_ id: PlaybackQueue.Entry.ID) {
+        guard let offset = queue.upcomingOffset(for: id) else { return }
+        jumpToUpcoming(offset)
+    }
+
     func jumpToUpcoming(_ offset: Int) {
         guard queue.jumpToUpcoming(offset) else { return }
         wantsPlayback = true

@@ -5,7 +5,7 @@ struct AlbumView: View {
     let albumID: String
     @State private var album: Album?
     @State private var error: String?
-    @State private var expandedNote = false
+    @State private var readingNote = false
     @State private var expandedDescriptors = false
     @State private var gallery: String?
     @State private var editing = false
@@ -43,6 +43,7 @@ struct AlbumView: View {
             } else { ProgressView().frame(maxWidth: .infinity).padding(80) }
         }
         .background(Theme.background).navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("album.scroll")
         .toolbar {
             // Picks move to the bar so the play row stays symmetric.
             ToolbarItem(placement: .topBarTrailing) {
@@ -64,6 +65,11 @@ struct AlbumView: View {
         .onChange(of: albumID) { _, _ in expandedDescriptors = false }
         .sheet(item: Binding(get: { gallery.map(GallerySelection.init) }, set: { gallery = $0?.id })) { selection in
             GalleryViewer(images: album?.images ?? [], client: model.imageClient, selection: selection.id)
+        }
+        .sheet(isPresented: $readingNote) {
+            if let album, let note = album.note {
+                MarkdownReaderSheet(title: album.title, text: note)
+            }
         }
         .sheet(isPresented: $editing) {
             if let album {
@@ -146,7 +152,9 @@ struct AlbumView: View {
                 if let duration = album.duration, duration > 0 { Text(timestamp(duration)) }
                 if album.hidden == true { Label(L10n.text("albumPage.hiddenBadge"), systemImage: "eye.slash") }
             }.font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
-            if let rym = album.rym, let rating = rym.validRating { ratingRow(rym, rating: rating) }
+            if let rym = album.rym, let rating = rym.validRating {
+                AlbumRatingLine(rym: rym, rating: rating, centered: centered)
+            }
             controls(album).padding(.top, 6).frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
         }
     }
@@ -174,18 +182,6 @@ struct AlbumView: View {
             Image(systemName: faved ? "heart.fill" : "heart").foregroundStyle(faved ? Theme.accent : Theme.ink)
         }.accessibilityLabel(L10n.text(faved ? "common.unfav" : "common.fav"))
             .accessibilityIdentifier("album.favorite")
-    }
-
-    private func ratingRow(_ rym: RymRating, rating: Double) -> some View {
-        HStack(spacing: 10) {
-            Label(String(format: "%.2f", rating), systemImage: "star.fill").foregroundStyle(Theme.ink)
-            if let votes = rym.votes, votes > 0 { Text(L10n.text("rym.votes", String(votes))) }
-            if let rank = rym.rank?.nonEmpty { Text(rank).lineLimit(1) }
-            if let link = rym.rymUrl.flatMap({ URL(string: $0) }), link.scheme == "https" {
-                Link(destination: link) { Image(systemName: "arrow.up.right.square") }
-                    .accessibilityLabel(L10n.text("rym.page"))
-            }
-        }.font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
     }
 
     private func trackList(_ album: Album) -> some View {
@@ -231,8 +227,8 @@ struct AlbumView: View {
         if let note = album.note?.nonEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeading(title: L10n.text("albumPage.note"))
-                MarkdownText(source: note).lineLimit(expandedNote ? nil : 6)
-                Button(L10n.text(expandedNote ? "md.collapse" : "md.expand")) { expandedNote.toggle() }
+                MarkdownText(source: note).lineLimit(6).accessibilityIdentifier("album.note.preview")
+                Button(L10n.text("md.expand")) { readingNote = true }.accessibilityIdentifier("album.note.read")
             }
         }
         if let images = album.images, !images.isEmpty {

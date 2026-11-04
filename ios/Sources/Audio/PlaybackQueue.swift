@@ -7,6 +7,27 @@ struct PlaybackQueue: Sendable {
     private(set) var cursor = 0
     private(set) var shuffled = false
     var repeatMode = RepeatMode.off
+    private var identity = UUID()
+
+    struct Entry: Identifiable, Sendable {
+        struct ID: Hashable, Sendable {
+            let queue: UUID
+            let slot: Int
+        }
+        let id: ID
+        let track: Track
+    }
+
+    // Storage slots survive moves and distinguish repeated copies of a song.
+    // A new queue gets a new identity so stale drag actions cannot edit it.
+    var upcomingEntries: [Entry] {
+        order.dropFirst(cursor + 1).map { Entry(id: Entry.ID(queue: identity, slot: $0), track: tracks[$0]) }
+    }
+
+    func upcomingOffset(for id: Entry.ID) -> Int? {
+        guard id.queue == identity else { return nil }
+        return order.dropFirst(cursor + 1).firstIndex(of: id.slot).map { $0 - cursor - 1 }
+    }
 
     var currentIndex: Int? { order.indices.contains(cursor) ? order[cursor] : nil }
     var current: Track? { currentIndex.map { tracks[$0] } }
@@ -17,6 +38,7 @@ struct PlaybackQueue: Sendable {
     // and plays every other track afterwards, including earlier ones.
     mutating func replace(_ tracks: [Track], startingAt index: Int, shuffle: Bool? = nil) {
         self.tracks = tracks
+        identity = UUID()
         let start = tracks.indices.contains(index) ? index : 0
         shuffled = shuffle ?? shuffled
         if shuffled {
@@ -91,6 +113,30 @@ struct PlaybackQueue: Sendable {
         let insertion = destination - source.filter { $0 < destination }.count
         rest.insert(contentsOf: moving, at: min(max(0, insertion), rest.count))
         order = Array(order.prefix(cursor + 1)) + rest
+    }
+
+    // Resolve UI identities at the time of the drop, not against stale offsets
+    // from before an automatic track transition.
+    mutating func moveUpcoming(entries ids: [Entry.ID], before anchor: Entry.ID?) {
+        guard !ids.isEmpty, Set(ids).count == ids.count,
+              ids.allSatisfy({ upcomingOffset(for: $0) != nil }) else { return }
+        if let anchor, upcomingOffset(for: anchor) == nil { return }
+        let moving = Set(ids.map(\.slot))
+        let upcoming = Array(order.dropFirst(cursor + 1))
+        let selected = upcoming.filter { moving.contains($0) }
+        var rest = upcoming.filter { !moving.contains($0) }
+        let insertion: Int
+        if let anchor {
+            // If the destination is itself moving, use the next remaining slot.
+            let following = upcoming.drop { $0 != anchor.slot }.first { !moving.contains($0) }
+            insertion = following.flatMap { rest.firstIndex(of: $0) } ?? rest.count
+        } else { insertion = rest.count }
+        rest.insert(contentsOf: selected, at: insertion)
+        order = Array(order.prefix(cursor + 1)) + rest
+    }
+
+    mutating func removeUpcoming(entries ids: [Entry.ID]) {
+        removeUpcoming(at: IndexSet(ids.compactMap { upcomingOffset(for: $0) }))
     }
 
     // Jumping skips the entries in between, as other players do.

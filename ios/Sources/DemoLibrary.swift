@@ -22,6 +22,18 @@ enum DemoLibrary {
             tracks[2].artist = "Studio Ensemble"
             result[0].tracks = tracks
         }
+        if arguments.contains("--demo-small-credits") {
+            var tracks = result[0].normalizedTracks
+            tracks[0].artists = ["First Artist", "Second Artist", "Third Artist"].map { ArtistCredit(name: $0) }
+            tracks[0].artist = "First Artist, Second Artist, Third Artist"
+            tracks[1].artists = ["First Artist", "Second Artist"].map { ArtistCredit(name: $0) }
+            tracks[1].artist = "First Artist, Second Artist"
+            result[0].tracks = tracks
+        }
+        if arguments.contains("--demo-reading") {
+            result[0].note = (1...40).map { "Paragraph \($0). A quiet evening in the recording studio, with notes about the musicians and this edition." }.joined(separator: "\n\n")
+            result[0].rym?.rank = "#185 for 1984, #10,999 Overall"
+        }
         if arguments.contains("--demo-captions") {
             result[0].title = "Songs in the Key of Life"
             result[0].rym = RymRating(rating: 4.4, votes: 120)

@@ -77,6 +77,15 @@ final class NetworkPlaybackTests: XCTestCase {
         let playing = player.current?.id
         let start = player.elapsed
 
+        let entries = player.queue.upcomingEntries
+        let last = try XCTUnwrap(entries.last)
+        let first = try XCTUnwrap(entries.first)
+        player.moveUpcoming(entries: [last.id], before: first.id)
+        XCTAssertFalse(player.isLoading, "dragging the queue must not reopen the playing decoder")
+        XCTAssertEqual(player.current?.id, playing)
+        XCTAssertEqual(player.queue.upcomingEntries.first?.id, last.id)
+        try await waitUntil { player.preparedNextID == last.track.id }
+
         player.toggleShuffle()
         XCTAssertFalse(player.isLoading, "changing the order keeps the playing decoder")
         XCTAssertEqual(player.current?.id, playing)

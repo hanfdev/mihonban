@@ -177,8 +177,8 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(heart.waitForExistence(timeout: 10))
         XCTAssertFalse(heart.isSelected)
         XCTAssertEqual(heart.label, "Add to picks")
-        XCTAssertGreaterThanOrEqual(heart.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(heart.frame.height, 44)
+        XCTAssertEqual(heart.frame.width, 44, accuracy: 0.5)
+        XCTAssertEqual(heart.frame.height, 44, accuracy: 0.5)
         XCTAssertGreaterThan(heart.frame.minX, app.buttons["player.title"].frame.maxX)
         assertShortTitleCover(app)
         changePick(app, selected: true)
@@ -456,8 +456,13 @@ final class MihonbanUITests: XCTestCase {
         app.buttons["player.next"].tap()
         waitForLabel(app.buttons["player.title"], "After the rain")
         artist.tap()
+        let single = app.buttons["player.credit.0"]
+        XCTAssertTrue(single.waitForExistence(timeout: 10))
+        XCTAssertEqual(single.label, "Studio Ensemble")
+        XCTAssertFalse(app.buttons["player.credit.1"].exists)
+        single.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 10))
-        XCTAssertEqual(title.label, "Studio Ensemble", "a single structured artist still opens directly")
+        XCTAssertEqual(title.label, "Studio Ensemble", "a single artist uses the same picker without inventing names")
         XCTAssertFalse(app.buttons["player.credits.done"].exists)
     }
 
@@ -646,13 +651,170 @@ final class MihonbanUITests: XCTestCase {
         let longArtist = app.staticTexts["tile.artist.demo-1"]
         XCTAssertTrue(shortArtist.waitForExistence(timeout: 5))
         XCTAssertTrue(longArtist.exists)
-        XCTAssertGreaterThan(longTitle.frame.height, shortTitle.frame.height + 5)
+        XCTAssertEqual(longTitle.frame.height, shortTitle.frame.height, accuracy: 1)
         XCTAssertEqual(shortArtist.frame.minY - shortTitle.frame.maxY, 4, accuracy: 1)
         XCTAssertEqual(longArtist.frame.minY - longTitle.frame.maxY, 4, accuracy: 1)
-        XCTAssertLessThan(shortArtist.frame.minY, longArtist.frame.minY)
+        XCTAssertEqual(shortArtist.frame.minY, longArtist.frame.minY, accuracy: 1)
         XCTAssertEqual(element(app, "tile.footer.demo-1").frame.minY,
                        element(app, "tile.footer.demo-2").frame.minY, accuracy: 1)
         screenshot("26-caption-grouping")
+    }
+
+    func testQueueDragKeepsRowsAndPlaybackIntact() {
+        let app = launchCreditsPlayer()
+        app.buttons["player.queue"].tap()
+        XCTAssertTrue(app.buttons["queue.0"].waitForExistence(timeout: 10))
+        let first = app.buttons["queue.0"].label
+        let second = app.buttons["queue.1"].label
+        app.buttons["queue.edit"].tap()
+        let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder"))
+        XCTAssertTrue(handles.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(handles.count, 2)
+        handles.element(boundBy: 1).press(forDuration: 1, thenDragTo: handles.element(boundBy: 0))
+        app.buttons["queue.edit"].tap()
+        waitForLabel(app.buttons["queue.0"], second)
+        XCTAssertEqual(app.buttons["queue.1"].label, first)
+        let gap = app.buttons["queue.1"].frame.minY - app.buttons["queue.0"].frame.maxY
+        XCTAssertLessThan(abs(gap), 4, "a completed drag must not leave a row-sized hole")
+        screenshot("30-queue-reordered")
+        app.buttons["queue.done"].tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+        XCTAssertTrue(app.buttons["player.title"].label.hasPrefix("A very long"))
+    }
+
+    func testThreeArtistNamesShowInFullAndUseThePicker() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-small-credits", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
+        app.buttons["album.demo-1"].tap()
+        app.buttons["album.play"].tap()
+        XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 10))
+        app.buttons["Pause"].firstMatch.tap()
+        app.buttons["player.expand"].tap()
+        let artist = app.buttons["player.artist"]
+        XCTAssertTrue(artist.waitForExistence(timeout: 10))
+        XCTAssertEqual(artist.label, "First Artist · Second Artist · Third Artist")
+        XCTAssertEqual(artist.value as? String, "")
+        XCTAssertFalse(app.staticTexts["player.artists.count"].exists)
+        screenshot("31-three-artists")
+        artist.tap()
+        for index in 0..<3 { XCTAssertTrue(app.buttons["player.credit.\(index)"].waitForExistence(timeout: 5)) }
+        XCTAssertFalse(app.buttons["player.credit.3"].exists)
+        app.buttons["player.credits.done"].tap()
+        app.buttons["player.next"].tap()
+        waitForLabel(app.buttons["player.title"], "Interlude")
+        app.buttons["player.toggle"].firstMatch.tap()
+        XCTAssertEqual(artist.label, "First Artist · Second Artist")
+        XCTAssertEqual(artist.value as? String, "")
+        artist.tap()
+        XCTAssertTrue(app.buttons["player.credit.1"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["player.credit.2"].exists)
+        app.buttons["player.credit.1"].tap()
+        waitForLabel(app.staticTexts["artist.title"], "Second Artist")
+    }
+
+    func testReadingSheetClosesWithoutLosingAlbumPosition() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-reading", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
+        app.buttons["album.demo-1"].tap()
+        let rank = element(app, "album.yearRank")
+        XCTAssertTrue(rank.waitForExistence(timeout: 10))
+        XCTAssertEqual(rank.label, "#185 for 1984")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Overall")).firstMatch.exists)
+        let read = app.buttons["album.note.read"]
+        reveal(read, in: app, scrolling: app.scrollViews["album.scroll"])
+        XCTAssertTrue(read.isHittable)
+        let before = read.frame
+        read.tap()
+        let done = app.buttons["reader.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        let content = app.staticTexts["reader.content"]
+        XCTAssertTrue(content.label.contains("Paragraph 40."))
+        app.scrollViews["reader.scroll"].swipeUp()
+        XCTAssertTrue(done.isHittable, "closing must not require reaching the end of the note")
+        screenshot("32-album-reading")
+        done.tap()
+        XCTAssertTrue(read.waitForExistence(timeout: 5))
+        XCTAssertEqual(read.frame.minY, before.minY, accuracy: 2)
+    }
+
+    func testFullTitleIsReadableWithoutWaitingForScrolling() {
+        let app = launchCreditsPlayer()
+        let title = app.buttons["player.title"]
+        let full = title.label
+        XCTAssertLessThan(title.frame.height, 60, "long song titles occupy one line")
+        title.press(forDuration: 1.1)
+        let read = app.buttons["Full track title"]
+        XCTAssertTrue(read.waitForExistence(timeout: 5))
+        read.tap()
+        let text = app.staticTexts["player.fullTitle"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertEqual(text.label, full)
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+    }
+
+    func testGalleryZoomKeepsPanningOnTheSelectedImage() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)"]
+        app.launch()
+        signIn(app, password: "fixture-password")
+        let album = app.buttons["album.network-mp3"]
+        XCTAssertTrue(album.waitForExistence(timeout: 20))
+        album.tap()
+        let thumbnail = app.buttons["gallery.booklet-2"]
+        reveal(thumbnail, in: app, scrolling: app.scrollViews["album.scroll"])
+        XCTAssertTrue(thumbnail.isHittable)
+        thumbnail.tap()
+        let image = app.images["gallery-image"]
+        let viewport = app.scrollViews["gallery-viewport"]
+        XCTAssertTrue(image.waitForExistence(timeout: 15), "the authenticated gallery image must load")
+        XCTAssertTrue(viewport.waitForExistence(timeout: 5))
+        waitForGallery(image, page: "2/2", zoomed: false)
+        screenshot("33-gallery-fitted")
+
+        image.pinch(withScale: 2.2, velocity: 1)
+        waitForGallery(image, page: "2/2", zoomed: true)
+        let beforePan = image.frame
+        let start = viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5))
+        let end = viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        let low = viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        let high = viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        low.press(forDuration: 0.05, thenDragTo: high)
+        waitForGallery(image, page: "2/2", zoomed: true)
+        XCTAssertGreaterThan(abs(image.frame.minX - beforePan.minX) + abs(image.frame.minY - beforePan.minY), 2,
+                             "panning must move the enlarged image, not only suppress paging")
+        screenshot("34-gallery-panned")
+
+        viewport.doubleTap()
+        waitForGallery(image, page: "2/2", zoomed: false)
+        viewport.swipeRight()
+        waitForGallery(image, page: "1/2", zoomed: false)
+        // A location-aware double tap also targets the touched part of the image.
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.35)).doubleTap()
+        waitForGallery(image, page: "1/2", zoomed: true)
+        viewport.swipeLeft()
+        waitForGallery(image, page: "1/2", zoomed: true)
+        viewport.doubleTap()
+        waitForGallery(image, page: "1/2", zoomed: false)
+        screenshot("35-gallery-reset")
+    }
+
+    private func waitForGallery(_ image: XCUIElement, page: String, zoomed: Bool) {
+        let state = expectation(for: NSPredicate { _, _ in
+            guard image.exists, let value = image.value as? String else { return false }
+            let parts = value.components(separatedBy: ", ")
+            guard parts.count == 2, parts[0] == page,
+                  let scale = Double(parts[1].replacingOccurrences(of: "×", with: "")) else { return false }
+            return zoomed ? scale > 1.05 : abs(scale - 1) < 0.02
+        }, evaluatedWith: image)
+        wait(for: [state], timeout: 10)
     }
 
     func testConnectionScreen() {

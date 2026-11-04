@@ -114,14 +114,35 @@ struct GalleryViewer: View {
     let images: [String]
     let client: APIClient?
     @State var selection: String
+    @State private var pagingLocked = false
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            TabView(selection: $selection) {
-                ForEach(images, id: \.self) { id in
-                    ZoomableArtwork(url: client?.imageURL(id), client: client).tag(id)
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(images, id: \.self) { id in
+                        ZoomableArtwork(url: client?.imageURL(id), client: client, isActive: selection == id,
+                                        pageNumber: (images.firstIndex(of: id) ?? 0) + 1, pageCount: images.count) { locked in
+                            if selection == id { pagingLocked = locked }
+                        }
+                        .containerRelativeFrame(.horizontal)
+                        .frame(maxHeight: .infinity)
+                        .id(id)
+                    }
+                }.scrollTargetLayout()
+            }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: Binding<String?>(get: { selection }, set: { if let id = $0 { selection = id } }))
+                .scrollIndicators(.hidden)
+                // Only the outer pager is disabled; the UIKit image scroller remains interactive.
+                .scrollDisabled(pagingLocked)
+                .onChange(of: selection) { _, _ in pagingLocked = false }
+                .overlay(alignment: .bottom) {
+                    if images.count > 1 {
+                        GalleryPageIndicator(count: images.count, current: images.firstIndex(of: selection) ?? 0)
+                            .frame(height: 36).padding(.bottom, 8).allowsHitTesting(false)
+                    }
                 }
-            }.tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .always : .never))
                 .background(Color.black.ignoresSafeArea())
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
                 .navigationTitle(L10n.text("albumPage.gallery")).navigationBarTitleDisplayMode(.inline)
@@ -132,16 +153,23 @@ struct GalleryViewer: View {
 private struct ZoomableArtwork: View {
     let url: URL?
     let client: APIClient?
-    @State private var scale: CGFloat = 1
-    @State private var settled: CGFloat = 1
+    let isActive: Bool
+    let pageNumber: Int
+    let pageCount: Int
+    let onPagingLockChange: (Bool) -> Void
+    @State private var image: UIImage?
     var body: some View {
-        RemoteArtwork(url: url, client: client, pixels: 2400, fill: false)
-            .scaleEffect(scale)
-            .gesture(MagnifyGesture()
-                .onChanged { scale = min(5, max(1, settled * $0.magnification)) }
-                .onEnded { _ in settled = scale })
-            .onTapGesture(count: 2) { withAnimation(.snappy) { scale = scale > 1 ? 1 : 2.5; settled = scale } }
-            .accessibilityAddTraits(.isImage)
-            .accessibilityLabel(L10n.text("common.zoom"))
+        ZStack {
+            if image == nil { RecordPlaceholder() }
+            GalleryZoomArtwork(image: image, isActive: isActive, pageNumber: pageNumber, pageCount: pageCount,
+                               onPagingLockChange: onPagingLockChange)
+        }
+        .clipped()
+        .task(id: url) {
+            image = nil
+            guard let url, let client else { return }
+            let result = await ArtworkStore.shared.image(url: url, session: client.session, pixels: 2400)
+            if !Task.isCancelled { image = result }
+        }
     }
 }

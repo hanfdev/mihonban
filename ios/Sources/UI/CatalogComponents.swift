@@ -27,24 +27,15 @@ struct AlbumTile: View {
     }
 }
 
-// Keep the title and artist together. Spare room belongs below that pair,
-// while the year and rating keep a shared baseline across the grid row.
+// One-line titles keep the artist close without a reserved empty title line.
 struct AlbumCaption: View {
     let album: Album
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            // Measure with the real fonts at the current Dynamic Type size, not
-            // a fixed point height. The hidden template has no accessibility copy.
             VStack(alignment: .leading, spacing: 4) {
-                title.lineLimit(2, reservesSpace: true)
-                artist
-            }.hidden().accessibilityHidden(true)
-                .overlay(alignment: .topLeading) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        title.lineLimit(2).accessibilityIdentifier("tile.title.\(album.id)")
-                        artist.accessibilityIdentifier("tile.artist.\(album.id)")
-                    }
-                }
+                title.lineLimit(1).accessibilityIdentifier("tile.title.\(album.id)")
+                artist.accessibilityIdentifier("tile.artist.\(album.id)")
+            }
             HStack(spacing: 6) {
                 Text(album.year.flatMap { $0 > 0 ? String($0) : nil } ?? " ")
                     .accessibilityHidden((album.year ?? 0) <= 0)

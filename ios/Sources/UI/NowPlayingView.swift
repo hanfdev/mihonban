@@ -101,8 +101,7 @@ struct NowPlayingView: View {
     private func openArtists() {
         guard let track = player.current else { return }
         let credits = PlaybackCredits(track: track)
-        if let name = credits.singleArtist { model.pendingRoute = .artist(name) }
-        else if !credits.isEmpty { creditsSheet = CreditsSelection(id: track.id, credits: credits) }
+        if !credits.isEmpty { creditsSheet = CreditsSelection(id: track.id, credits: credits) }
     }
 
     private func finishArtistSelection() {
@@ -194,20 +193,28 @@ struct QueueView: View {
                     Section { row(current).foregroundStyle(Theme.accent).listRowBackground(Theme.surface) } header: { header(L10n.text("mobile.nowPlaying")) }
                 }
                 Section {
-                    // Offsets identify entries because one track may be queued twice.
-                    ForEach(Array(player.queue.upcoming.enumerated()), id: \.offset) { offset, track in
-                        Button { player.jumpToUpcoming(offset) } label: { row(track) }
-                            .buttonStyle(.plain).listRowBackground(Theme.surface).accessibilityIdentifier("queue.\(offset)")
+                    let entries = player.queue.upcomingEntries
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { offset, entry in
+                        Button { player.jumpToUpcoming(entry.id) } label: { row(entry.track) }
+                            .buttonStyle(.plain).listRowBackground(Theme.background).accessibilityIdentifier("queue.\(offset)")
                     }
-                    .onMove { player.moveUpcoming(from: $0, to: $1) }
-                    .onDelete { player.removeUpcoming(at: $0) }
+                    .onMove { source, destination in
+                        let ids = source.filter { entries.indices.contains($0) }.map { entries[$0].id }
+                        let anchor = entries.indices.contains(destination) ? entries[destination].id : nil
+                        player.moveUpcoming(entries: ids, before: anchor)
+                    }
+                    .onDelete { source in
+                        player.removeUpcoming(entries: source.filter { entries.indices.contains($0) }.map { entries[$0].id })
+                    }
                 } header: { header(L10n.text("mobile.upNext")) }
             }.scrollContentBackground(.hidden).background(Theme.background)
                 .accessibilityIdentifier("queue.list")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) { EditButton() }
-                    ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } }
+                    ToolbarItem(placement: .topBarLeading) { EditButton().accessibilityIdentifier("queue.edit") }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L10n.text("common.done")) { dismiss() }.accessibilityIdentifier("queue.done")
+                    }
                 }
         }.tint(Theme.accent)
     }

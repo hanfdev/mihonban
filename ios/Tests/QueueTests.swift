@@ -107,6 +107,54 @@ final class QueueTests: XCTestCase {
         XCTAssertFalse(queue.jumpToUpcoming(9))
     }
 
+    func testEntryIdentitySurvivesMovesAndDistinguishesDuplicates() {
+        var queue = PlaybackQueue()
+        queue.replace([tracks[0], tracks[1], tracks[1], tracks[2]], startingAt: 0)
+        let before = queue.upcomingEntries
+        XCTAssertEqual(Set(before.map(\.id)).count, 3)
+        XCTAssertEqual(before[0].track.id, before[1].track.id)
+        queue.moveUpcoming(entries: [before[1].id], before: before[0].id)
+        XCTAssertEqual(queue.upcomingEntries.map(\.id), [before[1].id, before[0].id, before[2].id])
+        XCTAssertEqual(queue.current?.id, "0")
+        queue.removeUpcoming(entries: [before[0].id])
+        XCTAssertEqual(queue.upcomingEntries.map(\.id), [before[1].id, before[2].id])
+        queue.setShuffle(true)
+        XCTAssertEqual(Set(queue.upcomingEntries.map(\.id)), Set([before[1].id, before[2].id]))
+        queue.setShuffle(false)
+        XCTAssertEqual(queue.upcomingEntries.map(\.id), [before[1].id, before[2].id])
+    }
+
+    func testStaleDragNeverMovesThePlayingEntryOrANewQueue() {
+        var queue = PlaybackQueue()
+        queue.replace(tracks, startingAt: 0)
+        let before = queue.upcomingEntries
+        XCTAssertTrue(queue.advance())
+        let remaining = queue.upcomingEntries.map(\.id)
+        queue.moveUpcoming(entries: [before[0].id], before: nil)
+        XCTAssertEqual(queue.upcomingEntries.map(\.id), remaining)
+        queue.removeUpcoming(entries: [before[0].id])
+        XCTAssertEqual(queue.current?.id, "1")
+        queue.replace(tracks, startingAt: 0)
+        let fresh = queue.upcomingEntries.map(\.id)
+        queue.moveUpcoming(entries: [before[2].id], before: nil)
+        XCTAssertEqual(queue.upcomingEntries.map(\.id), fresh)
+        XCTAssertNil(queue.upcomingOffset(for: before[2].id))
+    }
+
+    func testStableMoveMatchesIndexMoveInBothDirections() {
+        for source in 0..<7 {
+            for destination in 0...7 {
+                var expected = PlaybackQueue()
+                expected.replace(tracks, startingAt: 0)
+                var actual = expected
+                let entries = actual.upcomingEntries
+                expected.moveUpcoming(from: IndexSet(integer: source), to: destination)
+                actual.moveUpcoming(entries: [entries[source].id], before: destination < entries.count ? entries[destination].id : nil)
+                XCTAssertEqual(actual.order, expected.order, "\(source) to \(destination)")
+            }
+        }
+    }
+
     func testShuffleOffKeepsQueueEdits() {
         var queue = PlaybackQueue()
         queue.replace(Array(tracks.prefix(5)), startingAt: 0, shuffle: true)

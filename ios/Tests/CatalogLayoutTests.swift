@@ -22,8 +22,8 @@ final class CatalogLayoutTests: XCTestCase {
         let long = size(AlbumCaption(album: album(String(repeating: "Long Season ", count: 12), rating: nil)), width: 170).height
         let unrated = size(AlbumCaption(album: album("Ok", rating: nil)), width: 170).height
         XCTAssertGreaterThan(short, 0)
-        XCTAssertEqual(short, wrapped, accuracy: 0.5, "spare space below the title/artist pair keeps footers aligned")
-        XCTAssertEqual(short, long, accuracy: 0.5, "titles beyond two lines are truncated, not taller")
+        XCTAssertEqual(short, wrapped, accuracy: 0.5, "all titles occupy exactly one line")
+        XCTAssertEqual(short, long, accuracy: 0.5, "overflow truncates without reserving a second line")
         XCTAssertEqual(short, unrated, accuracy: 0.5, "a missing rating does not change the height")
         var undated = album("Ok", rating: nil)
         undated.year = nil
@@ -79,12 +79,12 @@ final class CatalogLayoutTests: XCTestCase {
         }
     }
 
-    func testHeadingStopsGrowingAfterTwoTitleLines() {
+    func testHeadingKeepsTitleHeightIndependentOfLength() {
         func heading(_ repetitions: Int) -> some View {
             NowPlayingHeading(track: Track(id: "title", title: String(repeating: "Long song title ", count: repetitions),
                                           artist: "Solo"), openAlbum: {}, openArtists: {})
         }
-        XCTAssertEqual(size(heading(10), width: 264).height, size(heading(40), width: 264).height, accuracy: 0.5)
+        XCTAssertEqual(size(heading(1), width: 264).height, size(heading(40), width: 264).height, accuracy: 0.5)
     }
 
     func testFavoriteButtonFitsBesideTheHeading() throws {
@@ -135,6 +135,27 @@ final class CatalogLayoutTests: XCTestCase {
         }
         let empty = size(AlbumDescriptors(descriptors: ["", " \n"], isExpanded: .constant(false)), width: 346)
         XCTAssertEqual(empty.height, 0, accuracy: 0.5)
+    }
+
+    func testUpToThreeArtistsCanWrapWithoutTruncation() {
+        let credits = PlaybackCredits(track: Track(id: "three", title: "", artists: (1...3).map {
+            ArtistCredit(name: "An intentionally long artist name \($0)")
+        }))
+        let measured = size(PlaybackCreditsButton(credits: credits) {}, width: 264)
+        XCTAssertGreaterThan(measured.height, 44)
+        XCTAssertLessThanOrEqual(measured.width, 264.5)
+    }
+
+    func testRatingLineFitsNarrowAndAccessibilityWidths() {
+        let rating = RymRating(rating: 4.13, votes: 123456, rank: "#1,584 for 1993, #12,000 overall")
+        for width in [CGFloat(264), 346, 700] {
+            for textSize in [DynamicTypeSize.large, .accessibility3] {
+                let measured = size(AlbumRatingLine(rym: rating, rating: 4.13, centered: true)
+                    .environment(\.dynamicTypeSize, textSize), width: width)
+                XCTAssertLessThanOrEqual(measured.width, width + 0.5)
+                XCTAssertGreaterThan(measured.height, 0)
+            }
+        }
     }
 
     func testCountsUseTheSingularForOne() {

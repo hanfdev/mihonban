@@ -612,7 +612,8 @@
     "mobile.viewCredits": "View full artist credits",
     "mobile.viewArtist": "View artist",
     "mobile.expanded": "Expanded",
-    "mobile.collapsed": "Collapsed"
+    "mobile.collapsed": "Collapsed",
+    "mobile.fullTitle": "Full track title"
   },
   "ja": {
     "brand": "見本盤",
@@ -1227,7 +1228,8 @@
     "mobile.viewCredits": "アーティストの全クレジットを表示",
     "mobile.viewArtist": "アーティストを表示",
     "mobile.expanded": "展開済み",
-    "mobile.collapsed": "折りたたみ"
+    "mobile.collapsed": "折りたたみ",
+    "mobile.fullTitle": "曲名を全文表示"
   },
   "ko": {
     "brand": "見本盤",
@@ -1842,7 +1844,8 @@
     "mobile.viewCredits": "전체 아티스트 크레딧 보기",
     "mobile.viewArtist": "아티스트 보기",
     "mobile.expanded": "펼쳐짐",
-    "mobile.collapsed": "접힘"
+    "mobile.collapsed": "접힘",
+    "mobile.fullTitle": "전체 곡 제목"
   },
   "fr": {
     "brand": "見本盤",
@@ -2457,7 +2460,8 @@
     "mobile.viewCredits": "Voir tous les artistes crédités",
     "mobile.viewArtist": "Voir l’artiste",
     "mobile.expanded": "Développé",
-    "mobile.collapsed": "Réduit"
+    "mobile.collapsed": "Réduit",
+    "mobile.fullTitle": "Titre complet du morceau"
   },
   "es": {
     "brand": "見本盤",
@@ -3072,7 +3076,8 @@
     "mobile.viewCredits": "Ver todos los artistas acreditados",
     "mobile.viewArtist": "Ver artista",
     "mobile.expanded": "Expandido",
-    "mobile.collapsed": "Contraído"
+    "mobile.collapsed": "Contraído",
+    "mobile.fullTitle": "Título completo de la pista"
   },
   "zh-Hans": {
     "brand": "見本盤",
@@ -3687,7 +3692,8 @@
     "mobile.viewCredits": "查看完整艺人署名",
     "mobile.viewArtist": "查看艺人",
     "mobile.expanded": "已展开",
-    "mobile.collapsed": "已收起"
+    "mobile.collapsed": "已收起",
+    "mobile.fullTitle": "完整曲名"
   },
   "zh-Hant": {
     "brand": "見本盤",
@@ -4302,6 +4308,7 @@
     "mobile.viewCredits": "查看完整藝人署名",
     "mobile.viewArtist": "查看藝人",
     "mobile.expanded": "已展開",
-    "mobile.collapsed": "已收起"
+    "mobile.collapsed": "已收起",
+    "mobile.fullTitle": "完整曲名"
   }
 }

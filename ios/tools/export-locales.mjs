@@ -23,6 +23,7 @@ const extra = {
   collapsed: ['Collapsed', '折りたたみ', '접힘', 'Réduit', 'Contraído', '已收起', '已收起'],
   moreArtists: ['+{0} more', 'ほか{0}組', '외 {0}명', '+{0} autres', '+{0} más', '另 {0} 位', '另 {0} 位'],
   viewCredits: ['View full artist credits', 'アーティストの全クレジットを表示', '전체 아티스트 크레딧 보기', 'Voir tous les artistes crédités', 'Ver todos los artistas acreditados', '查看完整艺人署名', '查看完整藝人署名'],
+  fullTitle: ['Full track title', '曲名を全文表示', '전체 곡 제목', 'Titre complet du morceau', 'Título completo de la pista', '完整曲名', '完整曲名'],
   viewArtist: ['View artist', 'アーティストを表示', '아티스트 보기', 'Voir l’artiste', 'Ver artista', '查看艺人', '查看藝人'],
   searchAlbums: ['Search albums and artists', 'アルバム・アーティストを検索', '앨범과 아티스트 검색', 'Rechercher des albums et artistes', 'Buscar álbumes y artistas', '搜索专辑与艺人', '搜尋專輯與藝人'],
   invalidAddress: ['Enter a full http:// or https:// address.', 'http:// または https:// で始まるアドレスを入力してください。', 'http:// 또는 https://로 시작하는 주소를 입력하세요.', 'Saisissez une adresse complète en http:// ou https://.', 'Introduce una dirección completa con http:// o https://.', '请输入以 http:// 或 https:// 开头的完整地址。', '請輸入以 http:// 或 https:// 開頭的完整位址。'],

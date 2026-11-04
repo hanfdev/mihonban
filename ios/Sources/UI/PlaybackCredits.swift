@@ -22,7 +22,9 @@ struct PlaybackCredits: Equatable, Sendable {
     var singleArtist: String? { names.count == 1 ? names.first : nil }
     var fullText: String { names.isEmpty ? rawText : names.joined(separator: " · ") }
     var moreText: String { L10n.text("mobile.moreArtists", String(additionalCount)) }
-    var compactText: String { additionalCount > 0 ? firstName + " · " + moreText : firstName }
+    var summarizesNames: Bool { names.count > 3 }
+    var displayNames: String { summarizesNames ? firstName : fullText }
+    var compactText: String { summarizesNames ? firstName + " · " + moreText : fullText }
 }
 
 struct PlaybackCreditsButton: View {
@@ -33,21 +35,22 @@ struct PlaybackCreditsButton: View {
         if !credits.isEmpty {
             Button(action: action) {
                 HStack(spacing: 8) {
-                    Text(credits.firstName).lineLimit(1).truncationMode(.tail)
+                    Text(credits.displayNames)
+                        .lineLimit(credits.names.count > 1 && !credits.summarizesNames ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    if credits.additionalCount > 0 {
+                    if credits.summarizesNames {
                         Text(credits.moreText).fixedSize()
                             .accessibilityIdentifier("player.artists.count")
                     }
-                    if credits.singleArtist == nil {
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).accessibilityHidden(true)
-                    }
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).accessibilityHidden(true)
                 }.font(Theme.body(17)).foregroundStyle(Theme.dim)
                     .frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("player.artist")
                 .accessibilityLabel(credits.fullText)
-                .accessibilityValue(credits.additionalCount > 0 ? credits.moreText : "")
-                .accessibilityHint(L10n.text(credits.singleArtist == nil ? "mobile.viewCredits" : "mobile.viewArtist"))
+                .accessibilityValue(credits.summarizesNames ? credits.moreText : "")
+                .accessibilityHint(L10n.text("mobile.viewCredits"))
         }
     }
 }
@@ -61,12 +64,7 @@ struct NowPlayingHeading: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
-                Button(action: openAlbum) {
-                    Text(track?.title ?? "").font(Theme.title(27)).foregroundStyle(Theme.ink)
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(.plain).disabled(track?.albumId == nil)
-                    .accessibilityHint(L10n.text("player.viewAlbum")).accessibilityIdentifier("player.title")
+                PlaybackTitleButton(track: track, openAlbum: openAlbum)
                 if let favorite { favorite.id(track?.id).fixedSize() }
             }
             PlaybackCreditsButton(credits: PlaybackCredits(track: track), action: openArtists)
