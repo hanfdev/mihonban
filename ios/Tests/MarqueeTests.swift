@@ -53,10 +53,17 @@ final class MarqueeTests: XCTestCase {
         window.addSubview(view)
         view.layoutIfNeeded()
         let generation = view.animationGeneration
-        let coordinator = RoutePicker.Coordinator { view.setSuspended($0) }
+        let didPause = expectation(description: "route presentation paused on the main actor")
+        let didResume = expectation(description: "route dismissal resumed on the main actor")
+        let coordinator = RoutePicker.Coordinator { suspended in
+            XCTAssertTrue(Thread.isMainThread)
+            view.setSuspended(suspended)
+            if suspended { didPause.fulfill() } else { didResume.fulfill() }
+        }
         let picker = AVRoutePickerView()
         let beforePause = view.scrollTime
         coordinator.routePickerViewWillBeginPresentingRoutes(picker)
+        await fulfillment(of: [didPause], timeout: 5)
         XCTAssertTrue(view.isScrollPaused)
         XCTAssertFalse(view.isAnimating)
         let pausedTime = view.scrollTime
@@ -67,6 +74,7 @@ final class MarqueeTests: XCTestCase {
         XCTAssertEqual(view.scrollTime, pausedTime, accuracy: 0.001)
         let resumedAt = CACurrentMediaTime()
         coordinator.routePickerViewDidEndPresentingRoutes(picker)
+        await fulfillment(of: [didResume], timeout: 5)
         XCTAssertTrue(view.isAnimating)
         XCTAssertFalse(view.isScrollPaused)
         XCTAssertEqual(view.animationGeneration, generation)

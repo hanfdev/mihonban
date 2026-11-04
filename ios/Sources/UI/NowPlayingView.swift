@@ -281,11 +281,13 @@ struct RoutePicker: UIViewRepresentable {
 
         init(onPresentationChange: @escaping (Bool) -> Void) { self.onPresentationChange = onPresentationChange }
 
-        func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
-            onPresentationChange(true)
+        // AVKit's Objective-C delegate requirements are nonisolated. Only the
+        // presentation flag crosses this boundary; the view is not captured.
+        nonisolated func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+            Task { @MainActor [weak self] in self?.onPresentationChange(true) }
         }
-        func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
-            onPresentationChange(false)
+        nonisolated func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+            Task { @MainActor [weak self] in self?.onPresentationChange(false) }
         }
     }
 }
