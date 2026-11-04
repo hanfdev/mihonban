@@ -99,7 +99,6 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
     func setImage(_ image: UIImage?) {
         guard artworkView.image !== image else { return }
         artworkView.image = image
-        artworkView.isAccessibilityElement = image != nil
         resetZoom()
     }
 
@@ -116,6 +115,7 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
         accessibilityElementsHidden = !value
         accessibilityIdentifier = value ? "gallery-viewport" : nil
         if !value { resetZoom() }
+        else { updateAccessibility() }
     }
 
     func resetZoom() {
@@ -183,7 +183,12 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
     }
 
     private func updateAccessibility() {
-        // Page position and magnification are useful to VoiceOver as well as UI tests.
+        // A preloaded offscreen UIImageView can still be enumerated by UIKit,
+        // so hide and unidentify the image itself as well as its scroll view.
+        let visible = active && artworkView.image != nil
+        artworkView.isAccessibilityElement = visible
+        artworkView.accessibilityElementsHidden = !visible
+        artworkView.accessibilityIdentifier = visible ? "gallery-image" : nil
         artworkView.accessibilityValue = "\(pageNumber)/\(pageCount), " + String(format: "%.2f×", zoomScale)
     }
 

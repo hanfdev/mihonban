@@ -85,6 +85,10 @@ final class CatalogLayoutTests: XCTestCase {
                                           artist: "Solo"), openAlbum: {}, openArtists: {})
         }
         XCTAssertEqual(size(heading(1), width: 264).height, size(heading(40), width: 264).height, accuracy: 0.5)
+        let button = PlaybackTitleButton(track: Track(id: "title", title: "Short", albumId: "album"), openAlbum: {})
+        let measured = size(button, width: 264)
+        XCTAssertEqual(measured.width, 264, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(measured.height, 44)
     }
 
     func testFavoriteButtonFitsBesideTheHeading() throws {

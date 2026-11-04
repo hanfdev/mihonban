@@ -31,9 +31,19 @@ struct PlaybackTitleButton: View {
 
     var body: some View {
         Button(action: openAlbum) {
-            MarqueeTitle(text: track?.title ?? "", identity: track?.id ?? "")
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // The UIKit marquee only draws. SwiftUI owns a stable hit region
+            // for both tap and context menu, independent of the moving labels.
+            Text(track?.title ?? "").font(Theme.title(27)).lineLimit(1)
+                .hidden().accessibilityHidden(true)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .overlay(alignment: .leading) {
+                    MarqueeTitle(text: track?.title ?? "", identity: track?.id ?? "")
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+                .contentShape(.interaction, Rectangle())
+                .contentShape(.contextMenuPreview, Rectangle())
         }.buttonStyle(.plain).disabled(track?.albumId == nil)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(track?.title ?? "")
             .accessibilityHint(L10n.text("player.viewAlbum")).accessibilityIdentifier("player.title")
             .contextMenu { Button(L10n.text("mobile.fullTitle")) { showingFullTitle = true } }

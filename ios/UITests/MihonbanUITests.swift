@@ -286,8 +286,18 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
         XCTAssertFalse(app.buttons["player.favorite"].exists, "listeners cannot change shared picks")
         screenshot("06-network-playback")
-        // Tapping the track title opens its album and closes the player.
-        app.buttons["player.title"].tap()
+        // Tapping the track title opens its album, not the adjacent artist picker.
+        let titleButton = app.buttons["player.title"]
+        XCTAssertTrue(titleButton.isHittable)
+        titleButton.tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                               object: app.buttons["player.collapse"])
+        guard XCTWaiter().wait(for: [closed], timeout: 10) == .completed else {
+            screenshot("06-title-navigation-failed")
+            XCTFail("Tapping the song title must dismiss Now Playing before album actions run")
+            return
+        }
+        XCTAssertFalse(app.buttons["player.credits.done"].exists, "the title must not open artist credits")
         let albumTitle = app.staticTexts["album.title"]
         XCTAssertTrue(albumTitle.waitForExistence(timeout: 10))
         XCTAssertEqual(albumTitle.label, "Network MP3")
@@ -747,7 +757,11 @@ final class MihonbanUITests: XCTestCase {
         let title = app.buttons["player.title"]
         let full = title.label
         XCTAssertLessThan(title.frame.height, 60, "long song titles occupy one line")
+        XCTAssertGreaterThanOrEqual(title.frame.height, 43.5, "the title has a full-height tap target")
+        XCTAssertTrue(title.isHittable)
+        XCTAssertEqual(title.staticTexts.count, 0, "moving text copies must not become separate accessibility elements")
         title.press(forDuration: 1.1)
+        XCTAssertFalse(app.buttons["player.credits.done"].exists)
         let read = app.buttons["Full track title"]
         XCTAssertTrue(read.waitForExistence(timeout: 5))
         read.tap()
@@ -775,6 +789,17 @@ final class MihonbanUITests: XCTestCase {
         let viewport = app.scrollViews["gallery-viewport"]
         XCTAssertTrue(image.waitForExistence(timeout: 15), "the authenticated gallery image must load")
         XCTAssertTrue(viewport.waitForExistence(timeout: 5))
+        let selectedPage = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard app.images.matching(identifier: "gallery-image").count == 1,
+                  image.exists, viewport.isHittable else { return false }
+            return image.isHittable && abs(image.frame.midX - viewport.frame.midX) <= 1
+                && app.windows.firstMatch.frame.contains(CGPoint(x: image.frame.midX, y: image.frame.midY))
+        }, object: nil)
+        guard XCTWaiter().wait(for: [selectedPage], timeout: 10) == .completed else {
+            screenshot("33-gallery-selection-failed")
+            XCTFail("Opening the second thumbnail must centre its image and expose only that page")
+            return
+        }
         waitForGallery(image, page: "2/2", zoomed: false)
         screenshot("33-gallery-fitted")
 

@@ -161,9 +161,35 @@ final class GalleryZoomTests: XCTestCase {
         XCTAssertEqual(view.artworkView.accessibilityValue, "2/4, 2.50×")
         view.setActive(false)
         XCTAssertTrue(view.accessibilityElementsHidden)
+        XCTAssertFalse(view.artworkView.isAccessibilityElement)
+        XCTAssertTrue(view.artworkView.accessibilityElementsHidden)
+        XCTAssertNil(view.artworkView.accessibilityIdentifier)
         XCTAssertEqual(view.artworkView.accessibilityValue, "2/4, 1.00×")
         view.setActive(true)
         XCTAssertFalse(view.accessibilityElementsHidden)
+        XCTAssertTrue(view.artworkView.isAccessibilityElement)
+        XCTAssertFalse(view.artworkView.accessibilityElementsHidden)
+        XCTAssertEqual(view.artworkView.accessibilityIdentifier, "gallery-image")
+    }
+
+    func testImageFinishingOffscreenCannotExposeAnInactivePage() {
+        let view = GalleryZoomScrollView(frame: CGRect(origin: .zero, size: viewport))
+        view.setActive(false)
+        view.setPage(number: 1, count: 2)
+        view.setImage(image())
+        view.layoutIfNeeded()
+        XCTAssertFalse(view.artworkView.isAccessibilityElement)
+        XCTAssertTrue(view.artworkView.accessibilityElementsHidden)
+        XCTAssertNil(view.artworkView.accessibilityIdentifier)
+        XCTAssertNil(view.accessibilityIdentifier)
+        view.setPage(number: 1, count: 2)
+        XCTAssertNil(view.artworkView.accessibilityIdentifier, "page metadata refresh must not expose offscreen images")
+        view.setActive(true)
+        XCTAssertTrue(view.artworkView.isAccessibilityElement)
+        XCTAssertEqual(view.artworkView.accessibilityIdentifier, "gallery-image")
+        XCTAssertEqual(view.accessibilityIdentifier, "gallery-viewport")
+        view.setImage(nil)
+        XCTAssertNil(view.artworkView.accessibilityIdentifier)
     }
 
     func testClearingImageReleasesPagingAndDisablesImageGestures() {

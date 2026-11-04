@@ -115,24 +115,36 @@ struct GalleryViewer: View {
     let client: APIClient?
     @State var selection: String
     @State private var pagingLocked = false
+    @State private var initialPositionApplied = false
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(images, id: \.self) { id in
-                        ZoomableArtwork(url: client?.imageURL(id), client: client, isActive: selection == id,
-                                        pageNumber: (images.firstIndex(of: id) ?? 0) + 1, pageCount: images.count) { locked in
-                            if selection == id { pagingLocked = locked }
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(images, id: \.self) { id in
+                            ZoomableArtwork(url: client?.imageURL(id), client: client, isActive: selection == id,
+                                            pageNumber: (images.firstIndex(of: id) ?? 0) + 1, pageCount: images.count) { locked in
+                                if selection == id { pagingLocked = locked }
+                            }
+                            .containerRelativeFrame(.horizontal)
+                            .frame(maxHeight: .infinity)
+                            .accessibilityHidden(selection != id)
+                            .id(id)
                         }
-                        .containerRelativeFrame(.horizontal)
-                        .frame(maxHeight: .infinity)
-                        .id(id)
-                    }
-                }.scrollTargetLayout()
-            }
+                    }.scrollTargetLayout()
+                }
                 .scrollTargetBehavior(.paging)
-                .scrollPosition(id: Binding<String?>(get: { selection }, set: { if let id = $0 { selection = id } }))
+                .scrollPosition(id: Binding<String?>(get: { selection }, set: {
+                    if initialPositionApplied, let id = $0 { selection = id }
+                }))
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                    guard !initialPositionApplied, size.width > 0, size.height > 0 else { return }
+                    // Apply the requested page once the viewport is laid out,
+                    // before accepting the pager's initial scroll feedback.
+                    proxy.scrollTo(selection, anchor: .center)
+                    initialPositionApplied = true
+                }
                 .scrollIndicators(.hidden)
                 // Only the outer pager is disabled; the UIKit image scroller remains interactive.
                 .scrollDisabled(pagingLocked)
@@ -146,6 +158,7 @@ struct GalleryViewer: View {
                 .background(Color.black.ignoresSafeArea())
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
                 .navigationTitle(L10n.text("albumPage.gallery")).navigationBarTitleDisplayMode(.inline)
+            }
         }
     }
 }
