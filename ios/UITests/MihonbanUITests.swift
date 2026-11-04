@@ -81,9 +81,22 @@ final class MihonbanUITests: XCTestCase {
         }
         address.typeText("http://127.0.0.1:8766")
         let password = app.secureTextFields["connection.password"]
-        password.tap()
+        focus(password)
         password.typeText(secret)
         app.buttons["connection.connect"].tap()
+    }
+
+    // A tap right after the keyboard moves between fields is sometimes dropped,
+    // most often on a freshly booted simulator, so tap until the field has focus.
+    private func focus(_ field: XCUIElement) {
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        for _ in 0..<3 {
+            field.tap()
+            let wait = XCTNSPredicateExpectation(predicate: focused, object: field)
+            if XCTWaiter().wait(for: [wait], timeout: 3) == .completed { return }
+        }
+        XCTFail("\(field.identifier) never received keyboard focus")
     }
 
     // Administrators edit album details natively; the fixture applies the
