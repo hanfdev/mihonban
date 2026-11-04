@@ -12,16 +12,26 @@ struct PlaybackQueue: Sendable {
     var current: Track? { currentIndex.map { tracks[$0] } }
     var upcoming: [Track] { order.dropFirst(cursor + 1).map { tracks[$0] } }
 
-    mutating func replace(_ tracks: [Track], startingAt index: Int, shuffle: Bool = false) {
+    // Shuffle is a mode that outlives the queue, as in the system music app:
+    // nil keeps the current mode. A shuffled queue starts at the chosen track
+    // and plays every other track afterwards, including earlier ones.
+    mutating func replace(_ tracks: [Track], startingAt index: Int, shuffle: Bool? = nil) {
         self.tracks = tracks
-        order = Array(tracks.indices)
-        cursor = tracks.indices.contains(index) ? index : 0
-        shuffled = false
-        if shuffle { setShuffle(true) }
+        let start = tracks.indices.contains(index) ? index : 0
+        shuffled = shuffle ?? shuffled
+        if shuffled {
+            order = tracks.isEmpty ? [] : [start] + tracks.indices.filter { $0 != start }.shuffled()
+            cursor = 0
+        } else {
+            order = Array(tracks.indices)
+            cursor = start
+        }
     }
 
     mutating func setShuffle(_ enabled: Bool) {
-        guard enabled != shuffled, let currentIndex else { return }
+        guard enabled != shuffled else { return }
+        // With nothing queued only the mode changes; the next queue uses it.
+        guard let currentIndex else { shuffled = enabled; return }
         shuffled = enabled
         if enabled {
             // Preserve actual playback history; only shuffle what has not played.

@@ -21,11 +21,13 @@ struct AlbumView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 32) {
                             cover(album).frame(width: 300)
-                            header(album).frame(minWidth: 300, maxWidth: .infinity, alignment: .leading)
+                            header(album, centered: false).frame(minWidth: 300, maxWidth: .infinity, alignment: .leading)
                         }
-                        VStack(alignment: .leading, spacing: 22) {
-                            cover(album).frame(maxWidth: 380).frame(maxWidth: .infinity)
-                            header(album)
+                        // On a phone the cover takes about two thirds of the width,
+                        // leaving the title and controls in view without scrolling.
+                        VStack(spacing: 20) {
+                            cover(album).frame(maxWidth: 270).padding(.horizontal, 36).frame(maxWidth: .infinity)
+                            header(album, centered: true)
                         }
                     }
                     trackList(album)
@@ -41,6 +43,10 @@ struct AlbumView: View {
         }
         .background(Theme.background).navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // Picks move to the bar so the play row stays symmetric.
+            ToolbarItem(placement: .topBarTrailing) {
+                if let album, model.sessionStore.isAdmin { favoriteButton(album) }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 if let album {
                     Menu {
@@ -115,13 +121,16 @@ struct AlbumView: View {
     private func cover(_ album: Album) -> some View {
         Cover(albumID: album.id, size: 800, revision: album.updatedAt, client: model.imageClient)
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .accessibilityElement(children: .ignore).accessibilityLabel(album.title)
+            .accessibilityAddTraits(.isImage).accessibilityIdentifier("album.cover")
     }
 
-    private func header(_ album: Album) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(album.title).font(Theme.title(29)).fixedSize(horizontal: false, vertical: true)
+    private func header(_ album: Album, centered: Bool) -> some View {
+        VStack(alignment: centered ? .center : .leading, spacing: 10) {
+            Text(album.title).font(Theme.title(centered ? 26 : 29)).fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(centered ? .center : .leading)
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("album.title")
-            FlowLayout(spacing: 4) {
+            FlowLayout(spacing: 4, centered: centered) {
                 ForEach(Array(album.credits.enumerated()), id: \.offset) { index, credit in
                     NavigationLink(value: CatalogRoute.artist(credit.name)) {
                         Text(credit.name + (index < album.credits.count - 1 ? " ·" : ""))
@@ -136,36 +145,33 @@ struct AlbumView: View {
                 if album.hidden == true { Label(L10n.text("albumPage.hiddenBadge"), systemImage: "eye.slash") }
             }.font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
             if let rym = album.rym, let rating = rym.validRating { ratingRow(rym, rating: rating) }
-            HStack(spacing: 18) {
-                Button { model.player.play(album.normalizedTracks) } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "play.fill").font(.system(size: 18)).foregroundStyle(Theme.ink)
-                            .frame(width: 48, height: 48).background(Theme.accent, in: Circle())
-                        Text(L10n.text("common.playAll")).font(.body.weight(.semibold))
-                            .lineLimit(1).fixedSize()
-                    }
-                }.buttonStyle(.plain).accessibilityIdentifier("album.play")
-                Spacer(minLength: 8)
-                Button { model.player.play(album.normalizedTracks, shuffle: true) } label: {
-                    // Long translations and large text drop the label before the
-                    // primary button would have to wrap.
-                    ViewThatFits(in: .horizontal) {
-                        Label(L10n.text("common.shuffle"), systemImage: "shuffle").lineLimit(1).fixedSize()
-                        Image(systemName: "shuffle").frame(width: 44)
-                    }.frame(minHeight: 48)
-                }.buttonStyle(.plain).foregroundStyle(Theme.dim)
-                    .accessibilityLabel(L10n.text("common.shuffle")).accessibilityIdentifier("album.shuffle")
-                if model.sessionStore.isAdmin {
-                    let faved = model.favorites.contains(.album, id: album.id)
-                    Button { Task { await model.favorites.toggle(.album, id: album.id) } } label: {
-                        Image(systemName: faved ? "heart.fill" : "heart").font(.title3)
-                            .foregroundStyle(faved ? Theme.accent : Theme.dim).frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).accessibilityLabel(L10n.text(faved ? "common.unfav" : "common.fav"))
-                        .accessibilityIdentifier("album.favorite")
-                }
-                if let downloads = model.downloads { AlbumDownloadButton(album: album, downloads: downloads) }
-            }.padding(.top, 8).disabled(album.normalizedTracks.isEmpty)
+            controls(album).padding(.top, 6).frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
         }
+    }
+
+    // Shuffle, Play all, Download: icons only and symmetric about the play
+    // button. Shuffle is a mode; Play all applies it.
+    private func controls(_ album: Album) -> some View {
+        HStack(spacing: 28) {
+            ShuffleToggle(player: model.player, identifier: "album.shuffle")
+            Button { model.player.play(album.normalizedTracks) } label: {
+                Image(systemName: "play.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.ink)
+                    .frame(width: 60, height: 60).background(Theme.accent, in: Circle())
+                    .contentShape(Circle())
+            }.buttonStyle(.plain).accessibilityLabel(L10n.text("common.playAll")).accessibilityIdentifier("album.play")
+            // An empty slot keeps the play button centred where downloads are unavailable.
+            if let downloads = model.downloads { AlbumDownloadButton(album: album, downloads: downloads) }
+            else { Color.clear.frame(width: 44, height: 44).accessibilityHidden(true) }
+        }.disabled(album.normalizedTracks.isEmpty)
+    }
+
+    @ViewBuilder
+    private func favoriteButton(_ album: Album) -> some View {
+        let faved = model.favorites.contains(.album, id: album.id)
+        Button { Task { await model.favorites.toggle(.album, id: album.id) } } label: {
+            Image(systemName: faved ? "heart.fill" : "heart").foregroundStyle(faved ? Theme.accent : Theme.ink)
+        }.accessibilityLabel(L10n.text(faved ? "common.unfav" : "common.fav"))
+            .accessibilityIdentifier("album.favorite")
     }
 
     private func ratingRow(_ rym: RymRating, rating: Double) -> some View {

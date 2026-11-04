@@ -26,7 +26,10 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if model.signedIn { CatalogShell(model: model) }
+            if model.isBootstrapping {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("connection.restoring")
+            } else if model.signedIn { CatalogShell(model: model) }
             else { ConnectionView(model: model) }
         }
         .background(Theme.background)

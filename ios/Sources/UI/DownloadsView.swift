@@ -157,7 +157,8 @@ struct AlbumDownloadButton: View {
     @ViewBuilder private func icon(_ state: AlbumDownloadState) -> some View {
         switch state {
         case .none, .partial:
-            Image(systemName: "arrow.down.circle").font(.title3).foregroundStyle(Theme.dim)
+            // The same weight as the shuffle toggle it mirrors on the album page.
+            Image(systemName: "arrow.down.circle").font(.system(size: 20, weight: .medium)).foregroundStyle(Theme.ink)
         case .downloading(let fraction):
             ZStack {
                 Circle().stroke(Theme.line, lineWidth: 2.5)

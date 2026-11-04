@@ -32,6 +32,7 @@ struct NowPlayingView: View {
     @State private var queueVisible = false
     @State private var scrubbing = false
     @State private var scrubTime: Double = 0
+    @State private var controlsHeight: CGFloat = 330
 
     private var player: PlayerModel { model.player }
     var body: some View {
@@ -46,11 +47,18 @@ struct NowPlayingView: View {
                                 controls.frame(maxWidth: 480)
                             }
                         } else {
-                            VStack(spacing: 32) { cover.frame(maxWidth: 500); controls.frame(maxWidth: 500) }
+                            // Keep the controls visible at standard text sizes;
+                            // accessibility text can still scroll below the small cover.
+                            let room = geometry.size.height - controlsHeight - 32 - 14 - 24
+                            VStack(spacing: 32) {
+                                cover.frame(maxWidth: min(500, max(160, room)))
+                                controls.frame(maxWidth: 500)
+                                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
+                            }
                         }
-                    }.padding(.horizontal, 28).padding(.top, 14).padding(.bottom, 36)
+                    }.padding(.horizontal, 28).padding(.top, 14).padding(.bottom, 24)
                         .frame(maxWidth: .infinity)
-                }.background(Theme.background)
+                }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -107,7 +115,7 @@ struct NowPlayingView: View {
                 }.font(Theme.body(11)).monospacedDigit().foregroundStyle(Theme.faint)
             }
             HStack {
-                IconButton(symbol: "shuffle", label: L10n.text("common.shuffle"), selected: player.queue.shuffled) { player.toggleShuffle() }
+                ShuffleToggle(player: player, identifier: "player.shuffle")
                 Spacer(minLength: 4)
                 IconButton(symbol: "backward.end.fill", label: L10n.text("player.prev")) { player.previous() }
                 Spacer(minLength: 8)
@@ -119,11 +127,13 @@ struct NowPlayingView: View {
                            label: L10n.text(["player.repeatOff", "player.repeatAll", "player.repeatOne"][player.queue.repeatMode.rawValue]),
                            selected: player.queue.repeatMode != .off) { player.cycleRepeat() }
             }.padding(.vertical, 4)
+            // Icons only, under shuffle and repeat, as in the system music app.
             HStack {
                 RoutePicker().frame(width: 44, height: 44).accessibilityLabel(L10n.text("mobile.audioOutput"))
-                Text(L10n.text("mobile.audioOutput")).font(Theme.body(13)).foregroundStyle(Theme.dim)
+                    .accessibilityIdentifier("player.route")
                 Spacer()
                 IconButton(symbol: "list.bullet", label: L10n.text("mobile.queue")) { queueVisible = true }
+                    .accessibilityIdentifier("player.queue")
             }
             if let error = player.error {
                 VStack(alignment: .leading, spacing: 10) {

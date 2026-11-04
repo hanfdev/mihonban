@@ -42,6 +42,15 @@ final class CatalogLayoutTests: XCTestCase {
         XCTAssertEqual(empty.height, measured.height, accuracy: 0.5)
     }
 
+    func testShuffleControlHasAStableTouchTarget() {
+        let off = size(IconButton(symbol: "shuffle", label: "Shuffle", selected: false) {}, width: 100)
+        let on = size(IconButton(symbol: "shuffle", label: "Shuffle", selected: true) {}, width: 100)
+        XCTAssertEqual(off.width, 44, accuracy: 0.5)
+        XCTAssertEqual(off.height, 44, accuracy: 0.5)
+        XCTAssertEqual(on.width, off.width, accuracy: 0.5)
+        XCTAssertEqual(on.height, off.height, accuracy: 0.5)
+    }
+
     func testCountsUseTheSingularForOne() {
         XCTAssertEqual(L10n.count("count.tracks", 1), L10n.text("mobile.oneTrack"))
         XCTAssertEqual(L10n.count("count.albums", 1), L10n.text("mobile.oneAlbum"))

@@ -94,9 +94,13 @@ final class PlayerModel: NSObject {
         self.demoURL = demoURL
     }
 
-    func play(_ tracks: [Track], index: Int = 0, shuffle: Bool = false) {
-        guard tracks.indices.contains(index), client != nil else { return }
-        queue.replace(tracks, startingAt: index, shuffle: shuffle)
+    // Without an index, Play all starts at the first track, or at a random one
+    // while shuffle is on. A nil shuffle keeps the mode the user chose.
+    func play(_ tracks: [Track], index: Int? = nil, shuffle: Bool? = nil) {
+        guard !tracks.isEmpty, client != nil else { return }
+        let start = index ?? ((shuffle ?? queue.shuffled) ? Int.random(in: tracks.indices) : 0)
+        guard tracks.indices.contains(start) else { return }
+        queue.replace(tracks, startingAt: start, shuffle: shuffle)
         wantsPlayback = true
         beginCurrent()
     }

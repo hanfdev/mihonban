@@ -31,9 +31,17 @@ final class MihonbanUITests: XCTestCase {
         album.tap()
         let play = app.buttons["album.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 10))
-        // The 48 pt circle plus a one-line label; a wrapped label is far narrower.
-        XCTAssertGreaterThan(play.frame.width, 100, "Play all stays on one line")
+        // The album play control is a circle with no visible text label.
+        XCTAssertEqual(play.frame.width, 60, accuracy: 1)
+        XCTAssertEqual(play.frame.width, play.frame.height, accuracy: 1)
+        XCTAssertEqual(play.label, "Play all")
+        XCTAssertFalse(play.staticTexts["Play all"].exists)
         XCTAssertTrue(app.buttons["album.shuffle"].exists)
+        let cover = element(app, "album.cover")
+        XCTAssertLessThanOrEqual(cover.frame.width, 271)
+        XCTAssertGreaterThan(cover.frame.width, 200)
+        XCTAssertEqual(cover.frame.width, cover.frame.height, accuracy: 1)
+        XCTAssertEqual(cover.frame.midX, play.frame.midX, accuracy: 1)
         screenshot("02-album")
         play.tap()
         let expand = app.buttons["player.expand"]
@@ -44,7 +52,15 @@ final class MihonbanUITests: XCTestCase {
         let toggle = app.buttons["player.toggle"].firstMatch
         toggle.tap()
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        app.buttons["Queue"].tap()
+        let queue = app.buttons["player.queue"]
+        XCTAssertTrue(queue.waitForExistence(timeout: 5))
+        // A hittable sliver at the screen edge is not a usable control.
+        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            queue.isHittable && queue.frame.maxY <= app.frame.maxY - 24
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [visible], timeout: 5), .completed)
+        XCTAssertFalse(app.staticTexts["Audio output"].exists)
+        queue.tap()
         XCTAssertTrue(app.staticTexts["Up next"].waitForExistence(timeout: 5))
         // Jumping to an upcoming entry plays it and removes it from Up next.
         let upcoming = element(app, "queue.0")
@@ -59,6 +75,10 @@ final class MihonbanUITests: XCTestCase {
     // Earlier tests may leave a remembered session, which reopens the library on
     // launch. Signing out returns to the connection screen in any language.
     private func signOutIfNeeded(_ app: XCUIApplication) {
+        // Bootstrap hides the connection form until session restoration finishes.
+        let restored = expectation(for: NSPredicate(format: "exists == false"),
+                                   evaluatedWith: element(app, "connection.restoring"))
+        wait(for: [restored], timeout: 30)
         let address = app.textFields["connection.address"]
         guard !address.waitForExistence(timeout: 5) else { return }
         let settings = app.buttons["settings.open"].firstMatch
@@ -153,7 +173,15 @@ final class MihonbanUITests: XCTestCase {
         let album = app.buttons["album.network-mp3"]
         XCTAssertTrue(album.waitForExistence(timeout: 20))
         album.tap()
-        app.buttons["album.play"].tap()
+        let play = app.buttons["album.play"]
+        let shuffle = app.buttons["album.shuffle"]
+        let downloadControl = app.buttons["album.download"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        XCTAssertTrue(downloadControl.waitForExistence(timeout: 10))
+        XCTAssertEqual(play.frame.midX - shuffle.frame.midX,
+                       downloadControl.frame.midX - play.frame.midX, accuracy: 1)
+        XCTAssertEqual(shuffle.frame.midY, downloadControl.frame.midY, accuracy: 1)
+        play.tap()
         let expand = app.buttons["player.expand"]
         XCTAssertTrue(expand.waitForExistence(timeout: 20))
         expand.tap()
@@ -223,6 +251,60 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(element(app, "search.artist.Guest Singer").waitForExistence(timeout: 10))
         screenshot("10-search")
         XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    func testGenreFilterMergesCaseVariants() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
+        app.buttons["albums.filters"].tap()
+        let genre = app.buttons["filters.genre"]
+        XCTAssertTrue(genre.waitForExistence(timeout: 10))
+        genre.tap()
+        let option = app.buttons["Shibuya-kei"]
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "Shibuya-kei").count, 1)
+        XCTAssertFalse(app.buttons["Shibuya-Kei"].exists)
+        screenshot("17-genre-options")
+        option.tap()
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["album.demo-2"].exists, "the alternate capitalization must match too")
+        XCTAssertTrue(app.buttons["album.demo-3"].exists)
+        XCTAssertFalse(app.buttons["album.demo-4"].exists, "an unrelated genre must not match")
+        screenshot("18-genre-filtered")
+    }
+
+    func testShuffleToggleWaitsForPlayAll() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
+        openTab(app, "Tracks")
+        let shuffle = app.buttons["tracks.shuffle"]
+        XCTAssertTrue(shuffle.waitForExistence(timeout: 10))
+        XCTAssertFalse(shuffle.isSelected)
+        shuffle.tap()
+        XCTAssertTrue(shuffle.isSelected)
+        XCTAssertFalse(app.buttons["player.expand"].exists, "setting shuffle must not start a track")
+        screenshot("16-shuffle-enabled")
+        app.buttons["tracks.play"].tap()
+        let expand = app.buttons["player.expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 15))
+        expand.tap()
+        let playerShuffle = app.buttons["player.shuffle"]
+        XCTAssertTrue(playerShuffle.waitForExistence(timeout: 10))
+        XCTAssertTrue(playerShuffle.isSelected, "Play all must keep the selected shuffle mode")
+        app.buttons["player.toggle"].firstMatch.tap()
+        let title = app.buttons["player.title"].label
+        playerShuffle.tap()
+        XCTAssertFalse(playerShuffle.isSelected)
+        XCTAssertEqual(app.buttons["player.title"].label, title)
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play", "changing mode must not resume playback")
+        app.buttons["player.collapse"].tap()
+        XCTAssertTrue(shuffle.waitForExistence(timeout: 10))
+        XCTAssertFalse(shuffle.isSelected, "the list and player show the same mode")
     }
 
     func testConnectionScreen() {

@@ -7,9 +7,7 @@ struct ArtistsScreen: View {
     @State private var genre = ""
     @State private var shown: [ArtistSummary] = []
 
-    private var genres: [String] {
-        Array(Set(model.catalog.index.artists.flatMap(\.genres))).sorted { CatalogIndex.less($0, $1) }
-    }
+    private var genres: [GenreOption] { model.catalog.index.artistGenres }
 
     var body: some View {
         List {
@@ -45,7 +43,7 @@ struct ArtistsScreen: View {
                         }
                         Picker(L10n.text("artists.filterGenre"), selection: $genre) {
                             Text(L10n.text("library.anyGenre")).tag("")
-                            ForEach(genres, id: \.self) { Text($0).tag($0) }
+                            ForEach(genres) { Text($0.title).tag($0.id) }
                         }.pickerStyle(.menu)
                     } label: {
                         Image(systemName: genre.isEmpty ? "arrow.up.arrow.down" : "line.3.horizontal.decrease.circle.fill")

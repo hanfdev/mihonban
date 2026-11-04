@@ -75,6 +75,8 @@ struct CoverFrame: View {
     }
 }
 
+// A selected mode, such as shuffle or repeat, is lit: accent glyph on a soft
+// accent disc, so it reads as a switch rather than an action.
 struct IconButton: View {
     let symbol: String
     let label: String
@@ -84,9 +86,48 @@ struct IconButton: View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 20, weight: .medium))
                 .foregroundStyle(selected ? Theme.accent : Theme.ink)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
+                .frame(width: 44, height: 44)
+                .background { if selected { Circle().fill(Theme.accent.opacity(0.18)) } }
+                .contentShape(Circle())
+                .animation(.snappy(duration: 0.2), value: selected)
         }.buttonStyle(.plain).accessibilityLabel(label)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+// Shuffle only sets the mode; Play all or a track row then starts playback.
+struct ShuffleToggle: View {
+    let player: PlayerModel
+    var identifier = "shuffle"
+    var body: some View {
+        IconButton(symbol: "shuffle", label: L10n.text("common.shuffle"), selected: player.queue.shuffled) {
+            player.toggleShuffle()
+        }.accessibilityIdentifier(identifier)
+    }
+}
+
+// The play row at the top of track lists. It sits on the page background with
+// no separator, so it reads as part of the list header rather than a band.
+struct PlayAllRow: View {
+    let player: PlayerModel
+    var identifier = "list"
+    let play: () -> Void
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: play) {
+                HStack(spacing: 12) {
+                    Image(systemName: "play.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink)
+                        .frame(width: 44, height: 44).background(Theme.accent, in: Circle())
+                    Text(L10n.text("common.playAll")).font(.body.weight(.semibold)).foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("\(identifier).play")
+            Spacer(minLength: 8)
+            ShuffleToggle(player: player, identifier: "\(identifier).shuffle")
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(Theme.background)
+        .listRowSeparator(.hidden)
     }
 }
 

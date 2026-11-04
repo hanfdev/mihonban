@@ -14,12 +14,7 @@ struct TracksScreen: View {
                     CatalogProblem(message: error) { Task { await model.catalog.ensureTracks(force: true) } }
                 }
                 if !shown.isEmpty {
-                    HStack {
-                        Button { model.player.play(shown) } label: { Label(L10n.text("common.playAll"), systemImage: "play.fill") }
-                        Spacer()
-                        Button { model.player.play(shown, shuffle: true) } label: { Image(systemName: "shuffle") }
-                            .accessibilityLabel(L10n.text("common.shuffle"))
-                    }.listRowBackground(Theme.surface)
+                    PlayAllRow(player: model.player, identifier: "tracks") { model.player.play(shown) }
                 }
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, track in
                     CatalogTrackRow(track: track, model: model) { model.player.play(shown, index: index) }

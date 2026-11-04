@@ -94,7 +94,8 @@ struct AlbumFilters: Equatable, Sendable {
         if let decade, (album.year ?? 0) / 10 * 10 != decade { return false }
         if !artist.isEmpty && !album.credits.contains(where: { $0.name == artist }) { return false }
         let genres = (album.genres ?? []) + (album.secondaryGenres ?? [])
-        return genre.isEmpty || genres.contains { $0.caseInsensitiveCompare(genre) == .orderedSame }
+        let selected = GenreName.key(genre)
+        return selected.isEmpty || genres.contains { GenreName.key($0) == selected }
     }
 }
 

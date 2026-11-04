@@ -23,6 +23,7 @@ struct RememberedSession: Codable, Equatable {
 // Domain rules live in those stores; this type only wires connection state.
 @MainActor @Observable
 final class AppModel {
+    private(set) var isBootstrapping = true
     var connecting = false
     var error: String?
     var address: String
@@ -125,6 +126,9 @@ final class AppModel {
     }
 
     func bootstrap() async {
+        guard isBootstrapping else { return }
+        // Do not show an editable login form while restoring a saved session.
+        defer { isBootstrapping = false }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--demo"), let api = try? APIClient(address: "https://example.invalid") {
             demo = true
@@ -203,7 +207,7 @@ final class AppModel {
         try await catalog.album(id)
     }
 
-    func playAlbum(_ id: String, shuffle: Bool = false) async {
+    func playAlbum(_ id: String, shuffle: Bool? = nil) async {
         do {
             let tracks = try await catalog.album(id).normalizedTracks
             guard !tracks.isEmpty else { return }
@@ -217,7 +221,7 @@ final class AppModel {
     }
 
     // Matches the web artist page: owned albums in catalog order, then guest appearances.
-    func playArtist(_ name: String, shuffle: Bool = false) async {
+    func playArtist(_ name: String, shuffle: Bool? = nil) async {
         do {
             var tracks: [Track] = []
             let owned = catalog.index.albums.filter { $0.credits.contains { $0.name == name } }

@@ -38,7 +38,7 @@ struct AlbumsScreen: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button { filtering = true } label: {
                     Label(L10n.text("mobile.filters"), systemImage: filters.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                }.tint(filters.isActive ? Theme.accent : Theme.dim)
+                }.tint(filters.isActive ? Theme.accent : Theme.dim).accessibilityIdentifier("albums.filters")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -54,7 +54,9 @@ struct AlbumsScreen: View {
                 .accessibilityLabel(L10n.text("mobile.sort"))
             }
         }
-        .sheet(isPresented: $filtering) { AlbumFilterSheet(albums: model.catalog.index.albums, filters: $filters) }
+        .sheet(isPresented: $filtering) {
+            AlbumFilterSheet(albums: model.catalog.index.albums, genres: model.catalog.index.genres, filters: $filters)
+        }
         .onAppear {
             if !initialGenre.isEmpty && filters.genre.isEmpty { filters.genre = initialGenre }
             if !initialQuery.isEmpty && query.isEmpty { query = initialQuery }
@@ -71,9 +73,12 @@ struct AlbumsScreen: View {
 
 private struct AlbumFilterSheet: View {
     let albums: [Album]
+    let genres: [GenreOption]
     @Binding var filters: AlbumFilters
     @Environment(\.dismiss) private var dismiss
-    private var genres: [String] { Array(Set(albums.flatMap { ($0.genres ?? []) + ($0.secondaryGenres ?? []) })).sorted() }
+    private var genreSelection: Binding<String> {
+        Binding(get: { GenreName.key(filters.genre) }, set: { filters.genre = $0 })
+    }
     private var decades: [Int] { Array(Set(albums.compactMap(\.year).filter { $0 > 0 }.map { $0 / 10 * 10 })).sorted() }
     private var artists: [String] { Array(Set(albums.flatMap { $0.credits.map(\.name) })).sorted() }
 
@@ -86,10 +91,10 @@ private struct AlbumFilterSheet: View {
                         Text(String(format: "%.1f+", $0)).tag($0)
                     }
                 }
-                Picker(L10n.text("library.filterGenre"), selection: $filters.genre) {
+                Picker(L10n.text("library.filterGenre"), selection: genreSelection) {
                     Text(L10n.text("library.anyGenre")).tag("")
-                    ForEach(genres, id: \.self) { Text($0).tag($0) }
-                }
+                    ForEach(genres) { Text($0.title).tag($0.id) }
+                }.accessibilityIdentifier("filters.genre")
                 Picker(L10n.text("library.filterDecade"), selection: $filters.decade) {
                     Text(L10n.text("library.anyDecade")).tag(Int?.none)
                     ForEach(decades, id: \.self) { Text(String($0) + "s").tag(Optional($0)) }

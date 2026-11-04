@@ -39,6 +39,8 @@ struct ArtistAvatar: View {
 // Wraps chips onto as many lines as the proposed width needs.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
+    // Centres each line, for headers laid out under a centred cover.
+    var centered = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
@@ -50,7 +52,7 @@ struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var y = bounds.minY
         for row in arrange(width: bounds.width, subviews: subviews) {
-            var x = bounds.minX
+            var x = centered ? bounds.minX + max(0, bounds.width - row.width) / 2 : bounds.minX
             for index in row.items {
                 let size = subviews[index].sizeThatFits(.unspecified)
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))

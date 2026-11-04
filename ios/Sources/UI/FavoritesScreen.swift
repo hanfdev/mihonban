@@ -88,6 +88,10 @@ struct FavoritesScreen: View {
     private var albumSection: some View {
         let list = albums
         Section {
+            if !list.isEmpty && !editing {
+                PlayAllRow(player: model.player, identifier: "favorites") { Task { await playAlbums(list) } }
+                    .moveDisabled(true).deleteDisabled(true)
+            }
             ForEach(list) { album in
                 NavigationLink(value: CatalogRoute.album(album.id)) { AlbumRow(album: album, model: model) }
                     .listRowBackground(Theme.background).accessibilityIdentifier("favorite.\(album.id)")
@@ -95,8 +99,6 @@ struct FavoritesScreen: View {
             }
             .onMove(perform: canEdit ? mover(.album, ids: list.map(\.id)) : nil)
             .onDelete(perform: model.sessionStore.isAdmin ? remover(.album, ids: list.map(\.id)) : nil)
-        } header: {
-            if !list.isEmpty { playHeader { shuffle in Task { await playAlbums(list, shuffle: shuffle) } } }
         }
     }
 
@@ -104,24 +106,18 @@ struct FavoritesScreen: View {
     private var trackSection: some View {
         let list = tracks
         Section {
+            if !list.isEmpty && !editing {
+                PlayAllRow(player: model.player, identifier: "favorites") { model.player.play(list) }
+                    .moveDisabled(true).deleteDisabled(true)
+            }
             ForEach(Array(list.enumerated()), id: \.element.id) { index, track in
                 CatalogTrackRow(track: track, model: model) { model.player.play(list, index: index) }
                     .listRowBackground(Theme.background)
             }
             .onMove(perform: canEdit ? mover(.track, ids: list.map(\.id)) : nil)
             .onDelete(perform: model.sessionStore.isAdmin ? remover(.track, ids: list.map(\.id)) : nil)
-        } header: {
-            if !list.isEmpty { playHeader { shuffle in model.player.play(list, shuffle: shuffle) } }
         }
         if model.catalog.loadingTracks && list.isEmpty { ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear) }
-    }
-
-    private func playHeader(_ play: @escaping (Bool) -> Void) -> some View {
-        HStack {
-            Button { play(false) } label: { Label(L10n.text("common.playAll"), systemImage: "play.fill") }
-            Spacer()
-            Button { play(true) } label: { Image(systemName: "shuffle") }.accessibilityLabel(L10n.text("common.shuffle"))
-        }.font(.subheadline.weight(.semibold)).textCase(nil).foregroundStyle(Theme.accent).padding(.vertical, 4)
     }
 
     private func mover(_ kind: FavoriteKind, ids: [String]) -> (IndexSet, Int) -> Void {
@@ -146,9 +142,9 @@ struct FavoritesScreen: View {
         Task { for id in targets { await model.favorites.toggle(kind, id: id) } }
     }
 
-    private func playAlbums(_ albums: [Album], shuffle: Bool) async {
+    private func playAlbums(_ albums: [Album]) async {
         var tracks: [Track] = []
         for album in albums { if let detail = try? await model.catalog.album(album.id) { tracks += detail.normalizedTracks } }
-        if !tracks.isEmpty { model.player.play(tracks, shuffle: shuffle) }
+        if !tracks.isEmpty { model.player.play(tracks) }
     }
 }

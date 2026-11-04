@@ -57,6 +57,17 @@ final class OfflineLaunchTests: XCTestCase {
         model.downloads?.detach()
     }
 
+    func testFreshLaunchFinishesWithoutConnecting() async throws {
+        let (defaults, name) = try suite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let model = AppModel(defaults: defaults, transport: transport(UnreachableProtocol.self))
+        XCTAssertTrue(model.isBootstrapping)
+        await model.bootstrap()
+        XCTAssertFalse(model.isBootstrapping)
+        XCTAssertFalse(model.signedIn)
+        XCTAssertNil(model.error, "a fresh install needs input, not a network request")
+    }
+
     func testUnreachableServiceReopensTheSavedLibrary() async throws {
         let (defaults, name) = try suite()
         defer { defaults.removePersistentDomain(forName: name) }
@@ -72,7 +83,9 @@ final class OfflineLaunchTests: XCTestCase {
 
         let offline = AppModel(defaults: defaults, transport: transport(UnreachableProtocol.self))
         XCTAssertEqual(offline.address, "http://127.0.0.1:8766")
+        XCTAssertTrue(offline.isBootstrapping)
         await offline.bootstrap()
+        XCTAssertFalse(offline.isBootstrapping)
         XCTAssertTrue(offline.signedIn, "a previously authorized service opens without a connection")
         XCTAssertNil(offline.error)
         XCTAssertEqual(offline.session?.role, "user")
@@ -105,6 +118,7 @@ final class OfflineLaunchTests: XCTestCase {
 
         let rejected = AppModel(defaults: defaults, transport: transport(RejectingProtocol.self))
         await rejected.bootstrap()
+        XCTAssertFalse(rejected.isBootstrapping)
         XCTAssertFalse(rejected.signedIn)
         XCTAssertNotNil(rejected.error)
         XCTAssertNil(RememberedSession.load(defaults), "a refusal forgets the authorization")

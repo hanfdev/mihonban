@@ -5,6 +5,8 @@ struct CatalogIndex: Sendable {
     private(set) var albums: [Album]
     private(set) var tracks: [Track]
     private(set) var artists: [ArtistSummary]
+    private(set) var genres: [GenreOption]
+    private(set) var artistGenres: [GenreOption]
     private var albumText: [String: String]
     private var trackText: [String: String]
     private var artistText: [String: String]
@@ -38,6 +40,8 @@ struct CatalogIndex: Sendable {
             }
         }
         self.artists = Array(summaries.values)
+        genres = GenreName.options(self.albums.flatMap { ($0.genres ?? []) + ($0.secondaryGenres ?? []) })
+        artistGenres = GenreName.options(self.albums.flatMap { $0.genres ?? [] })
         albumText = [:]; trackText = [:]; artistText = [:]
         for album in self.albums {
             let text = [album.title, SearchNormalizer.credits(album.credits),
@@ -69,9 +73,10 @@ struct CatalogIndex: Sendable {
 
     func artists(query: String, genre: String = "", sort: ArtistSort = .count) -> [ArtistSummary] {
         let needle = SearchNormalizer.text(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        let selectedGenre = GenreName.key(genre)
         return artists.filter {
             (needle.isEmpty || artistText[$0.id]?.contains(needle) == true) &&
-            (genre.isEmpty || $0.genres.contains { $0.caseInsensitiveCompare(genre) == .orderedSame })
+            (selectedGenre.isEmpty || $0.genres.contains { GenreName.key($0) == selectedGenre })
         }.sorted { a, b in
             switch sort {
             case .count:

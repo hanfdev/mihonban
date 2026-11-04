@@ -66,10 +66,7 @@ struct ArtistScreen: View {
                         .padding(.horizontal, 20).frame(minHeight: 48)
                         .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.ink)
                 }.buttonStyle(.plain).accessibilityIdentifier("artist.play")
-                Button { Task { await model.playArtist(name, shuffle: true) } } label: {
-                    Image(systemName: "shuffle").font(.title3).frame(width: 48, height: 48)
-                        .background(Theme.surface, in: Circle()).foregroundStyle(Theme.ink)
-                }.buttonStyle(.plain).accessibilityLabel(L10n.text("common.shuffle"))
+                ShuffleToggle(player: model.player, identifier: "artist.shuffle")
             }.disabled(albums.isEmpty && featured.isEmpty)
             if let note = artist.note?.nonEmpty {
                 MarkdownText(source: note).multilineTextAlignment(.leading).frame(maxWidth: 640, alignment: .leading)
