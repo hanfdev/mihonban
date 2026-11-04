@@ -97,6 +97,55 @@ final class MarqueeTests: XCTestCase {
     }
 
     @MainActor
+    func testVisualCopiesHaveNoUILabelsToDuplicateInAccessibility() {
+        let control = MarqueeTitleControl(frame: CGRect(x: 0, y: 0, width: 250, height: 44))
+        let title = String(repeating: "Long title ", count: 20)
+        control.configure(text: title, identity: "a", font: .systemFont(ofSize: 27), animated: true)
+        control.layoutIfNeeded()
+        control.titleDisplay.layoutIfNeeded()
+        var descendants = control.titleDisplay.subviews
+        var cursor = 0
+        while cursor < descendants.count {
+            let child = descendants[cursor]
+            XCTAssertFalse(child is UILabel, "visual copies must not create static-text accessibility nodes")
+            XCTAssertFalse(child.isAccessibilityElement)
+            XCTAssertTrue(child.accessibilityElementsHidden)
+            descendants.append(contentsOf: child.subviews)
+            cursor += 1
+        }
+        XCTAssertGreaterThan(descendants.count, 0)
+        XCTAssertTrue(control.isAccessibilityElement)
+        XCTAssertEqual(control.accessibilityLabel, title)
+        XCTAssertTrue(control.accessibilityTraits.contains(.button))
+    }
+
+    @MainActor
+    func testDrawingOnlyTitleActuallyRendersGlyphs() throws {
+        let view = MarqueeTitleView()
+        view.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
+        let font = UIFont.systemFont(ofSize: 27)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        func pixels(_ title: String) throws -> Data {
+            view.configure(text: title, identity: "a", font: font, animated: false)
+            view.layoutIfNeeded()
+            let drawing = try XCTUnwrap(view.subviews.first?.subviews.first)
+            drawing.layer.displayIfNeeded()
+            let image = UIGraphicsImageRenderer(size: view.bounds.size, format: format).image { context in
+                drawing.layer.render(in: context.cgContext)
+            }
+            let cg = try XCTUnwrap(image.cgImage)
+            return try XCTUnwrap(cg.dataProvider?.data) as Data
+        }
+        let text = try pixels("Visible title")
+        let blank = try pixels("")
+        XCTAssertNotEqual(text, blank, "removing accessibility text copies must not erase visible glyphs")
+        XCTAssertTrue(text.contains { $0 != 0 })
+        XCTAssertEqual(view.lineHeight, ceil(font.lineHeight))
+    }
+
+    @MainActor
     func testTitleKeepsOneLineAndStopsOffscreen() {
         let view = MarqueeTitleView()
         view.configure(text: String(repeating: "Long Title ", count: 20), identity: "a", font: .systemFont(ofSize: 27), animated: true)

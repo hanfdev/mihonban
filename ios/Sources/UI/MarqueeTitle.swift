@@ -147,16 +147,45 @@ final class MarqueeTitleControl: UIButton {
     }
 }
 
+// UIKit's accessibility snapshot can still enumerate hidden UILabel children.
+// Draw these two visual copies without text elements; the UIButton above is the
+// only semantic title and continues to expose the complete string.
+private final class MarqueeGlyphView: UIView {
+    var text = "" { didSet { if text != oldValue { setNeedsDisplay() } } }
+    var font = UIFont.systemFont(ofSize: 27) { didSet { if font != oldValue { setNeedsDisplay() } } }
+    var lineBreakMode = NSLineBreakMode.byClipping { didSet { if lineBreakMode != oldValue { setNeedsDisplay() } } }
+    var naturalWidth: CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+        accessibilityElementsHidden = true
+        contentMode = .redraw
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ rect: CGRect) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = lineBreakMode
+        let area = CGRect(x: 0, y: max(0, (bounds.height - font.lineHeight) / 2),
+                          width: bounds.width, height: font.lineHeight)
+        (text as NSString).draw(in: area, withAttributes: [
+            .font: font, .foregroundColor: UIColor(Theme.ink), .paragraphStyle: paragraph
+        ])
+    }
+}
+
 final class MarqueeTitleView: UIView {
     private let strip = UIView()
-    private let first = UILabel()
-    private let second = UILabel()
+    private let first = MarqueeGlyphView(frame: .zero)
+    private let second = MarqueeGlyphView(frame: .zero)
     private var identity = ""
     private var animated = false
     private var lastSize = CGSize.zero
-    var naturalWidth: CGFloat {
-        first.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).width
-    }
+    var naturalWidth: CGFloat { first.naturalWidth }
     var lineHeight: CGFloat { ceil(first.font.lineHeight) }
     var isAnimating: Bool { strip.layer.animation(forKey: "title.scroll") != nil }
 
@@ -167,12 +196,8 @@ final class MarqueeTitleView: UIView {
         isAccessibilityElement = false
         accessibilityElementsHidden = true
         addSubview(strip)
-        for label in [first, second] {
-            label.numberOfLines = 1
-            label.textColor = UIColor(Theme.ink)
-            label.isAccessibilityElement = false
-            strip.addSubview(label)
-        }
+        strip.accessibilityElementsHidden = true
+        for drawing in [first, second] { strip.addSubview(drawing) }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
