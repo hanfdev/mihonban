@@ -52,7 +52,7 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
     var onPagingLockChange: ((Bool) -> Void)?
     private(set) var locksPaging = false
     private var active = true
-    private var zooming = false
+    private var handlingZoomGesture = false
     private var resetting = false
     private var viewportSize = CGSize.zero
     private var notificationPending = false
@@ -120,7 +120,7 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     func resetZoom() {
         resetting = true
-        zooming = false
+        handlingZoomGesture = false
         setZoomScale(minimumZoomScale, animated: false)
         let size = GalleryZoomGeometry.fittedSize(image: artworkView.image?.size ?? .zero, viewport: bounds.size)
         artworkView.frame = CGRect(origin: .zero, size: size)
@@ -135,7 +135,7 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
         guard !resetting else { return }
-        zooming = true
+        handlingZoomGesture = true
         updateInteraction()
     }
 
@@ -147,7 +147,7 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
         guard !resetting else { return }
-        zooming = false
+        handlingZoomGesture = false
         if zoomScale <= minimumZoomScale + 0.001 {
             resetZoom()
         } else {
@@ -164,7 +164,7 @@ final class GalleryZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     private func updateInteraction() {
         let hasImage = artworkView.image != nil
-        let locked = active && hasImage && (zooming || zoomScale > minimumZoomScale + 0.001)
+        let locked = active && hasImage && (handlingZoomGesture || zoomScale > minimumZoomScale + 0.001)
         // At 1x a one-finger drag belongs to the pager, but pinch must remain enabled.
         panGestureRecognizer.isEnabled = locked
         pinchGestureRecognizer?.isEnabled = hasImage

@@ -93,7 +93,9 @@ final class MarqueeTitleView: UIView {
     private var identity = ""
     private var animated = false
     private var lastSize = CGSize.zero
-    var naturalWidth: CGFloat { first.sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).width }
+    var naturalWidth: CGFloat {
+        first.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).width
+    }
     var lineHeight: CGFloat { ceil(first.font.lineHeight) }
     var isAnimating: Bool { strip.layer.animation(forKey: "title.scroll") != nil }
 
