@@ -222,8 +222,17 @@ final class MihonbanUITests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)"]
         app.launch()
         signOutIfNeeded(app)
-        XCTAssertTrue(app.textFields["connection.address"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["connection.connect"].isEnabled)
+        // Signing out keeps the last address, so clear it to check the empty state.
+        let address = app.textFields["connection.address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        let current = address.value as? String ?? ""
+        if !current.isEmpty && current != address.placeholderValue {
+            focus(address)
+            address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 2))
+        }
+        let connect = app.buttons["connection.connect"]
+        let disabled = expectation(for: NSPredicate(format: "isEnabled == false"), evaluatedWith: connect)
+        wait(for: [disabled], timeout: 5)
         screenshot("00-connect-zh")
     }
 
