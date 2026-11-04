@@ -15,9 +15,9 @@ struct AlbumDescriptors: View {
                     .accessibilityIdentifier("album.descriptors.content")
             } label: {
                 HStack {
-                    Text(L10n.text("common.descriptors")).font(.subheadline)
+                    Text(L10n.text("common.descriptors")).font(.subheadline).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(String(words.count)).font(.caption.monospacedDigit())
+                    Text(String(words.count)).font(.caption.monospacedDigit()).fixedSize()
                 }.foregroundStyle(Theme.dim)
             }.disclosureGroupStyle(DescriptorDisclosureStyle())
         }

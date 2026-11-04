@@ -32,7 +32,7 @@ final class CatalogLayoutTests: XCTestCase {
             let small = size(AlbumCaption(album: album("Ok", rating: 4)).environment(\.dynamicTypeSize, textSize), width: 170)
             let tall = size(AlbumCaption(album: album(String(repeating: "Long Title ", count: 10), rating: nil))
                 .environment(\.dynamicTypeSize, textSize), width: 170)
-            XCTAssertEqual(small.height, tall.height, accuracy: 0.5)
+            XCTAssertEqual(small.height, tall.height, accuracy: 0.5, "text=\(textSize): rating must stay on one line")
             XCTAssertLessThanOrEqual(tall.width, 170.5)
         }
     }
@@ -98,8 +98,9 @@ final class CatalogLayoutTests: XCTestCase {
                         .environment(\.dynamicTypeSize, textSize), width: width)
                     let opened = size(AlbumDescriptors(descriptors: Array(words.prefix(count)), isExpanded: .constant(true))
                         .environment(\.dynamicTypeSize, textSize), width: width)
-                    XCTAssertEqual(closed.height, baseline.height, accuracy: 0.5)
+                    XCTAssertEqual(closed.height, baseline.height, accuracy: 0.5, "count=\(count), width=\(width), text=\(textSize)")
                     XCTAssertGreaterThanOrEqual(closed.height, 44)
+                    XCTAssertLessThanOrEqual(closed.width, width + 0.5)
                     XCTAssertGreaterThan(opened.height, closed.height + 20)
                     XCTAssertLessThanOrEqual(opened.width, width + 0.5)
                 }

@@ -61,6 +61,7 @@ struct NowPlayingView: View {
                     }.padding(.horizontal, 28).padding(.top, 14).padding(.bottom, 24)
                         .frame(maxWidth: .infinity)
                 }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
+                    .accessibilityIdentifier("player.scroll")
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -194,6 +195,7 @@ struct QueueView: View {
                     .onDelete { player.removeUpcoming(at: $0) }
                 } header: { header(L10n.text("mobile.upNext")) }
             }.scrollContentBackground(.hidden).background(Theme.background)
+                .accessibilityIdentifier("queue.list")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { EditButton() }

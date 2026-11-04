@@ -380,12 +380,23 @@ final class MihonbanUITests: XCTestCase {
         screenshot("22-large-text-player")
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
+        let landscape = expectation(for: NSPredicate { _, _ in
+            let frame = app.windows.firstMatch.frame
+            return frame.width > frame.height
+        }, evaluatedWith: app)
+        wait(for: [landscape], timeout: 10)
         let queue = app.buttons["player.queue"]
-        reveal(queue, in: app)
+        reveal(queue, in: app, scrolling: app.scrollViews["player.scroll"])
         XCTAssertTrue(queue.isHittable)
-        XCTAssertLessThanOrEqual(queue.frame.maxX, app.frame.maxX)
+        XCTAssertLessThanOrEqual(queue.frame.maxX, app.windows.firstMatch.frame.maxX)
+        screenshot("23-landscape-player")
         queue.tap()
-        XCTAssertTrue(app.staticTexts["Up next"].waitForExistence(timeout: 10))
+        let list = app.collectionViews["queue.list"]
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        // Large text makes the current-track section taller than the viewport.
+        let next = app.staticTexts["Up next"]
+        reveal(next, in: app, scrolling: list)
+        XCTAssertTrue(next.isHittable)
         screenshot("23-landscape-queue")
     }
 
@@ -459,11 +470,15 @@ final class MihonbanUITests: XCTestCase {
         wait(for: [changed], timeout: 10)
     }
 
-    private func reveal(_ target: XCUIElement, in app: XCUIApplication) {
+    private func reveal(_ target: XCUIElement, in app: XCUIApplication, scrolling container: XCUIElement? = nil) {
+        let surface = container ?? app
         for _ in 0..<8 {
-            if target.exists && target.isHittable && target.frame.maxY <= app.frame.maxY - 34 { return }
-            if target.exists && target.frame.minY < app.frame.minY + 100 { app.swipeDown() }
-            else { app.swipeUp() }
+            let bounds = app.windows.firstMatch.frame
+            if target.exists && target.isHittable && target.frame.maxY <= bounds.maxY - 34 { return }
+            let start = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            let end = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            if target.exists && target.frame.minY < bounds.minY + 100 { end.press(forDuration: 0.05, thenDragTo: start) }
+            else { start.press(forDuration: 0.05, thenDragTo: end) }
         }
     }
 

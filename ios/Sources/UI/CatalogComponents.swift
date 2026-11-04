@@ -52,8 +52,8 @@ struct AlbumCaption: View {
                 if album.hidden == true {
                     Image(systemName: "eye.slash").accessibilityLabel(L10n.text("albumPage.hiddenBadge"))
                 }
-                if let rating = album.rym?.validRating { RatingText(rating: rating) }
-            }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                if let rating = album.rym?.validRating { RatingText(rating: rating).fixedSize() }
+            }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
                 .accessibilityElement(children: .combine).accessibilityIdentifier("tile.footer.\(album.id)")
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
