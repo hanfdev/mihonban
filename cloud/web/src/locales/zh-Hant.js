@@ -163,6 +163,10 @@ export default {
     removed: '已從音盤移除（檔案保留）', removedFiles: '已刪除（OneDrive 檔案進回收筒）', noAudio: '沒有識別到音訊檔案',
     uploadFail: (name, m) => `「${name}」上傳失敗：${m}`, confirmDel: '再點一次確認', delWithFiles: '連同 OneDrive 檔案一起刪除',
     saveOrder: '儲存新順序', rescanTitle: '依 OneDrive 目錄中的實際檔案重建曲目表',
+    customCount: (n) => `${n} 首歌曲單獨設定了藝人`,
+    resetCredits: '全部改回專輯藝人',
+    resetConfirm: '再點一次確認',
+    creditsReset: (n) => `已將 ${n} 首歌曲改回專輯藝人`,
   },
   importPage: {
     title: '上傳音訊 · 新增音盤', hint: '拖入一張音盤的所有音訊檔案（MP3 / FLAC / M4A / OGG / OPUS / WAV）。檔案標籤會自動讀取，可在上傳前修改；檔案會直接進入你的雲端儲存。',

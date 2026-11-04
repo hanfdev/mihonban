@@ -1115,6 +1115,8 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
   const [adding, setAdding] = useState([]) // [{name, pct}]
   const [rescanning, setRescanning] = useState(false)
   const [creditTrack, setCreditTrack] = useState(null)
+  const [resetArmed, setResetArmed] = useState(false)
+  const [resettingCredits, setResettingCredits] = useState(false)
   const dragIdx = useRef(-1)
   const saveOrderInFlight = useRef(false)
   const addFilesInFlight = useRef(false)
@@ -1122,6 +1124,7 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
   const deleteInFlight = useRef(new Set())
   const toast = useToast()
   const discGroups = groupTracksByDisc(rows)
+  const customCreditCount = rows.filter((row) => row.hasCustomArtists).length
 
   const refresh = async (result) => {
     const d = await api.album(album.id)
@@ -1168,6 +1171,29 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
       toast(delFiles ? t('tracksManage.removedFiles') : t('tracksManage.removed'), 'ok')
     } catch (e) { toast(e.message, 'err') }
     finally { deleteInFlight.current.delete(tr.id) }
+  }
+
+  // Two-step like delete: the first click arms, the second clears every track credit.
+  // Rows are updated in place so an unsaved drag order is not discarded.
+  const resetCredits = async () => {
+    if (!resetArmed) {
+      setResetArmed(true)
+      setTimeout(() => setResetArmed(false), 2600)
+      return
+    }
+    setResetArmed(false)
+    if (resettingCredits) return
+    setResettingCredits(true)
+    try {
+      const { cleared } = await api.clearTrackArtists(album.id)
+      setRows((rs) => rs.map((r) => (r.hasCustomArtists ? {
+        ...r, hasCustomArtists: false, artists: album.artists,
+        artist: album.artist, artistSort: album.artistSort,
+      } : r)))
+      onChanged()
+      toast(t('tracksManage.creditsReset', cleared), 'ok')
+    } catch (e) { toast(e.message, 'err') }
+    finally { setResettingCredits(false) }
   }
 
   const rename = async (t, title) => {
@@ -1246,6 +1272,21 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
       <div className="hint" style={{ color: 'var(--ink-faint)', marginBottom: 12 }}>
         {t('tracksManage.hint')}
       </div>
+
+      {customCreditCount > 0 && (
+        <div className="td-credit-bar">
+          <span className="td-credit-count">
+            <I.user size={14} />
+            {t('tracksManage.customCount', customCreditCount)}
+          </span>
+          <button type="button"
+                  className={`btn sm td-credit-reset${resetArmed ? ' arm' : ''}`}
+                  disabled={resettingCredits} onClick={resetCredits}>
+            {resettingCredits ? <I.spin size={13} />
+              : resetArmed ? t('tracksManage.resetConfirm') : t('tracksManage.resetCredits')}
+          </button>
+        </div>
+      )}
 
       <div className="td-list">
         {discGroups.map((group) => (

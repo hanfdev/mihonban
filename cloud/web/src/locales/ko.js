@@ -176,6 +176,7 @@ export default {
     loadFail: '이미지를 불러오지 못했습니다',
   },
   tracksManage: {
+    ...en.tracksManage,
     artistTitle: (title) => `“${title}” 아티스트`,
     customArtists: '이 트랙만의 아티스트 크레딧 사용',
     customArtistsHint: '검색, 아티스트 페이지, 플레이어에 반영됩니다.',
@@ -183,7 +184,6 @@ export default {
     editArtists: (artists) => `트랙 아티스트 편집: ${artists}`,
     inheritedArtists: (artists) => `앨범 아티스트 상속: ${artists}`,
     artistInvalid: '유효하고 중복되지 않는 아티스트를 한 명 이상 입력하세요.',
-    ...en.tracksManage,
     title: '트랙 관리',
     hint: '같은 디스크 안에서만 순서를 바꿀 수 있습니다. 디스크 구성을 유지하고 각 디스크를 1부터 다시 번호 매깁니다. 제목 클릭으로 이름 변경. 로컬 컴패니언 동기화 앨범은 다음 cloud sync 시 파일 태그가 우선됩니다.',
     add: '트랙 추가: 여기에 드롭하거나 클릭하여 선택',
@@ -199,6 +199,10 @@ export default {
     delWithFiles: 'OneDrive 파일도 함께 삭제',
     saveOrder: '새 순서 저장',
     rescanTitle: 'OneDrive 폴더의 실제 파일로 트랙 목록 재구축',
+    customCount: (n) => `${n}개 트랙에 개별 아티스트 크레딧이 있습니다`,
+    resetCredits: '모두 앨범 아티스트로 되돌리기',
+    resetConfirm: '한 번 더 눌러 확인',
+    creditsReset: (n) => `${n}개 트랙을 앨범 아티스트로 되돌렸습니다`,
   },
   player: {
     ...en.player,

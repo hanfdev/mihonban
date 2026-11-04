@@ -138,6 +138,8 @@ export const api = {
     req("POST", `/api/album/${albumId}/tracks`, payload),
   patchTrack: (albumId, trackId, fields) =>
     req("PATCH", `/api/album/${albumId}/tracks/${trackId}`, fields),
+  clearTrackArtists: (albumId) =>
+    req("DELETE", `/api/album/${albumId}/track-artists`),
   deleteTrack: (albumId, trackId, file) =>
     req("DELETE", `/api/album/${albumId}/tracks/${trackId}${file ? "?file=1" : ""}`),
   orderTracks: (albumId, ids) =>

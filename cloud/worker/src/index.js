@@ -3828,6 +3828,29 @@ app.patch("/api/album/:id/tracks/:tid", async (c) => {
   return c.json({ ok: true, ...(artistRenames.length ? { artistRenames } : {}) });
 });
 
+// Return every track of an album to the album artist credit in one write.
+// The album credit itself is untouched; artists left without any credit are
+// cleaned up exactly as when a single track credit is removed.
+app.delete("/api/album/:id/track-artists", async (c) => {
+  const albumId = c.req.param("id");
+  const [album, { results }] = await Promise.all([
+    c.env.DB.prepare("SELECT 1 FROM albums WHERE id = ?").bind(albumId).first(),
+    c.env.DB.prepare(`SELECT ta.track_id, ta.artist, ta.artist_sort
+      FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+      WHERE t.album_id = ?`).bind(albumId).all(),
+  ]);
+  if (!album) return c.json({ error: "not found" }, 404);
+  if (!results.length) return c.json({ ok: true, cleared: 0 });
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM track_artists WHERE track_id IN (
+      SELECT id FROM tracks WHERE album_id = ?)`).bind(albumId),
+    c.env.DB.prepare("UPDATE albums SET updated_at = ? WHERE id = ?")
+      .bind(Date.now(), albumId),
+  ]);
+  await cleanupOrphanArtists(c.env, results.map((row) => ({ name: row.artist })));
+  return c.json({ ok: true, cleared: new Set(results.map((row) => row.track_id)).size });
+});
+
 app.delete("/api/album/:id/tracks/:tid", async (c) => {
   const tid = c.req.param("tid");
   const [row, previousCredits] = await Promise.all([

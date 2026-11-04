@@ -176,6 +176,7 @@ export default {
     loadFail: '画像を読み込めませんでした',
   },
   tracksManage: {
+    ...en.tracksManage,
     artistTitle: (title) => `「${title}」のアーティスト`,
     customArtists: 'この曲だけのアーティスト表記を使う',
     customArtistsHint: '検索、アーティストページ、プレーヤーに反映されます。',
@@ -183,7 +184,6 @@ export default {
     editArtists: (artists) => `曲のアーティストを編集：${artists}`,
     inheritedArtists: (artists) => `アルバムのアーティストを継承：${artists}`,
     artistInvalid: '有効で重複しないアーティストを1名以上入力してください。',
-    ...en.tracksManage,
     title: 'トラック管理',
     hint: '同じディスク内で並べ替えできます。ディスク構成を保ったまま、各ディスクを 1 から再採番します。タイトルをクリックして名前変更。ローカルコンパニオン連携アルバムは次回 cloud sync 時にファイルタグが優先されます。',
     add: 'トラック追加：ここにドロップ、またはクリックで選択',
@@ -199,6 +199,10 @@ export default {
     delWithFiles: 'OneDrive ファイルも削除',
     saveOrder: '新しい順序を保存',
     rescanTitle: 'OneDrive フォルダ内の実ファイルからトラック一覧を再構築',
+    customCount: (n) => `${n} 曲に個別のアーティスト表記があります`,
+    resetCredits: 'すべてアルバム表記に戻す',
+    resetConfirm: 'もう一度クリックで確定',
+    creditsReset: (n) => `${n} 曲をアルバム表記に戻しました`,
   },
   player: {
     ...en.player,

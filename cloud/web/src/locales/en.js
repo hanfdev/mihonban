@@ -277,6 +277,10 @@ export const en = {
     delWithFiles: 'Also delete OneDrive files',
     saveOrder: 'Save new order',
     rescanTitle: 'Rebuild the track list from real files in the OneDrive folder',
+    customCount: (n) => `${n} ${n === 1 ? 'track has its' : 'tracks have their'} own artist credit`,
+    resetCredits: 'Use album artists for all',
+    resetConfirm: 'Click again to confirm',
+    creditsReset: (n) => `${n} ${n === 1 ? 'track now uses' : 'tracks now use'} the album artists`,
   },
   albumPage: {
     kicker: 'Album',

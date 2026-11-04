@@ -2508,6 +2508,33 @@ body.lb-lock { overflow: hidden; }
 input.td-title:focus { border-bottom-color: var(--gold-dim); }
 .td-dur { text-align: right; color: var(--ink-faint); font-variant-numeric: tabular-nums; font-size: 12px; }
 .td-artists.on { color: var(--gold); background: rgba(227, 179, 76, .1); }
+/* Summary of track-specific credits with a two-step reset to the album credit. */
+.td-credit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -2px 0 10px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg2);
+}
+.td-credit-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-dim);
+  font-size: 12.5px;
+}
+.td-credit-count svg { flex: none; color: var(--gold); }
+.btn.sm.td-credit-reset { flex: none; white-space: nowrap; }
+.btn.sm.td-credit-reset.arm {
+  border-color: var(--gold-dim);
+  background: rgba(227, 179, 76, .12);
+  color: var(--gold);
+}
 .track-artist-dialog { max-width: 700px; }
 .track-credit-mode {
   display: flex;

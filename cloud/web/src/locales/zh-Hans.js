@@ -201,6 +201,10 @@ export default {
     delWithFiles: '删除时连 OneDrive 文件一起删',
     saveOrder: '保存新顺序',
     rescanTitle: '按 OneDrive 目录里的真实文件重建曲目表',
+    customCount: (n) => `${n} 首歌曲单独设置了艺人`,
+    resetCredits: '全部改回专辑艺人',
+    resetConfirm: '再点一次确认',
+    creditsReset: (n) => `已将 ${n} 首歌曲改回专辑艺人`,
   },
   rym: {
     title: '导入 RYM 页面',

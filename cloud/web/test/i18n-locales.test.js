@@ -98,3 +98,19 @@ test('confidence-aware and raw rating sorts are explicit in every locale', () =>
       `${id} does not distinguish weighted and raw ratings`)
   }
 })
+
+test('track credit strings are translated, not overridden by the English fallback', () => {
+  const keys = ['artistTitle', 'customArtists', 'customArtistsHint', 'inheritsArtists',
+    'editArtists', 'inheritedArtists', 'artistInvalid',
+    'customCount', 'resetCredits', 'resetConfirm', 'creditsReset']
+  const text = (value) => (typeof value === 'function' ? value(2) : value)
+  for (const [id, locale] of Object.entries(locales)) {
+    for (const key of keys) {
+      const value = text(locale.tracksManage[key])
+      assert.equal(typeof value, 'string', `${id} tracksManage.${key}`)
+      assert.notEqual(value.trim(), '', `${id} tracksManage.${key}`)
+      assert.notEqual(value, text(en.tracksManage[key]),
+        `${id} shows English tracksManage.${key}`)
+    }
+  }
+})

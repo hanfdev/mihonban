@@ -176,6 +176,7 @@ export default {
     loadFail: 'No se pudo cargar la imagen',
   },
   tracksManage: {
+    ...en.tracksManage,
     artistTitle: (title) => `Artistas de «${title}»`,
     customArtists: 'Usar créditos propios para esta pista',
     customArtistsHint: 'Estos créditos aparecen en la búsqueda, las páginas de artista y el reproductor.',
@@ -183,7 +184,6 @@ export default {
     editArtists: (artists) => `Editar artistas de la pista: ${artists}`,
     inheritedArtists: (artists) => `Hereda los artistas del álbum: ${artists}`,
     artistInvalid: 'Añade al menos un artista válido y sin duplicados.',
-    ...en.tracksManage,
     title: 'Gestionar pistas',
     hint: 'Arrastra solo dentro de un disco; cada disco se renumera desde 1 y los grupos se conservan. Haz clic en un título para renombrarlo. Los álbumes sincronizados con el compañero local siguen prefiriendo las etiquetas de archivo en el próximo cloud sync.',
     add: 'Añadir pistas: suelta audio aquí, o haz clic para elegir',
@@ -199,6 +199,10 @@ export default {
     delWithFiles: 'Eliminar también los archivos de OneDrive',
     saveOrder: 'Guardar nuevo orden',
     rescanTitle: 'Reconstruir la lista de pistas desde los archivos reales en la carpeta de OneDrive',
+    customCount: (n) => `${n} ${n === 1 ? 'pista tiene' : 'pistas tienen'} créditos de artista propios`,
+    resetCredits: 'Usar los artistas del álbum en todas',
+    resetConfirm: 'Pulsa de nuevo para confirmar',
+    creditsReset: (n) => `${n} ${n === 1 ? 'pista vuelve' : 'pistas vuelven'} a usar los artistas del álbum`,
   },
   player: {
     ...en.player,
