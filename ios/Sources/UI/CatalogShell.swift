@@ -15,10 +15,22 @@ struct CatalogShell: View {
     @State private var selected: LibraryTab = .albums
     @State private var paths: [LibraryTab: [CatalogRoute]] = [:]
     @State private var settings = false
+    @Environment(\.dynamicTypeSize) private var textSize
 
     var body: some View {
         Group {
-            if #available(iOS 26.1, *) {
+            if #available(iOS 26.0, *), textSize.isAccessibilitySize {
+                // The system accessory has a compact height and clips two lines
+                // at accessibility sizes. A safe-area inset sizes to its content.
+                modernTabs.safeAreaInset(edge: .bottom, spacing: 8) {
+                    if model.player.current != nil {
+                        NativeMiniPlayer(model: model)
+                            .padding(8).frame(maxWidth: 900)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
+                            .padding(.horizontal, 12).padding(.bottom, 8)
+                    }
+                }
+            } else if #available(iOS 26.1, *) {
                 modernTabs
                     .tabViewBottomAccessory(isEnabled: model.player.current != nil) { NativeMiniPlayer(model: model) }
             } else if #available(iOS 26.0, *) {
@@ -108,19 +120,38 @@ struct NativeMiniPlayer: View {
                 HStack(spacing: 10) {
                     Cover(albumID: model.player.current?.albumId ?? "", size: 160, client: model.imageClient)
                         .frame(width: 36, height: 36).clipShape(RoundedRectangle(cornerRadius: 6))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.player.current?.title ?? "").font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Text(PlaybackCredits(track: model.player.current).compactText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }.contentShape(Rectangle())
+                    MiniPlayerMetadata(title: model.player.current?.title ?? "",
+                                       artists: PlaybackCredits(track: model.player.current).compactText)
+                }.frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("player.expand")
             Button { model.player.toggle() } label: {
-                if model.player.isLoading { ProgressView() }
-                else { Image(systemName: model.player.wantsPlayback ? "pause.fill" : "play.fill") }
-            }.frame(minWidth: 44, minHeight: 44)
+                Group {
+                    if model.player.isLoading { ProgressView() }
+                    else { Image(systemName: model.player.wantsPlayback ? "pause.fill" : "play.fill") }
+                }.font(.system(size: 20, weight: .medium))
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("mini.toggle")
                 .accessibilityLabel(L10n.text(model.player.wantsPlayback ? "common.pause" : "common.play"))
-            Button { model.player.next() } label: { Image(systemName: "forward.end.fill") }
-                .frame(minWidth: 44, minHeight: 44).accessibilityLabel(L10n.text("player.next"))
+            Button { model.player.next() } label: {
+                Image(systemName: "forward.end.fill").font(.system(size: 20, weight: .medium))
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("mini.next")
+                .accessibilityLabel(L10n.text("player.next"))
         }.padding(.horizontal, 12).padding(.vertical, 4)
+    }
+}
+
+struct MiniPlayerMetadata: View {
+    let title: String
+    let artists: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                .accessibilityIdentifier("mini.title")
+            Text(artists).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .accessibilityIdentifier("mini.artists")
+        }.fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

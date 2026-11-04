@@ -162,6 +162,22 @@ final class CatalogLayoutTests: XCTestCase {
         }
     }
 
+    func testMiniPlayerMetadataGrowsWithAccessibleTextWithoutWrapping() {
+        for width in [CGFloat(160), 320, 700] {
+            let regular = size(MiniPlayerMetadata(title: "Short", artists: "Solo")
+                .environment(\.dynamicTypeSize, .large), width: width)
+            let accessible = size(MiniPlayerMetadata(title: "Short", artists: "Solo")
+                .environment(\.dynamicTypeSize, .accessibility5), width: width)
+            let long = size(MiniPlayerMetadata(title: String(repeating: "Long title ", count: 12),
+                                               artists: String(repeating: "Artist · ", count: 8))
+                .environment(\.dynamicTypeSize, .accessibility5), width: width)
+            XCTAssertGreaterThan(accessible.height, regular.height)
+            XCTAssertGreaterThan(accessible.height, 44, "the compact system accessory cannot fit this text pair")
+            XCTAssertEqual(long.height, accessible.height, accuracy: 0.5)
+            XCTAssertLessThanOrEqual(long.width, width + 0.5)
+        }
+    }
+
     func testCountsUseTheSingularForOne() {
         XCTAssertEqual(L10n.count("count.tracks", 1), L10n.text("mobile.oneTrack"))
         XCTAssertEqual(L10n.count("count.albums", 1), L10n.text("mobile.oneAlbum"))

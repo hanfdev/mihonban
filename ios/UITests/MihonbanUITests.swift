@@ -525,6 +525,58 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.height, 70, accuracy: 1)
     }
 
+    func testMiniPlayerFitsAccessibilityTextInBothOrientations() {
+        let app = launchCreditsPlayer(largeText: true)
+        app.buttons["player.collapse"].tap()
+        assertMiniPlayerContentVisible(app)
+        screenshot("36-accessible-mini-portrait")
+        let originalTitle = app.staticTexts["mini.title"].label
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let rotated = expectation(for: NSPredicate { _, _ in
+            let frame = app.windows.firstMatch.frame
+            return frame.width > frame.height
+        }, evaluatedWith: app)
+        wait(for: [rotated], timeout: 10)
+        assertMiniPlayerContentVisible(app)
+        XCTAssertEqual(app.staticTexts["mini.title"].label, originalTitle)
+        XCTAssertEqual(app.buttons["mini.toggle"].label, "Play")
+        screenshot("37-accessible-mini-landscape")
+        app.buttons["mini.next"].tap()
+        waitForLabel(app.staticTexts["mini.title"], "Interlude")
+        waitForLabel(app.buttons["mini.toggle"], "Pause")
+        app.buttons["mini.toggle"].tap()
+        waitForLabel(app.buttons["mini.toggle"], "Play")
+        app.buttons["player.expand"].tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons["player.title"].label, "Interlude")
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+    }
+
+    private func assertMiniPlayerContentVisible(_ app: XCUIApplication) {
+        let expand = app.buttons["player.expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 10))
+        let title = app.staticTexts["mini.title"]
+        let artist = app.staticTexts["mini.artists"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertTrue(artist.exists)
+        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let window = app.windows.firstMatch.frame.insetBy(dx: -1, dy: -1)
+            let textArea = expand.frame.insetBy(dx: -1, dy: -1)
+            return expand.isHittable && window.contains(expand.frame)
+                && textArea.contains(title.frame) && textArea.contains(artist.frame)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [visible], timeout: 5), .completed,
+                       "large mini-player text must fit inside its button, not clip above or below the bar")
+        XCTAssertGreaterThan(artist.frame.minY, title.frame.minY)
+        for control in [app.buttons["mini.toggle"], app.buttons["mini.next"]] {
+            XCTAssertTrue(control.isHittable)
+            XCTAssertEqual(control.frame.width, 44, accuracy: 0.5)
+            XCTAssertEqual(control.frame.height, 44, accuracy: 0.5)
+            XCTAssertTrue(app.windows.firstMatch.frame.insetBy(dx: -1, dy: -1).contains(control.frame))
+        }
+    }
+
     func testPlayerCreditsWithLargeTextAndLandscape() {
         let app = launchCreditsPlayer(largeText: true)
         let artist = app.buttons["player.artist"]
