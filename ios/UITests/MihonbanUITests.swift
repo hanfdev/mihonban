@@ -375,8 +375,13 @@ final class MihonbanUITests: XCTestCase {
         let artist = app.buttons["player.artist"]
         XCTAssertEqual(artist.value as? String, "+7 more")
         XCTAssertLessThanOrEqual(artist.frame.maxX, app.frame.maxX)
-        reveal(app.buttons["player.queue"], in: app)
-        XCTAssertTrue(app.buttons["player.queue"].isHittable)
+        let scroll = app.scrollViews["player.scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 10))
+        reveal(app.buttons["player.queue"], in: app, scrolling: scroll)
+        XCTAssertTrue(app.buttons["player.queue"].isHittable,
+                      "queue=\(app.buttons["player.queue"].frame), scroll=\(scroll.frame)")
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+        XCTAssertEqual(artist.value as? String, "+7 more", "layout inspection must stay on the paused fixture")
         screenshot("22-large-text-player")
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
@@ -456,12 +461,17 @@ final class MihonbanUITests: XCTestCase {
         play.tap()
         let expand = app.buttons["player.expand"]
         XCTAssertTrue(expand.waitForExistence(timeout: 15))
+        // Pause before opening the sheet: navigating a large-text layout on a
+        // cold iPad runner can take longer than the 30-second fixture track.
+        let miniPause = app.buttons["Pause"].firstMatch
+        XCTAssertTrue(miniPause.waitForExistence(timeout: 10))
+        XCTAssertTrue(miniPause.isHittable)
+        miniPause.tap()
         expand.tap()
         XCTAssertTrue(app.buttons["player.artist"].waitForExistence(timeout: 10))
-        let pause = app.buttons["player.toggle"].firstMatch
-        reveal(pause, in: app)
-        pause.tap()
-        waitForLabel(pause, "Play")
+        waitForLabel(app.buttons["player.toggle"].firstMatch, "Play")
+        XCTAssertEqual(app.buttons["player.title"].label,
+                       "A very long song title for an evening with the studio ensemble")
         return app
     }
 
@@ -473,8 +483,11 @@ final class MihonbanUITests: XCTestCase {
     private func reveal(_ target: XCUIElement, in app: XCUIApplication, scrolling container: XCUIElement? = nil) {
         let surface = container ?? app
         for _ in 0..<8 {
-            let bounds = app.windows.firstMatch.frame
-            if target.exists && target.isHittable && target.frame.maxY <= bounds.maxY - 34 { return }
+            let window = app.windows.firstMatch.frame
+            // A centred iPad sheet occupies only part of the application window.
+            let bounds = container == nil ? window : surface.frame.intersection(window)
+            if target.exists && target.isHittable && bounds.contains(target.frame)
+                && target.frame.maxY <= bounds.maxY - 34 { return }
             let start = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
             let end = surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
             if target.exists && target.frame.minY < bounds.minY + 100 { end.press(forDuration: 0.05, thenDragTo: start) }
