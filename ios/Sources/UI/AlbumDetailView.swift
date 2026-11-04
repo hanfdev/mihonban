@@ -6,6 +6,7 @@ struct AlbumView: View {
     @State private var album: Album?
     @State private var error: String?
     @State private var expandedNote = false
+    @State private var expandedDescriptors = false
     @State private var gallery: String?
     @State private var editing = false
     @State private var confirmDelete = false
@@ -59,7 +60,8 @@ struct AlbumView: View {
             }
         }
         .refreshable { await load(refresh: true) }
-        .task { await load() }
+        .task(id: albumID) { await load() }
+        .onChange(of: albumID) { _, _ in expandedDescriptors = false }
         .sheet(item: Binding(get: { gallery.map(GallerySelection.init) }, set: { gallery = $0?.id })) { selection in
             GalleryViewer(images: album?.images ?? [], client: model.imageClient, selection: selection.id)
         }
@@ -224,10 +226,7 @@ struct AlbumView: View {
             }
         }
         if !descriptors.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                SectionHeading(title: L10n.text("common.descriptors"))
-                FlowLayout { ForEach(descriptors, id: \.self) { Chip(text: $0) } }
-            }
+            AlbumDescriptors(descriptors: descriptors, isExpanded: $expandedDescriptors)
         }
         if let note = album.note?.nonEmpty {
             VStack(alignment: .leading, spacing: 10) {

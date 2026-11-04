@@ -12,7 +12,7 @@ struct MiniPlayer: View {
                             .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 7))
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title).font(Theme.body(14, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
-                            Text(model.player.isLoading ? L10n.text("mobile.preparing") : track.artist ?? "")
+                            Text(model.player.isLoading ? L10n.text("mobile.preparing") : PlaybackCredits(track: track).compactText)
                                 .font(Theme.body(12)).foregroundStyle(Theme.dim).lineLimit(1)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.contentShape(Rectangle())
@@ -30,6 +30,8 @@ struct NowPlayingView: View {
     let model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var queueVisible = false
+    @State private var creditsSheet: CreditsSelection?
+    @State private var pendingArtist: (trackID: String, name: String)?
     @State private var scrubbing = false
     @State private var scrubTime: Double = 0
     @State private var controlsHeight: CGFloat = 330
@@ -76,7 +78,39 @@ struct NowPlayingView: View {
                 }
             }
             .sheet(isPresented: $queueVisible) { QueueView(player: player) }
+            .sheet(item: $creditsSheet, onDismiss: finishArtistSelection) { selection in
+                PlaybackCreditsSheet(credits: selection.credits) { name in
+                    guard selection.id == player.current?.id else { return }
+                    pendingArtist = (selection.id, name)
+                    creditsSheet = nil
+                }
+            }
+            .onChange(of: player.current?.id) { _, _ in
+                pendingArtist = nil
+                creditsSheet = nil
+            }
         }.presentationDragIndicator(.visible).tint(Theme.accent)
+    }
+
+    private struct CreditsSelection: Identifiable {
+        let id: String
+        let credits: PlaybackCredits
+    }
+
+    private func openArtists() {
+        guard let track = player.current else { return }
+        let credits = PlaybackCredits(track: track)
+        if let name = credits.singleArtist { model.pendingRoute = .artist(name) }
+        else if !credits.isEmpty { creditsSheet = CreditsSelection(id: track.id, credits: credits) }
+    }
+
+    private func finishArtistSelection() {
+        // Dismiss the nested sheet before the shell closes Now Playing and routes.
+        let selection = pendingArtist
+        pendingArtist = nil
+        if let selection, selection.trackID == player.current?.id {
+            model.pendingRoute = .artist(selection.name)
+        }
     }
 
     private var cover: some View {
@@ -86,19 +120,9 @@ struct NowPlayingView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 24) {
-            // Title and artist only, as in the system music apps: the title opens
-            // the album and the artist opens the artist page.
-            VStack(alignment: .leading, spacing: 6) {
-                Button { if let album = player.current?.albumId { model.pendingRoute = .album(album) } } label: {
-                    Text(player.current?.title ?? "").font(Theme.title(27)).foregroundStyle(Theme.ink)
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                }.buttonStyle(.plain).disabled(player.current?.albumId == nil)
-                    .accessibilityHint(L10n.text("player.viewAlbum")).accessibilityIdentifier("player.title")
-                Button { if let name = player.current?.credits.first?.name, !name.isEmpty { model.pendingRoute = .artist(name) } } label: {
-                    Text(player.current?.artist ?? "").font(Theme.body(17)).foregroundStyle(Theme.dim)
-                        .lineLimit(1)
-                }.buttonStyle(.plain).accessibilityIdentifier("player.artist")
-            }.frame(maxWidth: .infinity, alignment: .leading)
+            NowPlayingHeading(track: player.current, openAlbum: {
+                if let album = player.current?.albumId { model.pendingRoute = .album(album) }
+            }, openArtists: openArtists)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
                                       set: { scrubTime = $0 }),
@@ -122,6 +146,7 @@ struct NowPlayingView: View {
                 PlayButton(player: player, diameter: 70)
                 Spacer(minLength: 8)
                 IconButton(symbol: "forward.end.fill", label: L10n.text("player.next")) { player.next() }
+                    .accessibilityIdentifier("player.next")
                 Spacer(minLength: 4)
                 IconButton(symbol: player.queue.repeatMode == .one ? "repeat.1" : "repeat",
                            label: L10n.text(["player.repeatOff", "player.repeatAll", "player.repeatOne"][player.queue.repeatMode.rawValue]),

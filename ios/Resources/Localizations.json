@@ -607,7 +607,12 @@
     "mobile.oneAlbum": "1 album",
     "mobile.manage": "Manage",
     "mobile.moreActions": "More actions",
-    "mobile.licenses": "Open-source licenses"
+    "mobile.licenses": "Open-source licenses",
+    "mobile.moreArtists": "+{0} more",
+    "mobile.viewCredits": "View full artist credits",
+    "mobile.viewArtist": "View artist",
+    "mobile.expanded": "Expanded",
+    "mobile.collapsed": "Collapsed"
   },
   "ja": {
     "brand": "見本盤",
@@ -1217,7 +1222,12 @@
     "mobile.oneAlbum": "1 音盤",
     "mobile.manage": "管理",
     "mobile.moreActions": "その他の操作",
-    "mobile.licenses": "オープンソースライセンス"
+    "mobile.licenses": "オープンソースライセンス",
+    "mobile.moreArtists": "ほか{0}組",
+    "mobile.viewCredits": "アーティストの全クレジットを表示",
+    "mobile.viewArtist": "アーティストを表示",
+    "mobile.expanded": "展開済み",
+    "mobile.collapsed": "折りたたみ"
   },
   "ko": {
     "brand": "見本盤",
@@ -1827,7 +1837,12 @@
     "mobile.oneAlbum": "앨범 1",
     "mobile.manage": "관리",
     "mobile.moreActions": "더 많은 작업",
-    "mobile.licenses": "오픈 소스 라이선스"
+    "mobile.licenses": "오픈 소스 라이선스",
+    "mobile.moreArtists": "외 {0}명",
+    "mobile.viewCredits": "전체 아티스트 크레딧 보기",
+    "mobile.viewArtist": "아티스트 보기",
+    "mobile.expanded": "펼쳐짐",
+    "mobile.collapsed": "접힘"
   },
   "fr": {
     "brand": "見本盤",
@@ -2437,7 +2452,12 @@
     "mobile.oneAlbum": "1 album",
     "mobile.manage": "Gestion",
     "mobile.moreActions": "Plus d’actions",
-    "mobile.licenses": "Licences libres"
+    "mobile.licenses": "Licences libres",
+    "mobile.moreArtists": "+{0} autres",
+    "mobile.viewCredits": "Voir tous les artistes crédités",
+    "mobile.viewArtist": "Voir l’artiste",
+    "mobile.expanded": "Développé",
+    "mobile.collapsed": "Réduit"
   },
   "es": {
     "brand": "見本盤",
@@ -3047,7 +3067,12 @@
     "mobile.oneAlbum": "1 álbum",
     "mobile.manage": "Administrar",
     "mobile.moreActions": "Más acciones",
-    "mobile.licenses": "Licencias de código abierto"
+    "mobile.licenses": "Licencias de código abierto",
+    "mobile.moreArtists": "+{0} más",
+    "mobile.viewCredits": "Ver todos los artistas acreditados",
+    "mobile.viewArtist": "Ver artista",
+    "mobile.expanded": "Expandido",
+    "mobile.collapsed": "Contraído"
   },
   "zh-Hans": {
     "brand": "見本盤",
@@ -3657,7 +3682,12 @@
     "mobile.oneAlbum": "1 音盤",
     "mobile.manage": "管理",
     "mobile.moreActions": "更多操作",
-    "mobile.licenses": "开源许可"
+    "mobile.licenses": "开源许可",
+    "mobile.moreArtists": "另 {0} 位",
+    "mobile.viewCredits": "查看完整艺人署名",
+    "mobile.viewArtist": "查看艺人",
+    "mobile.expanded": "已展开",
+    "mobile.collapsed": "已收起"
   },
   "zh-Hant": {
     "brand": "見本盤",
@@ -4267,6 +4297,11 @@
     "mobile.oneAlbum": "1 音盤",
     "mobile.manage": "管理",
     "mobile.moreActions": "更多操作",
-    "mobile.licenses": "開源授權"
+    "mobile.licenses": "開源授權",
+    "mobile.moreArtists": "另 {0} 位",
+    "mobile.viewCredits": "查看完整藝人署名",
+    "mobile.viewArtist": "查看藝人",
+    "mobile.expanded": "已展開",
+    "mobile.collapsed": "已收起"
   }
 }

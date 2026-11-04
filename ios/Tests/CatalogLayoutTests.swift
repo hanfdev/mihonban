@@ -22,9 +22,19 @@ final class CatalogLayoutTests: XCTestCase {
         let long = size(AlbumCaption(album: album(String(repeating: "Long Season ", count: 12), rating: nil)), width: 170).height
         let unrated = size(AlbumCaption(album: album("Ok", rating: nil)), width: 170).height
         XCTAssertGreaterThan(short, 0)
-        XCTAssertEqual(short, wrapped, accuracy: 0.5, "a one-line title reserves the second line")
+        XCTAssertEqual(short, wrapped, accuracy: 0.5, "spare space below the title/artist pair keeps footers aligned")
         XCTAssertEqual(short, long, accuracy: 0.5, "titles beyond two lines are truncated, not taller")
         XCTAssertEqual(short, unrated, accuracy: 0.5, "a missing rating does not change the height")
+        var undated = album("Ok", rating: nil)
+        undated.year = nil
+        XCTAssertEqual(short, size(AlbumCaption(album: undated), width: 170).height, accuracy: 0.5)
+        for textSize in [DynamicTypeSize.large, .accessibility3] {
+            let small = size(AlbumCaption(album: album("Ok", rating: 4)).environment(\.dynamicTypeSize, textSize), width: 170)
+            let tall = size(AlbumCaption(album: album(String(repeating: "Long Title ", count: 10), rating: nil))
+                .environment(\.dynamicTypeSize, textSize), width: 170)
+            XCTAssertEqual(small.height, tall.height, accuracy: 0.5)
+            XCTAssertLessThanOrEqual(tall.width, 170.5)
+        }
     }
 
     func testCoverStaysSquareForWideArtwork() throws {
@@ -49,6 +59,54 @@ final class CatalogLayoutTests: XCTestCase {
         XCTAssertEqual(off.height, 44, accuracy: 0.5)
         XCTAssertEqual(on.width, off.width, accuracy: 0.5)
         XCTAssertEqual(on.height, off.height, accuracy: 0.5)
+    }
+
+    func testArtistRowStaysCompactWithLongAndMultipleCredits() {
+        let short = PlaybackCredits(track: Track(id: "s", title: "", artists: [ArtistCredit(name: "Solo")]))
+        let many = PlaybackCredits(track: Track(id: "m", title: "", artists:
+            (0..<8).map { ArtistCredit(name: String(repeating: "Long artist name ", count: 8) + String($0)) }))
+        let raw = PlaybackCredits(track: Track(id: "r", title: "", artist: String(repeating: "Artist, Guest & Ensemble; ", count: 30)))
+        for width in [CGFloat(264), 346, 480, 700] {
+            for textSize in [DynamicTypeSize.large, .accessibility3] {
+                let baseline = size(PlaybackCreditsButton(credits: short) {}.environment(\.dynamicTypeSize, textSize), width: width)
+                for credits in [many, raw] {
+                    let measured = size(PlaybackCreditsButton(credits: credits) {}.environment(\.dynamicTypeSize, textSize), width: width)
+                    XCTAssertEqual(measured.height, baseline.height, accuracy: 0.5)
+                    XCTAssertGreaterThanOrEqual(measured.height, 44)
+                    XCTAssertLessThanOrEqual(measured.width, width + 0.5)
+                }
+            }
+        }
+    }
+
+    func testHeadingStopsGrowingAfterTwoTitleLines() {
+        func heading(_ repetitions: Int) -> some View {
+            NowPlayingHeading(track: Track(id: "title", title: String(repeating: "Long song title ", count: repetitions),
+                                          artist: "Solo"), openAlbum: {}, openArtists: {})
+        }
+        XCTAssertEqual(size(heading(10), width: 264).height, size(heading(40), width: 264).height, accuracy: 0.5)
+    }
+
+    func testDescriptorsOnlyUseSpaceWhenExpanded() {
+        let words = (1...100).map { "descriptor \($0)" }
+        for width in [CGFloat(264), 346, 700] {
+            for textSize in [DynamicTypeSize.large, .accessibility3] {
+                let baseline = size(AlbumDescriptors(descriptors: ["calm"], isExpanded: .constant(false))
+                    .environment(\.dynamicTypeSize, textSize), width: width)
+                for count in [23, 100] {
+                    let closed = size(AlbumDescriptors(descriptors: Array(words.prefix(count)), isExpanded: .constant(false))
+                        .environment(\.dynamicTypeSize, textSize), width: width)
+                    let opened = size(AlbumDescriptors(descriptors: Array(words.prefix(count)), isExpanded: .constant(true))
+                        .environment(\.dynamicTypeSize, textSize), width: width)
+                    XCTAssertEqual(closed.height, baseline.height, accuracy: 0.5)
+                    XCTAssertGreaterThanOrEqual(closed.height, 44)
+                    XCTAssertGreaterThan(opened.height, closed.height + 20)
+                    XCTAssertLessThanOrEqual(opened.width, width + 0.5)
+                }
+            }
+        }
+        let empty = size(AlbumDescriptors(descriptors: ["", " \n"], isExpanded: .constant(false)), width: 346)
+        XCTAssertEqual(empty.height, 0, accuracy: 0.5)
     }
 
     func testCountsUseTheSingularForOne() {

@@ -27,24 +27,45 @@ struct AlbumTile: View {
     }
 }
 
-// Tiles in one grid row line up: the title always takes two lines, so the
-// artist, year and rating sit at the same height whatever the title length.
+// Keep the title and artist together. Spare room belongs below that pair,
+// while the year and rating keep a shared baseline across the grid row.
 struct AlbumCaption: View {
     let album: Album
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(album.title).font(Theme.title(17, relativeTo: .headline)).foregroundStyle(Theme.ink)
-                .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
-            Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            // Measure with the real fonts at the current Dynamic Type size, not
+            // a fixed point height. The hidden template has no accessibility copy.
+            VStack(alignment: .leading, spacing: 4) {
+                title.lineLimit(2, reservesSpace: true)
+                artist
+            }.hidden().accessibilityHidden(true)
+                .overlay(alignment: .topLeading) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        title.lineLimit(2).accessibilityIdentifier("tile.title.\(album.id)")
+                        artist.accessibilityIdentifier("tile.artist.\(album.id)")
+                    }
+                }
             HStack(spacing: 6) {
-                if let year = album.year, year > 0 { Text(String(year)) }
+                Text(album.year.flatMap { $0 > 0 ? String($0) : nil } ?? " ")
+                    .accessibilityHidden((album.year ?? 0) <= 0)
                 Spacer(minLength: 0)
                 if album.hidden == true {
                     Image(systemName: "eye.slash").accessibilityLabel(L10n.text("albumPage.hiddenBadge"))
                 }
                 if let rating = album.rym?.validRating { RatingText(rating: rating) }
             }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine).accessibilityIdentifier("tile.footer.\(album.id)")
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var title: some View {
+        Text(album.title).font(Theme.title(17, relativeTo: .headline)).foregroundStyle(Theme.ink)
+            .multilineTextAlignment(.leading)
+    }
+
+    private var artist: some View {
+        Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

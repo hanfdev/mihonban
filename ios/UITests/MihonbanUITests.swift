@@ -318,6 +318,175 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertFalse(shuffle.isSelected, "the list and player show the same mode")
     }
 
+    func testPlayerCreditsStayCompactAndOpenEveryArtist() {
+        let app = launchCreditsPlayer()
+        let artist = app.buttons["player.artist"]
+        XCTAssertEqual(artist.value as? String, "+7 more")
+        XCTAssertLessThanOrEqual(artist.frame.height, 45)
+        XCTAssertLessThanOrEqual(artist.frame.maxX, app.frame.maxX)
+        XCTAssertFalse(app.staticTexts["Audio output"].exists)
+        let queue = app.buttons["player.queue"]
+        XCTAssertTrue(queue.isHittable)
+        XCTAssertLessThan(queue.frame.maxY, app.frame.maxY - 24)
+        screenshot("19-many-artists")
+
+        artist.tap()
+        XCTAssertTrue(app.buttons["player.credit.0"].waitForExistence(timeout: 5))
+        for index in 0..<8 {
+            let row = app.buttons["player.credit.\(index)"]
+            reveal(row, in: app)
+            XCTAssertTrue(row.isHittable, "every credited artist can be reached")
+        }
+        screenshot("20-full-credits")
+        app.buttons["player.credit.7"].tap()
+        let title = app.staticTexts["artist.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.label, "Final Artist")
+        XCTAssertFalse(app.buttons["player.collapse"].exists)
+        app.buttons["player.expand"].tap()
+        XCTAssertTrue(app.buttons["player.artist"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play", "reading credits must not resume playback")
+
+        // The next fixture carries a raw credit, not a structured artist array.
+        app.buttons["player.next"].tap()
+        waitForLabel(app.buttons["player.title"], "Interlude")
+        app.buttons["player.toggle"].firstMatch.tap()
+        artist.tap()
+        let raw = app.staticTexts["player.credits.raw"]
+        XCTAssertTrue(raw.waitForExistence(timeout: 5))
+        XCTAssertTrue(raw.label.hasPrefix("Earth, Wind & Fire,"))
+        XCTAssertTrue(raw.label.hasSuffix("Final Contributor"))
+        XCTAssertFalse(app.buttons["player.credit.0"].exists)
+        screenshot("21-original-credit")
+        app.buttons["player.credits.done"].tap()
+        XCTAssertTrue(artist.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+
+        app.buttons["player.next"].tap()
+        waitForLabel(app.buttons["player.title"], "After the rain")
+        artist.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.label, "Studio Ensemble", "a single structured artist still opens directly")
+        XCTAssertFalse(app.buttons["player.credits.done"].exists)
+    }
+
+    func testPlayerCreditsWithLargeTextAndLandscape() {
+        let app = launchCreditsPlayer(largeText: true)
+        let artist = app.buttons["player.artist"]
+        XCTAssertEqual(artist.value as? String, "+7 more")
+        XCTAssertLessThanOrEqual(artist.frame.maxX, app.frame.maxX)
+        reveal(app.buttons["player.queue"], in: app)
+        XCTAssertTrue(app.buttons["player.queue"].isHittable)
+        screenshot("22-large-text-player")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let queue = app.buttons["player.queue"]
+        reveal(queue, in: app)
+        XCTAssertTrue(queue.isHittable)
+        XCTAssertLessThanOrEqual(queue.frame.maxX, app.frame.maxX)
+        queue.tap()
+        XCTAssertTrue(app.staticTexts["Up next"].waitForExistence(timeout: 10))
+        screenshot("23-landscape-queue")
+    }
+
+    func testDescriptorsCollapseWithoutChangingPlayback() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-descriptors", "-AppleLanguages", "(en)"]
+        app.launch()
+        let album = app.buttons["album.demo-1"]
+        XCTAssertTrue(album.waitForExistence(timeout: 15))
+        album.tap()
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10))
+        app.buttons["album.play"].tap()
+        XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 10))
+        app.buttons["Pause"].firstMatch.tap()
+        let mini = app.buttons["player.expand"]
+        let playing = mini.label
+        let descriptors = app.buttons["album.descriptors"]
+        reveal(descriptors, in: app)
+        XCTAssertTrue(descriptors.isHittable)
+        XCTAssertEqual(descriptors.value as? String, "Collapsed")
+        XCTAssertTrue(descriptors.label.contains("23"))
+        XCTAssertFalse(app.staticTexts["album.descriptors.content"].exists)
+        screenshot("24-descriptors-collapsed")
+        descriptors.tap()
+        let text = app.staticTexts["album.descriptors.content"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertTrue(text.label.hasPrefix("love · romantic"))
+        XCTAssertTrue(text.label.hasSuffix("nostalgia"))
+        XCTAssertEqual(descriptors.value as? String, "Expanded")
+        screenshot("25-descriptors-expanded")
+        descriptors.tap()
+        XCTAssertFalse(text.exists)
+        XCTAssertEqual(mini.label, playing)
+        XCTAssertTrue(app.buttons["Play"].firstMatch.exists, "disclosure does not resume a paused track")
+
+        // Genre navigation remains separate and the next album starts collapsed.
+        app.buttons["Shibuya-kei"].firstMatch.tap()
+        let other = app.buttons["album.demo-3"]
+        reveal(other, in: app)
+        XCTAssertTrue(other.isHittable)
+        other.tap()
+        reveal(descriptors, in: app)
+        XCTAssertEqual(descriptors.value as? String, "Collapsed")
+        XCTAssertTrue(descriptors.label.contains("1"))
+    }
+
+    private func launchCreditsPlayer(largeText: Bool = false) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-credits", "-AppleLanguages", "(en)"]
+        if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        app.launch()
+        let album = app.buttons["album.demo-1"]
+        XCTAssertTrue(album.waitForExistence(timeout: 15))
+        album.tap()
+        let play = app.buttons["album.play"]
+        reveal(play, in: app)
+        play.tap()
+        let expand = app.buttons["player.expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 15))
+        expand.tap()
+        XCTAssertTrue(app.buttons["player.artist"].waitForExistence(timeout: 10))
+        let pause = app.buttons["player.toggle"].firstMatch
+        reveal(pause, in: app)
+        pause.tap()
+        waitForLabel(pause, "Play")
+        return app
+    }
+
+    private func waitForLabel(_ element: XCUIElement, _ label: String) {
+        let changed = expectation(for: NSPredicate(format: "label == %@", label), evaluatedWith: element)
+        wait(for: [changed], timeout: 10)
+    }
+
+    private func reveal(_ target: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<8 {
+            if target.exists && target.isHittable && target.frame.maxY <= app.frame.maxY - 34 { return }
+            if target.exists && target.frame.minY < app.frame.minY + 100 { app.swipeDown() }
+            else { app.swipeUp() }
+        }
+    }
+
+    func testTileTitleAndArtistStayTogetherWhileRatingsAlign() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-captions", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
+        let shortTitle = app.staticTexts["tile.title.demo-2"]
+        let shortArtist = app.staticTexts["tile.artist.demo-2"]
+        let longTitle = app.staticTexts["tile.title.demo-1"]
+        let longArtist = app.staticTexts["tile.artist.demo-1"]
+        XCTAssertTrue(shortArtist.waitForExistence(timeout: 5))
+        XCTAssertTrue(longArtist.exists)
+        XCTAssertGreaterThan(longTitle.frame.height, shortTitle.frame.height + 5)
+        XCTAssertEqual(shortArtist.frame.minY - shortTitle.frame.maxY, 4, accuracy: 1)
+        XCTAssertEqual(longArtist.frame.minY - longTitle.frame.maxY, 4, accuracy: 1)
+        XCTAssertLessThan(shortArtist.frame.minY, longArtist.frame.minY)
+        XCTAssertEqual(element(app, "tile.footer.demo-1").frame.minY,
+                       element(app, "tile.footer.demo-2").frame.minY, accuracy: 1)
+        screenshot("26-caption-grouping")
+    }
+
     func testConnectionScreen() {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)"]

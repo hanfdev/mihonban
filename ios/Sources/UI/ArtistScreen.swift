@@ -54,6 +54,7 @@ struct ArtistScreen: View {
             ArtistAvatar(artist: artist, model: model, size: 148)
             Text(name).font(Theme.title(28)).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("artist.title")
             let aliases = ([artist.sort?.nonEmpty].compactMap { $0 } + (artist.aliases ?? []))
                 .filter { $0 != name }
             if !aliases.isEmpty {

@@ -85,6 +85,19 @@ jobs:
             -resultBundlePath build/Tests.xcresult \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-simulator.log
+      - name: Check iPad player layout
+        run: |
+          set -o pipefail
+          IPAD=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"].startswith("iPad")))')
+          xcrun simctl bootstatus "$IPAD" -b
+          xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
+            -destination "platform=iOS Simulator,id=$IPAD" -parallel-testing-enabled NO \
+            -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
+            -resultBundlePath build/iPadTests.xcresult \
+            -only-testing:MihonbanTests/CatalogLayoutTests \
+            -only-testing:MihonbanUITests/testPlayerCreditsWithLargeTextAndLandscape \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            | tee build-ipad.log
       - name: Preserve crash diagnostics and symbols
         if: always()
         run: |
@@ -114,6 +127,9 @@ jobs:
           if [ -d build/Tests.xcresult ]; then
             xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/screenshots || true
           fi
+          if [ -d build/iPadTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/iPadTests.xcresult --output-path build/screenshots/ipad || true
+          fi
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -140,9 +156,11 @@ jobs:
           name: iOS-test-results-${{ github.run_number }}
           path: |
             build/Tests.xcresult
+            build/iPadTests.xcresult
             build/screenshots
             build-device.log
             build-simulator.log
+            build-ipad.log
             fixture-server.log
           retention-days: 14
       - name: Save relinkable build objects

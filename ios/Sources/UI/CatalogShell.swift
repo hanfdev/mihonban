@@ -110,7 +110,7 @@ struct NativeMiniPlayer: View {
                         .frame(width: 36, height: 36).clipShape(RoundedRectangle(cornerRadius: 6))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.player.current?.title ?? "").font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Text(model.player.current?.artist ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(PlaybackCredits(track: model.player.current).compactText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("player.expand")
