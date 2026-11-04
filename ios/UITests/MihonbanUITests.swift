@@ -124,9 +124,13 @@ final class MihonbanUITests: XCTestCase {
 
     // Administrators edit album details natively; the fixture applies the
     // worker's validation and is restored afterwards.
-    func testAdminEditsAnAlbum() throws {
-        resetFixture()
-        defer { resetFixture() }
+    func testAdminEditsAnAlbum() async throws {
+        try await Self.resetFixture()
+        addTeardownBlock { try await Self.resetFixture() }
+        editAlbumInApp()
+    }
+
+    private func editAlbumInApp() {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)"]
         app.launch()
@@ -326,15 +330,16 @@ final class MihonbanUITests: XCTestCase {
         screenshot("00-connect-zh")
     }
 
-    private func resetFixture() {
+    private nonisolated static func resetFixture() async throws {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:8766/fixture/reset")!)
         request.httpMethod = "POST"
-        let done = expectation(description: "fixture reset")
-        URLSession.shared.dataTask(with: request) { _, response, _ in
-            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-            done.fulfill()
-        }.resume()
-        wait(for: [done], timeout: 10)
+        // A fresh simulator can stall the runner's first network request. Await
+        // the actual response rather than outliving a short expectation timer.
+        request.timeoutInterval = 60
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
     }
 
     private func openTab(_ app: XCUIApplication, _ label: String) {
