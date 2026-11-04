@@ -169,6 +169,96 @@ final class MihonbanUITests: XCTestCase {
         screenshot("15-album-edited")
     }
 
+    func testAdminPicksThePlayingTrack() async throws {
+        try await Self.resetFixture()
+        addTeardownBlock { try await Self.resetFixture() }
+        let app = openAdminPlayer()
+        let heart = app.buttons["player.favorite"]
+        XCTAssertTrue(heart.waitForExistence(timeout: 10))
+        XCTAssertFalse(heart.isSelected)
+        XCTAssertEqual(heart.label, "Add to picks")
+        XCTAssertGreaterThanOrEqual(heart.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(heart.frame.height, 44)
+        XCTAssertGreaterThan(heart.frame.minX, app.buttons["player.title"].frame.maxX)
+        assertShortTitleCover(app)
+        changePick(app, selected: true)
+        let added = try await Self.fixtureTrackPicks()
+        XCTAssertTrue(added.contains("network-mp3"), "the heart must persist the current track to the service")
+        XCTAssertTrue(added.contains("network-flac"), "another track's pick is unchanged")
+        screenshot("27-player-picked")
+        changePick(app, selected: false)
+        let removed = try await Self.fixtureTrackPicks()
+        XCTAssertFalse(removed.contains("network-mp3"))
+        XCTAssertTrue(removed.contains("network-flac"))
+        screenshot("28-player-unpicked")
+        verifyPickFollowsCurrentTrack(app)
+    }
+
+    private func verifyPickFollowsCurrentTrack(_ app: XCUIApplication) {
+        app.buttons["player.collapse"].tap()
+        openTab(app, "Tracks")
+        let flac = app.buttons["track.network-flac"]
+        XCTAssertTrue(flac.waitForExistence(timeout: 15))
+        flac.tap()
+        let pause = app.buttons["Pause"].firstMatch
+        XCTAssertTrue(pause.waitForExistence(timeout: 10))
+        pause.tap()
+        app.buttons["player.expand"].tap()
+        waitForLabel(app.buttons["player.title"], "Test FLAC")
+        XCTAssertTrue(app.buttons["player.favorite"].isSelected, "the already-picked track has its own state")
+        app.buttons["player.next"].tap()
+        waitForLabel(app.buttons["player.title"], "Test MP3")
+        app.buttons["player.toggle"].firstMatch.tap()
+        XCTAssertFalse(app.buttons["player.favorite"].isSelected, "changing tracks cannot carry the old heart state")
+    }
+
+    private func openAdminPlayer() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)"]
+        app.launch()
+        signIn(app, password: "fixture-admin")
+        let album = app.buttons["album.network-mp3"]
+        XCTAssertTrue(album.waitForExistence(timeout: 20))
+        album.tap()
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10))
+        app.buttons["album.play"].tap()
+        let expand = app.buttons["player.expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 15))
+        let pause = app.buttons["Pause"].firstMatch
+        XCTAssertTrue(pause.waitForExistence(timeout: 10))
+        pause.tap()
+        expand.tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
+        waitForLabel(app.buttons["player.toggle"].firstMatch, "Play")
+        XCTAssertEqual(app.buttons["player.title"].label, "Test MP3")
+        return app
+    }
+
+    private func changePick(_ app: XCUIApplication, selected: Bool) {
+        let heart = app.buttons["player.favorite"]
+        heart.tap()
+        let saved = expectation(for: NSPredicate { _, _ in heart.isSelected == selected && heart.isEnabled },
+                                evaluatedWith: heart)
+        wait(for: [saved], timeout: 15)
+        XCTAssertEqual(app.buttons["player.title"].label, "Test MP3")
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play", "picking must not resume or replace playback")
+        XCTAssertEqual(heart.label, selected ? "Remove from picks" : "Add to picks")
+    }
+
+    private nonisolated static func fixtureTrackPicks() async throws -> [String] {
+        let configuration = URLSessionConfiguration.ephemeral
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:8766/api/favorites")!)
+        request.setValue("mihonban_session=fixture-session", forHTTPHeaderField: "Cookie")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        struct Item: Decodable { let id: String }
+        struct Picks: Decodable { let tracks: [Item] }
+        return try JSONDecoder().decode(Picks.self, from: data).tracks.map(\.id)
+    }
+
     func testRealConnectionAndNetworkPlayback() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)"]
@@ -194,6 +284,7 @@ final class MihonbanUITests: XCTestCase {
         let elapsed = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "0:0[2-9]")).firstMatch
         XCTAssertTrue(elapsed.waitForExistence(timeout: 20))
         XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertFalse(app.buttons["player.favorite"].exists, "listeners cannot change shared picks")
         screenshot("06-network-playback")
         // Tapping the track title opens its album and closes the player.
         app.buttons["player.title"].tap()
@@ -368,6 +459,55 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertEqual(title.label, "Studio Ensemble", "a single structured artist still opens directly")
         XCTAssertFalse(app.buttons["player.credits.done"].exists)
+    }
+
+    func testPlayerCoverIsLargerAndStable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]
+        app.launch()
+        let album = app.buttons["album.demo-1"]
+        XCTAssertTrue(album.waitForExistence(timeout: 15))
+        album.tap()
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10))
+        app.buttons["album.play"].tap()
+        let expand = app.buttons["player.expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 15))
+        let pause = app.buttons["Pause"].firstMatch
+        XCTAssertTrue(pause.waitForExistence(timeout: 10))
+        pause.tap()
+        expand.tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
+        assertShortTitleCover(app)
+        let before = element(app, "player.cover").frame
+        app.buttons["player.toggle"].firstMatch.tap()
+        waitForLabel(app.buttons["player.toggle"].firstMatch, "Pause")
+        let after = element(app, "player.cover").frame
+        XCTAssertEqual(before.width, after.width, accuracy: 1)
+        XCTAssertEqual(before.minY, after.minY, accuracy: 1, "play/pause must not move the artwork")
+        screenshot("29-larger-player-cover")
+        app.buttons["player.toggle"].firstMatch.tap()
+    }
+
+    private func assertShortTitleCover(_ app: XCUIApplication) {
+        let cover = element(app, "player.cover")
+        XCTAssertTrue(cover.waitForExistence(timeout: 10))
+        let scroll = app.scrollViews["player.scroll"]
+        let window = app.windows.firstMatch.frame
+        if window.width < 600 {
+            let enlarged = expectation(for: NSPredicate { _, _ in cover.frame.width >= window.width * 0.8 },
+                                       evaluatedWith: cover)
+            wait(for: [enlarged], timeout: 5)
+        }
+        XCTAssertEqual(cover.frame.width, cover.frame.height, accuracy: 1)
+        XCTAssertLessThanOrEqual(cover.frame.width, min(500, scroll.frame.width - 56) + 1)
+        XCTAssertEqual(cover.frame.midX, scroll.frame.midX, accuracy: 1)
+        let collapse = app.buttons["player.collapse"].frame
+        XCTAssertGreaterThanOrEqual(cover.frame.minY, collapse.maxY)
+        XCTAssertLessThanOrEqual(cover.frame.minY - collapse.maxY, 40, "artwork must not inherit a large-title gap")
+        XCTAssertTrue(app.buttons["player.queue"].isHittable)
+        XCTAssertLessThanOrEqual(app.buttons["player.queue"].frame.maxY, scroll.frame.maxY - 19)
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.width, 70, accuracy: 1)
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.height, 70, accuracy: 1)
     }
 
     func testPlayerCreditsWithLargeTextAndLandscape() {

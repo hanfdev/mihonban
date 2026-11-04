@@ -87,6 +87,33 @@ final class CatalogLayoutTests: XCTestCase {
         XCTAssertEqual(size(heading(10), width: 264).height, size(heading(40), width: 264).height, accuracy: 0.5)
     }
 
+    func testFavoriteButtonFitsBesideTheHeading() throws {
+        let api = try APIClient(address: "https://example.invalid")
+        let session = SessionStore()
+        session.connect(api, info: SessionInfo(ok: true, role: "admin", guest: false))
+        let store = FavoritesStore(session: session)
+        let heart = PlayerFavoriteButton(trackID: "t", favorites: store, session: session)
+        let empty = size(heart, width: 100)
+        store.replace(Favorites(albums: [], tracks: [FavoriteItem(id: "t")]))
+        let selected = size(heart, width: 100)
+        XCTAssertEqual(empty.width, 44, accuracy: 0.5)
+        XCTAssertEqual(empty.height, 44, accuracy: 0.5)
+        XCTAssertEqual(selected.width, empty.width, accuracy: 0.5)
+        XCTAssertEqual(selected.height, empty.height, accuracy: 0.5)
+        for width in [CGFloat(264), 346, 480] {
+            for textSize in [DynamicTypeSize.large, .accessibility3] {
+                let track = Track(id: "t", title: String(repeating: "Long song title ", count: 10),
+                                  artists: [ArtistCredit(name: "Solo")])
+                let heading = NowPlayingHeading(track: track, openAlbum: {}, openArtists: {}, favorite: heart)
+                let measured = size(heading.environment(\.dynamicTypeSize, textSize), width: width)
+                XCTAssertLessThanOrEqual(measured.width, width + 0.5)
+                XCTAssertGreaterThan(measured.height, 44)
+            }
+        }
+        session.connect(api, info: SessionInfo(ok: true, role: "user", guest: false))
+        XCTAssertEqual(size(heart, width: 100).height, 0, accuracy: 0.5, "no admin control in a listener's layout")
+    }
+
     func testDescriptorsOnlyUseSpaceWhenExpanded() {
         let words = (1...100).map { "descriptor \($0)" }
         for width in [CGFloat(264), 346, 700] {

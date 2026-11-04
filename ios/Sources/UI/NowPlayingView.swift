@@ -41,28 +41,28 @@ struct NowPlayingView: View {
         NavigationStack {
             GeometryReader { geometry in
                 ScrollView {
-                    let landscape = geometry.size.width > 700 && geometry.size.width > geometry.size.height
+                    let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: controlsHeight)
+                    let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side)
                     Group {
-                        if landscape {
-                            HStack(spacing: 40) {
-                                cover.frame(maxWidth: 440)
-                                controls.frame(maxWidth: 480)
+                        if NowPlayingLayout.usesColumns(geometry.size) {
+                            HStack(alignment: .top, spacing: NowPlayingLayout.columnSpacing) {
+                                cover.frame(width: side, height: side)
+                                controls.frame(width: width)
                             }
                         } else {
-                            // Keep the controls visible at standard text sizes;
-                            // accessibility text can still scroll below the small cover.
-                            let room = geometry.size.height - controlsHeight - 32 - 14 - 24
-                            VStack(spacing: 32) {
-                                cover.frame(maxWidth: min(500, max(160, room)))
-                                controls.frame(maxWidth: 500)
+                            VStack(spacing: NowPlayingLayout.coverSpacing) {
+                                cover.frame(width: side, height: side)
+                                controls.frame(width: width)
                                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
                             }
                         }
-                    }.padding(.horizontal, 28).padding(.top, 14).padding(.bottom, 24)
+                    }.padding(.horizontal, NowPlayingLayout.horizontalInset)
+                        .padding(.top, NowPlayingLayout.topInset).padding(.bottom, NowPlayingLayout.bottomInset)
                         .frame(maxWidth: .infinity)
                 }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
                     .accessibilityIdentifier("player.scroll")
             }
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     IconButton(symbol: "chevron.down", label: L10n.text("mobile.collapse")) { dismiss() }
@@ -117,13 +117,21 @@ struct NowPlayingView: View {
     private var cover: some View {
         Cover(albumID: player.current?.albumId ?? "", size: 800, client: model.imageClient)
             .clipShape(RoundedRectangle(cornerRadius: 14))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(player.current?.albumTitle ?? "")
+            .accessibilityAddTraits(.isImage).accessibilityIdentifier("player.cover")
+    }
+
+    private var favoriteButton: PlayerFavoriteButton? {
+        guard model.sessionStore.isAdmin, let track = player.current else { return nil }
+        return PlayerFavoriteButton(trackID: track.id, favorites: model.favorites, session: model.sessionStore)
     }
 
     private var controls: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: NowPlayingLayout.controlSpacing) {
             NowPlayingHeading(track: player.current, openAlbum: {
                 if let album = player.current?.albumId { model.pendingRoute = .album(album) }
-            }, openArtists: openArtists)
+            }, openArtists: openArtists, favorite: favoriteButton)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
                                       set: { scrubTime = $0 }),

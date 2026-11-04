@@ -95,6 +95,8 @@ jobs:
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
             -resultBundlePath build/iPadTests.xcresult \
             -only-testing:MihonbanTests/CatalogLayoutTests \
+            -only-testing:MihonbanTests/NowPlayingLayoutTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsWithLargeTextAndLandscape \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-ipad.log

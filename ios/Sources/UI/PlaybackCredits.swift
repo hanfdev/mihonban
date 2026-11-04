@@ -56,14 +56,19 @@ struct NowPlayingHeading: View {
     let track: Track?
     let openAlbum: () -> Void
     let openArtists: () -> Void
+    var favorite: PlayerFavoriteButton? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button(action: openAlbum) {
-                Text(track?.title ?? "").font(Theme.title(27)).foregroundStyle(Theme.ink)
-                    .lineLimit(2).multilineTextAlignment(.leading)
-            }.buttonStyle(.plain).disabled(track?.albumId == nil)
-                .accessibilityHint(L10n.text("player.viewAlbum")).accessibilityIdentifier("player.title")
+            HStack(alignment: .top, spacing: 12) {
+                Button(action: openAlbum) {
+                    Text(track?.title ?? "").font(Theme.title(27)).foregroundStyle(Theme.ink)
+                        .lineLimit(2).multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(.plain).disabled(track?.albumId == nil)
+                    .accessibilityHint(L10n.text("player.viewAlbum")).accessibilityIdentifier("player.title")
+                if let favorite { favorite.id(track?.id).fixedSize() }
+            }
             PlaybackCreditsButton(credits: PlaybackCredits(track: track), action: openArtists)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
