@@ -14,6 +14,7 @@ import { ArtistCredit, ArtistEditor, artistCreditText, creditsFromTags,
          creditsOf, sameArtistNames } from '../artist-credit.jsx'
 import { canMoveTrackWithinDisc, groupTracksByDisc } from '../track-disc.js'
 import { contentLanguage } from '../content-language.js'
+import { storageName, storageDeletionText } from '../storage-files.js'
 
 const cleanName = (s) =>
   (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
@@ -1165,10 +1166,11 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
     if (deleteInFlight.current.has(tr.id)) return
     deleteInFlight.current.add(tr.id)
     try {
-      await api.deleteTrack(album.id, tr.id, delFiles)
+      const { fileDeleted } = await api.deleteTrack(album.id, tr.id, delFiles)
       setRows((rs) => rs.filter((r) => r.id !== tr.id))
       onChanged()
-      toast(delFiles ? t('tracksManage.removedFiles') : t('tracksManage.removed'), 'ok')
+      toast(fileDeleted ? storageDeletionText(t, album.storage, true)
+        : t('tracksManage.removed'), 'ok')
     } catch (e) { toast(e.message, 'err') }
     finally { deleteInFlight.current.delete(tr.id) }
   }
@@ -1250,7 +1252,7 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
     }
   }
 
-  // Library self-repair: rebuild tracks from the actual OneDrive directory, recovering deleted rows and adopting files
+  // Library self-repair: rebuild tracks from the album's storage directory, recovering deleted rows and adopting files
   // placed there manually. Preserve the current artist, album title, and year.
   const rescan = async () => {
     if (rescanInFlight.current) return
@@ -1261,7 +1263,7 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
         artist: album.artist, artists: album.artists,
         title: album.title, year: album.year,
       })
-      toast(t('tracksManage.rescanned'), 'ok')
+      toast(t('tracksManage.rescanned', storageName(t, album.storage)), 'ok')
       await refresh()
     } catch (e) { toast(t('tracksManage.rescanFail', e.message), 'err') }
     finally { rescanInFlight.current = false; setRescanning(false) }
@@ -1369,15 +1371,20 @@ function TracksDialog({ album, artistOptions, onClose, onChanged }) {
                onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
       </label>
 
-      <div className="actions" style={{ alignItems: 'center' }}>
-        <label className="td-delfiles">
-          <input type="checkbox" checked={delFiles}
-                 onChange={(e) => setDelFiles(e.target.checked)} />
-          {t('tracksManage.delWithFiles')}
-        </label>
-        <span style={{ flex: 1 }} />
+      <div className="actions td-actions">
+        <div className="td-delete-option">
+          <label className="td-delfiles">
+            <input type="checkbox" checked={delFiles}
+                   aria-describedby={delFiles ? 'track-delete-warning' : undefined}
+                   onChange={(e) => { setDelFiles(e.target.checked); setArmed('') }} />
+            <span>{t('tracksManage.delWithFiles', storageName(t, album.storage))}</span>
+          </label>
+          {delFiles && <p className="storage-delete-warning" id="track-delete-warning">
+            {storageDeletionText(t, album.storage)}
+          </p>}
+        </div>
         <button className="btn sm" onClick={rescan} disabled={rescanning}
-                title={t('tracksManage.rescanTitle')}>
+                title={t('tracksManage.rescanTitle', storageName(t, album.storage))}>
           {rescanning ? <I.spin size={13} /> : <><I.cloud size={13} /> {t('tracksManage.rescan')}</>}
         </button>
         <button className="btn" onClick={onClose}>{t('common.close')}</button>
@@ -1482,8 +1489,9 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
     delInFlight.current = true
     setDeleting(true)
     try {
-      await api.deleteAlbum(al.id, files)
-      toast(files ? t('albumPage.deletedFiles') : t('albumPage.deleted'), 'ok')
+      const { filesDeleted } = await api.deleteAlbum(al.id, files)
+      toast(filesDeleted ? storageDeletionText(t, al.storage, true)
+        : t('albumPage.deleted'), 'ok')
       onChanged()
       navigate('/')
     } catch (e) {
@@ -1742,7 +1750,10 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
           <p style={{ color: 'var(--ink-faint)', fontSize: 13, margin: '10px 0 0' }}>
             {t('albumPage.deleteBody')}
           </p>
-          <div className="actions">
+          <p className="storage-delete-warning">
+            {storageDeletionText(t, al.storage)}
+          </p>
+          <div className="actions album-delete-actions">
             <button className="btn" disabled={deleting}
                     onClick={() => setDlg('')}>{t('common.cancel')}</button>
             <button className="btn" disabled={deleting}

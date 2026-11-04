@@ -2565,16 +2565,28 @@ input.td-title:focus { border-bottom-color: var(--gold-dim); }
   margin-top: 12px;
   font-size: 13px;
 }
+.dialog .actions.td-actions, .dialog .actions.album-delete-actions { flex-wrap: wrap; }
+.dialog .actions.td-actions { align-items: center; }
+.td-delete-option { flex: 1 1 100%; min-width: 0; }
+.storage-delete-warning {
+  margin: 6px 0 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
 .td-delfiles {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
   font-size: 12.5px;
   color: var(--ink-faint);
   cursor: pointer;
   user-select: none;
+  overflow-wrap: anywhere;
 }
-.td-delfiles input { accent-color: var(--accent); }
+.td-delfiles span { min-width: 0; }
+.td-delfiles input { flex-shrink: 0; margin-top: 3px; accent-color: var(--accent); }
 
 @media (max-width: 720px) {
   .album-disc-heading { margin-inline: 8px; padding-left: 40px; }

@@ -32,6 +32,23 @@ Changer la cible d’écriture n’affecte que les mises en ligne futures. Il ne
 
 Les téléchargements sont rejetés lorsqu’aucun backend n’a `is_write = 1`. Un seul backend peut être actif à la fois.
 
+## Retrait du catalogue et suppression des fichiers
+
+Retirer une piste ou un album du catalogue conserve les fichiers d’origine dans le stockage, sauf si vous choisissez explicitement l’option de suppression des fichiers.
+
+La suppression utilise le backend lié à l’album (`albums.storage_id`), et non la cible d’écriture des nouvelles mises en ligne. La boîte de confirmation affiche le nom du stockage réellement configuré. Si les informations de liaison manquent, l’interface utilise le libellé neutre « stockage associé », sans déduire le stockage de la cible d’écriture.
+
+| Backend | Comportement de suppression des fichiers |
+|---|---|
+| OneDrive | `DELETE` déplace les fichiers dans la corbeille |
+| Google Drive | L’appel actuel à `files.delete` supprime définitivement les fichiers sans passer par la corbeille |
+| Dossier local | `unlink`/`rm` supprime directement, sans passer par la corbeille du système d’exploitation |
+| WebDAV | `DELETE` suit la politique du serveur ; ni la suppression définitive ni la récupération ne sont garanties |
+
+Les avertissements avant suppression et les messages de réussite reflètent ces mêmes comportements. Conservez une sauvegarde séparée avant toute suppression définitive.
+
+La réponse de détail d’album `GET /api/album/:id` peut inclure le champ facultatif `storage: { name, kind }` uniquement pour `admin` et `companion`. Ces métadonnées ne contiennent jamais d’identifiants d’accès ni de configuration du stockage ; les réponses aux auditeurs et aux invités omettent `storage`.
+
 ## Migration de l’album
 
 Pour un album, le Worker :

@@ -32,6 +32,23 @@ Changing the write target affects future uploads only. It does not move existing
 
 Uploads are rejected when no backend has `is_write = 1`. Only one backend may be active at a time.
 
+## Catalog removal and file deletion
+
+Removing a track or album from the catalog keeps the original storage files unless you explicitly choose the file-deletion option.
+
+File deletion uses the album’s bound backend (`albums.storage_id`), not the write target for new uploads. The confirmation dialog names the actual configured storage. If binding metadata is unavailable, the UI uses a neutral “linked storage” label instead of guessing from the write target.
+
+| Backend | File-deletion behavior |
+|---|---|
+| OneDrive | `DELETE` moves files to the recycle bin |
+| Google Drive | The current `files.delete` call permanently deletes files without using the trash |
+| Local folder | `unlink`/`rm` deletes directly, without the operating system’s recycle bin |
+| WebDAV | `DELETE` follows server policy; neither permanent removal nor recovery is guaranteed |
+
+Warnings appear before deletion, and success messages follow the same backend semantics. Keep a separate backup before actions that permanently delete files.
+
+Album detail `GET /api/album/:id` may include optional `storage: { name, kind }` for `admin` and `companion` only. This metadata never includes credentials or storage configuration; listener/guest responses omit `storage`.
+
 ## Album migration
 
 For one album, the Worker:

@@ -70,11 +70,15 @@ The artist-page Discogs action searches for matching candidates automatically. I
 
 Use the album editor for the default ordered artist credit of the whole release. In Manage tracks, the artist button beside a song can add a track-specific collaboration; leave that option off to inherit the album artists. Track credits are used by search, the player and system media metadata. A guest artist's page lists only the songs they joined under Featured tracks and does not claim the whole album. The companion and browser uploader prefer structured `ARTISTS` / `ALBUMARTISTS` values. With display text only, explicit `feat.` / `ft.` / `featuring` joins are split, and so is a plain `A & B` such as `Marcos Valle & Azymuth`. A comma list is split when every part is a full name, meaning it contains a space or is written in Chinese, Japanese or Korean script (for example `Kazuo Ohtani, Yoshiaki Furuta`). The text stays whole when any part is a single word (`Earth, Wind & Fire`, `Yamashita, Tatsuro`), when a later part starts with the, his, her or their (`Kool & the Gang`, `Bob Marley, The Wailers`), or when a single MusicBrainz artist ID says it is one artist. A combined name that the library already credits as one artist, such as an existing `Neil & Iraiza`, stays joined on rescans and later imports; manual edits are never rejoined.
 
+When tracks have individual artist credits, Manage tracks shows their count and **Use album artists for all**. Click once to arm the action, then again to confirm; all tracks return to the album credit without changing the album artists or discarding an unsaved track order. This edits the catalog, not the audio file tags.
+
 Administrators can choose **Edit name** beside the name on an artist page to correct capitalization or change the full name. Saving updates that artist throughout the library, including hidden albums and guest credits, while preserving the profile, favorites, and storage paths. Previous names remain usable in artist links, the Artists search, and later imports. A name used by another artist cannot be saved; artists are never automatically merged.
 
 Capitalization can also be corrected in album and track credits. The editor explains the library-wide effect before saving. Selecting a different artist changes only the edited credit.
 
 Multi-disc imports keep each disc identity and display a separate heading. Track numbers restart at 1 for each disc; Manage tracks permits reordering only inside the same disc and never turns a reorder into a disc reassignment.
+
+Removing a track keeps its file unless **Also delete files** is selected; the album deletion dialog also offers a keep-files option. File deletion and rescan messages name the album’s actual storage, not the current upload target. Read the backend-specific warning before confirming: deleting a file does not always send it to a recycle bin. See [file deletion behavior](storage.md).
 
 Use `mihonban cloud pull` when the web copy must return to the local library. Add `--retag` only when cloud metadata should update existing local tags.
 

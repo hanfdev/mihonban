@@ -10,6 +10,23 @@ import zhHans from '../src/locales/zh-Hans.js'
 import zhHant from '../src/locales/zh-Hant.js'
 
 const locales = { es, fr, ja, ko, 'zh-Hans': zhHans, 'zh-Hant': zhHant }
+const namedStorageKeys = [
+  'tracksManage.delWithFiles',
+  'tracksManage.rescanTitle',
+  'tracksManage.rescanned',
+  'storageFiles.warningTrash',
+  'storageFiles.warningPermanent',
+  'storageFiles.warningUnknown',
+  'storageFiles.deletedTrash',
+  'storageFiles.deletedPermanent',
+  'storageFiles.deletedUnknown',
+]
+const genericStorageKeys = [
+  'storageFiles.unknownName',
+  'tracksManage.removedFiles',
+  'albumPage.deleteBody',
+  'albumPage.deletedFiles',
+]
 
 function leafPaths(value, prefix = '') {
   return Object.entries(value).flatMap(([key, child]) => {
@@ -23,6 +40,27 @@ function leafPaths(value, prefix = '') {
 function resolve(value, path) {
   return path.split('.').reduce((current, key) => current?.[key], value)
 }
+
+test('storage messages include the actual name in every locale', () => {
+  const name = 'Archive NAS <demo>'
+  for (const [id, locale] of Object.entries({ en, ...locales })) {
+    for (const path of namedStorageKeys) {
+      const format = resolve(locale, path)
+      assert.equal(typeof format, 'function', `${id} ${path}`)
+      const message = format(name)
+      assert.ok(message.includes(name), `${id} ${path} omits the storage name`)
+      assert.doesNotMatch(message, /OneDrive|undefined/)
+      if (id !== 'en') assert.notEqual(message, resolve(en, path)(name), `${id} ${path} falls back to English`)
+    }
+    for (const path of genericStorageKeys) {
+      const message = resolve(locale, path)
+      assert.equal(typeof message, 'string', `${id} ${path}`)
+      assert.notEqual(message.trim(), '')
+      assert.doesNotMatch(message, /OneDrive|recycle bin|回收站|回收筒|ゴミ箱|휴지통|corbeille|papelera/)
+      if (id !== 'en') assert.notEqual(message, resolve(en, path), `${id} ${path} falls back to English`)
+    }
+  }
+})
 
 test('every locale resolves every English dictionary leaf', () => {
   const expected = leafPaths(en)

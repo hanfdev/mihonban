@@ -1279,11 +1279,13 @@ app.get("/api/album/:id", async (c) => {
   if (album.hidden && !canSeeHidden(c)) {
     return c.json({ error: "not found" }, 404);
   }
-  // These four independent subqueries run concurrently, saving three D1 round
-  // trips on the album page, one of the hottest read paths.
+  // Independent subqueries run concurrently to avoid serial D1 round trips.
   const main = J(album.genres)[0];
+  // Trusted roles see which backend holds the files, so delete and rescan
+  // labels can name it; guests never receive storage names.
+  const showStorage = canSeeHidden(c) && !!album.storage_id;
   const [{ results: tracks }, noteRow, { results: images }, sim,
-    { results: artistRows }, { results: trackArtistRows }] =
+    { results: artistRows }, { results: trackArtistRows }, storageRow] =
     await Promise.all([
       c.env.DB.prepare(`
         SELECT id, disc, track, title,
@@ -1322,6 +1324,10 @@ app.get("/api/album/:id", async (c) => {
       c.env.DB.prepare(`SELECT ta.track_id, ta.artist, ta.artist_sort
         FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
         WHERE t.album_id = ? ORDER BY ta.track_id, ta.position`).bind(id).all(),
+      showStorage
+        ? c.env.DB.prepare("SELECT name, kind FROM storages WHERE id = ?")
+          .bind(album.storage_id).first()
+        : null,
     ]);
   const albumArtists = groupAlbumArtists(artistRows).get(id)
     || [{ name: album.artist,
@@ -1337,12 +1343,14 @@ app.get("/api/album/:id", async (c) => {
       hasCustomArtists: !!ownArtists.length };
   });
   out.note = noteRow?.text || "";
+  if (storageRow) out.storage = { name: storageRow.name, kind: storageRow.kind };
   out.images = images.map((i) => i.id);
   out.similar = (sim?.results || []).map((s) => ({
     id: s.id, artist: s.artist, title: s.title, year: s.year,
     rating: s.rym_rating, votes: s.rym_votes,
   }));
-  return c.json(out);
+  // The response includes role-specific metadata; never reuse it across sessions.
+  return c.json(out, 200, { "Cache-Control": "private, no-store" });
 });
 
 /* ---------- All library tracks (Tracks view; fetch the personal library once

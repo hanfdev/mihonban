@@ -32,6 +32,23 @@ Cambiar el destino de escritura afecta solo a futuras subidas. No mueve álbumes
 
 Las subidas se rechazan cuando no hay backend `is_write = 1`. Solo puede estar activo un backend a la vez.
 
+## Retirada del catálogo y eliminación de archivos
+
+Retirar una pista o un álbum del catálogo conserva los archivos originales en el almacenamiento, salvo que elijas explícitamente la opción de eliminar archivos.
+
+La eliminación utiliza el backend vinculado al álbum (`albums.storage_id`), no el destino de escritura de las nuevas subidas. El diálogo de confirmación muestra el nombre del almacenamiento realmente configurado. Si faltan los datos de vinculación, la interfaz usa el nombre neutro «almacenamiento vinculado», sin deducirlo del destino de escritura.
+
+| Backend | Comportamiento al eliminar archivos |
+|---|---|
+| OneDrive | `DELETE` mueve los archivos a la papelera |
+| Google Drive | La llamada actual a `files.delete` elimina los archivos permanentemente sin pasar por la papelera |
+| Carpeta local | `unlink`/`rm` elimina directamente, sin utilizar la papelera del sistema operativo |
+| WebDAV | `DELETE` sigue la política del servidor; no se garantiza ni la eliminación permanente ni la recuperación |
+
+Las advertencias previas a la eliminación y los mensajes de éxito reflejan estos mismos comportamientos. Conserva una copia de seguridad independiente antes de realizar eliminaciones permanentes.
+
+La respuesta de detalle del álbum `GET /api/album/:id` puede incluir el campo opcional `storage: { name, kind }` solo para `admin` y `companion`. Estos metadatos nunca incluyen credenciales ni la configuración del almacenamiento; las respuestas para oyentes e invitados omiten `storage`.
+
 ## Migración de álbumes
 
 Para un álbum, el Worker:
