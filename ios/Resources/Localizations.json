@@ -603,6 +603,8 @@
     "mobile.offlineLibrary": "The service is unreachable. Showing the library saved on this device; downloads still play.",
     "mobile.listSeparatorHint": "Separate entries with semicolons or commas.",
     "mobile.inputRejected": "The service rejected this input. Check the fields and try again.",
+    "mobile.oneTrack": "1 track",
+    "mobile.oneAlbum": "1 album",
     "mobile.manage": "Manage",
     "mobile.moreActions": "More actions",
     "mobile.licenses": "Open-source licenses"
@@ -1211,6 +1213,8 @@
     "mobile.offlineLibrary": "サーバーに接続できません。この端末に保存したライブラリを表示しています。ダウンロード済みの曲は再生できます。",
     "mobile.listSeparatorHint": "項目はセミコロンまたはカンマで区切ります。",
     "mobile.inputRejected": "サーバーがこの入力を受け付けませんでした。項目を確認してもう一度お試しください。",
+    "mobile.oneTrack": "1 曲",
+    "mobile.oneAlbum": "1 音盤",
     "mobile.manage": "管理",
     "mobile.moreActions": "その他の操作",
     "mobile.licenses": "オープンソースライセンス"
@@ -1819,6 +1823,8 @@
     "mobile.offlineLibrary": "서버에 연결할 수 없습니다. 이 기기에 저장된 보관함을 표시하며, 다운로드한 곡은 재생할 수 있습니다.",
     "mobile.listSeparatorHint": "항목은 세미콜론이나 쉼표로 구분합니다.",
     "mobile.inputRejected": "서버가 이 입력을 거부했습니다. 항목을 확인한 뒤 다시 시도하세요.",
+    "mobile.oneTrack": "1 곡",
+    "mobile.oneAlbum": "앨범 1",
     "mobile.manage": "관리",
     "mobile.moreActions": "더 많은 작업",
     "mobile.licenses": "오픈 소스 라이선스"
@@ -2427,6 +2433,8 @@
     "mobile.offlineLibrary": "Service inaccessible. Affichage de la bibliothèque enregistrée sur cet appareil ; les téléchargements restent lisibles.",
     "mobile.listSeparatorHint": "Séparez les éléments par des points-virgules ou des virgules.",
     "mobile.inputRejected": "Le service a refusé cette saisie. Vérifiez les champs et réessayez.",
+    "mobile.oneTrack": "1 titre",
+    "mobile.oneAlbum": "1 album",
     "mobile.manage": "Gestion",
     "mobile.moreActions": "Plus d’actions",
     "mobile.licenses": "Licences libres"
@@ -3035,6 +3043,8 @@
     "mobile.offlineLibrary": "No se puede conectar. Se muestra la biblioteca guardada en este dispositivo; las descargas se pueden reproducir.",
     "mobile.listSeparatorHint": "Separa los elementos con punto y coma o comas.",
     "mobile.inputRejected": "El servicio rechazó estos datos. Revisa los campos e inténtalo de nuevo.",
+    "mobile.oneTrack": "1 pista",
+    "mobile.oneAlbum": "1 álbum",
     "mobile.manage": "Administrar",
     "mobile.moreActions": "Más acciones",
     "mobile.licenses": "Licencias de código abierto"
@@ -3643,6 +3653,8 @@
     "mobile.offlineLibrary": "无法连接服务，正在显示本机保存的曲库，已下载的曲目仍可播放。",
     "mobile.listSeparatorHint": "多个条目用分号或逗号分隔。",
     "mobile.inputRejected": "服务拒绝了这些内容，请检查各项后重试。",
+    "mobile.oneTrack": "1 曲",
+    "mobile.oneAlbum": "1 音盤",
     "mobile.manage": "管理",
     "mobile.moreActions": "更多操作",
     "mobile.licenses": "开源许可"
@@ -4251,6 +4263,8 @@
     "mobile.offlineLibrary": "無法連線至服務，正在顯示本機儲存的曲庫，已下載的曲目仍可播放。",
     "mobile.listSeparatorHint": "多個項目以分號或逗號分隔。",
     "mobile.inputRejected": "服務拒絕了這些內容，請檢查各欄後重試。",
+    "mobile.oneTrack": "1 曲",
+    "mobile.oneAlbum": "1 音盤",
     "mobile.manage": "管理",
     "mobile.moreActions": "更多操作",
     "mobile.licenses": "開源授權"

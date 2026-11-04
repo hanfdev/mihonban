@@ -20,22 +20,43 @@ struct AlbumTile: View {
                                 .accessibilityLabel(L10n.text("common.faved"))
                         }
                     }
-                Text(album.title).font(Theme.title(17, relativeTo: .headline)).lineLimit(2).foregroundStyle(Theme.ink)
-                    .multilineTextAlignment(.leading)
-                Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                HStack(spacing: 6) {
-                    if let year = album.year, year > 0 { Text(String(year)) }
-                    Spacer(minLength: 0)
-                    if album.hidden == true {
-                        Image(systemName: "eye.slash").accessibilityLabel(L10n.text("albumPage.hiddenBadge"))
-                    }
-                    if let rating = album.rym?.validRating {
-                        Label(String(format: "%.2f", rating), systemImage: "star.fill").labelStyle(.titleAndIcon)
-                    }
-                }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                AlbumCaption(album: album)
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("album.\(album.id)")
             .contextMenu { AlbumActions(album: album, model: model) }
+    }
+}
+
+// Tiles in one grid row line up: the title always takes two lines, so the
+// artist, year and rating sit at the same height whatever the title length.
+struct AlbumCaption: View {
+    let album: Album
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(album.title).font(Theme.title(17, relativeTo: .headline)).foregroundStyle(Theme.ink)
+                .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
+            Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 6) {
+                if let year = album.year, year > 0 { Text(String(year)) }
+                Spacer(minLength: 0)
+                if album.hidden == true {
+                    Image(systemName: "eye.slash").accessibilityLabel(L10n.text("albumPage.hiddenBadge"))
+                }
+                if let rating = album.rym?.validRating { RatingText(rating: rating) }
+            }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// The star stays next to its value. A Label in a list gets a fixed icon
+// column, which pushed the number away from the star.
+struct RatingText: View {
+    let rating: Double
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "star.fill").imageScale(.small)
+            Text(String(format: "%.2f", rating))
+        }.accessibilityElement(children: .combine)
     }
 }
 
@@ -86,9 +107,12 @@ struct AlbumRow: View {
                 Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 HStack(spacing: 8) {
                     if let year = album.year, year > 0 { Text(String(year)) }
-                    if let rating = album.rym?.validRating { Label(String(format: "%.2f", rating), systemImage: "star.fill") }
+                    if let rating = album.rym?.validRating { RatingText(rating: rating) }
                 }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
+                // The separator follows the text column, not whichever text in
+                // the row the list happens to pick.
+                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }.padding(.vertical, 2).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }

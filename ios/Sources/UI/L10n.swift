@@ -17,4 +17,13 @@ enum L10n {
         for (index, replacement) in values.enumerated() { value = value.replacingOccurrences(of: "{\(index)}", with: replacement) }
         return value
     }
+
+    // The shared web catalogs only carry plural counts, so a count of one uses
+    // the singular strings added for the app.
+    static func count(_ key: String, _ value: Int) -> String {
+        if value == 1, let singular = ["count.tracks": "mobile.oneTrack", "count.albums": "mobile.oneAlbum"][key] {
+            return text(singular)
+        }
+        return text(key, String(value))
+    }
 }

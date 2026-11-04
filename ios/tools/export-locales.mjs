@@ -72,6 +72,8 @@ const extra = {
   offlineLibrary: ['The service is unreachable. Showing the library saved on this device; downloads still play.', 'サーバーに接続できません。この端末に保存したライブラリを表示しています。ダウンロード済みの曲は再生できます。', '서버에 연결할 수 없습니다. 이 기기에 저장된 보관함을 표시하며, 다운로드한 곡은 재생할 수 있습니다.', 'Service inaccessible. Affichage de la bibliothèque enregistrée sur cet appareil ; les téléchargements restent lisibles.', 'No se puede conectar. Se muestra la biblioteca guardada en este dispositivo; las descargas se pueden reproducir.', '无法连接服务，正在显示本机保存的曲库，已下载的曲目仍可播放。', '無法連線至服務，正在顯示本機儲存的曲庫，已下載的曲目仍可播放。'],
   listSeparatorHint: ['Separate entries with semicolons or commas.', '項目はセミコロンまたはカンマで区切ります。', '항목은 세미콜론이나 쉼표로 구분합니다.', 'Séparez les éléments par des points-virgules ou des virgules.', 'Separa los elementos con punto y coma o comas.', '多个条目用分号或逗号分隔。', '多個項目以分號或逗號分隔。'],
   inputRejected: ['The service rejected this input. Check the fields and try again.', 'サーバーがこの入力を受け付けませんでした。項目を確認してもう一度お試しください。', '서버가 이 입력을 거부했습니다. 항목을 확인한 뒤 다시 시도하세요.', 'Le service a refusé cette saisie. Vérifiez les champs et réessayez.', 'El servicio rechazó estos datos. Revisa los campos e inténtalo de nuevo.', '服务拒绝了这些内容，请检查各项后重试。', '服務拒絕了這些內容，請檢查各欄後重試。'],
+  oneTrack: ['1 track', '1 曲', '1 곡', '1 titre', '1 pista', '1 曲', '1 曲'],
+  oneAlbum: ['1 album', '1 音盤', '앨범 1', '1 album', '1 álbum', '1 音盤', '1 音盤'],
   manage: ['Manage', '管理', '관리', 'Gestion', 'Administrar', '管理', '管理'],
   moreActions: ['More actions', 'その他の操作', '더 많은 작업', 'Plus d’actions', 'Más acciones', '更多操作', '更多操作'],
   licenses: ['Open-source licenses', 'オープンソースライセンス', '오픈 소스 라이선스', 'Licences libres', 'Licencias de código abierto', '开源许可', '開源授權'],

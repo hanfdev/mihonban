@@ -31,12 +31,15 @@ final class MihonbanUITests: XCTestCase {
         album.tap()
         let play = app.buttons["album.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 10))
+        // The 48 pt circle plus a one-line label; a wrapped label is far narrower.
+        XCTAssertGreaterThan(play.frame.width, 100, "Play all stays on one line")
+        XCTAssertTrue(app.buttons["album.shuffle"].exists)
         screenshot("02-album")
         play.tap()
         let expand = app.buttons["player.expand"]
         XCTAssertTrue(expand.waitForExistence(timeout: 15))
         expand.tap()
-        XCTAssertTrue(app.staticTexts["player.title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
         screenshot("03-now-playing")
         let toggle = app.buttons["player.toggle"].firstMatch
         toggle.tap()
@@ -154,13 +157,18 @@ final class MihonbanUITests: XCTestCase {
         let expand = app.buttons["player.expand"]
         XCTAssertTrue(expand.waitForExistence(timeout: 20))
         expand.tap()
-        XCTAssertTrue(app.staticTexts["player.title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
         // Elapsed time is polled twice a second, so accept any label past two seconds.
         let elapsed = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "0:0[2-9]")).firstMatch
         XCTAssertTrue(elapsed.waitForExistence(timeout: 20))
         XCTAssertEqual(app.state, .runningForeground)
         screenshot("06-network-playback")
-        app.buttons["player.collapse"].firstMatch.tap()
+        // Tapping the track title opens its album and closes the player.
+        app.buttons["player.title"].tap()
+        let albumTitle = app.staticTexts["album.title"]
+        XCTAssertTrue(albumTitle.waitForExistence(timeout: 10))
+        XCTAssertEqual(albumTitle.label, "Network MP3")
+        XCTAssertFalse(app.buttons["player.collapse"].exists)
 
         // Downloading the open album finishes and flips the control to "remove".
         let download = app.buttons["album.download"]

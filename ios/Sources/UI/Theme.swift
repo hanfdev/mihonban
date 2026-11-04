@@ -49,12 +49,7 @@ struct Cover: View {
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
-            RecordPlaceholder()
-            if let image { Image(uiImage: image).resizable().scaledToFill() }
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .clipped()
+        CoverFrame(image: image)
         .task(id: "\(client?.baseURL.absoluteString ?? "")/\(albumID)/\(size)/\(revision ?? 0)") {
             image = nil
             guard let client else { return }
@@ -63,6 +58,20 @@ struct Cover: View {
                 pinned: MediaPaths.pinnedCover(baseURL: client.baseURL, album: albumID))
             if !Task.isCancelled { image = result }
         }
+    }
+}
+
+// A square sized by its container. The artwork is an overlay, so a cover that
+// is not square is cropped instead of widening the layout around it.
+struct CoverFrame: View {
+    let image: UIImage?
+    var body: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay { RecordPlaceholder() }
+            .overlay { if let image { Image(uiImage: image).resizable().scaledToFill() } }
+            .clipped()
+            .contentShape(Rectangle())
     }
 }
 

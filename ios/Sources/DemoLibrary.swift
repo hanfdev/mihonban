@@ -4,18 +4,22 @@ import AVFAudio
 
 enum DemoLibrary {
     static let albums: [Album] = [
-        album("demo-1", "夜の余白", "見本盤スタジオ", 1984),
-        album("demo-2", "A quiet room", "Studio Ensemble", 1978),
+        album("demo-1", "夜の余白", "見本盤スタジオ", 1984, rating: 3.86),
+        album("demo-2", "A quiet room for evening studies", "Studio Ensemble", 1978),
         album("demo-3", "海辺の手紙", "見本盤スタジオ", 1982),
-        album("demo-4", "Evening studies", "Studio Ensemble", 1991)
+        album("demo-4", "Evening studies", "Studio Ensemble", 1991, rating: 3.41)
     ]
 
-    private static func album(_ id: String, _ title: String, _ artist: String, _ year: Int) -> Album {
+    // Ratings and title lengths are mixed so screenshots show tile alignment.
+    private static func album(_ id: String, _ title: String, _ artist: String, _ year: Int,
+                              rating: Double? = nil) -> Album {
         let tracks = ["First light", "Interlude", "After the rain"].enumerated().map { index, name in
             Track(id: "\(id)-\(index)", title: name, duration: 30, format: "wav", disc: 1,
                   track: index + 1, albumId: id, albumTitle: title, artist: artist)
         }
-        return Album(id: id, title: title, artist: artist, year: year, trackCount: tracks.count, duration: 90, tracks: tracks)
+        var album = Album(id: id, title: title, artist: artist, year: year, trackCount: tracks.count, duration: 90, tracks: tracks)
+        if let rating { album.rym = RymRating(rating: rating, votes: 120) }
+        return album
     }
 
     static func tone() throws -> URL {

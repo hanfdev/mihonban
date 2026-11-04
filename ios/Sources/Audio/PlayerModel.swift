@@ -46,6 +46,10 @@ final class PlayerModel: NSObject {
     @ObservationIgnored var downloads: DownloadStore?
     // Tracks whose streamed file finished, so the cache is pruned once per write.
     @ObservationIgnored private var completedWrites: Set<String> = []
+    // Predecoded next tracks removed after a queue edit. If the engine had
+    // already started one, it is replaced as soon as it begins rendering. The
+    // audio is retained so its identifier cannot be reused by a new decoder.
+    @ObservationIgnored private var discarded: [ObjectIdentifier: PreparedAudio] = [:]
 
     private struct Entry {
         let audio: PreparedAudio
@@ -102,6 +106,7 @@ final class PlayerModel: NSObject {
         cancelTransfers()
         engine.stop()
         entries.removeAll()
+        discarded.removeAll()
         activeID = nil
         initialPosition = position
         current = queue.current
@@ -241,20 +246,35 @@ final class PlayerModel: NSObject {
         beginCurrent()
     }
 
-    // Keep decoded entries consistent with an edited queue. The engine cannot
-    // drop predecoded audio, so a changed next track rebuilds at the current
-    // position; otherwise only the stored queue snapshots are refreshed.
+    // Keep decoded entries consistent with an edited queue without touching the
+    // track that is playing. A predecoded next track that no longer follows is
+    // removed from the engine queue and the correct one is prefetched instead.
     private func queueEdited() {
         let next = queue.nextSnapshot()
-        var stale = false
         for (id, entry) in entries where entry.generation == generation {
             if entry.isNext {
                 if let next, next.current?.id == entry.queue.current?.id { entries[id]?.queue = next }
-                else { stale = true }
+                else { discardNext(id) }
             } else { entries[id]?.queue = queue }
         }
-        if stale { restart(at: elapsed, playing: wantsPlayback) }
-        else { prepareNext() }
+        // A prefetch still decoding is checked against the live queue when it
+        // finishes, and replaced there if the next track changed.
+        prepareNext()
+    }
+
+    private func discardNext(_ id: ObjectIdentifier) {
+        // clearQueue removes decoders the engine has not started yet. The next
+        // track is only started once the current one has finished decoding.
+        engine.clearQueue()
+        if let entry = entries.removeValue(forKey: id) {
+            entry.audio.source?.cancel()
+            discarded[id] = entry.audio
+        }
+    }
+
+    // The track identifier of the prefetched next entry, if one is ready.
+    var preparedNextID: String? {
+        entries.values.first { $0.isNext && $0.generation == generation }?.queue.current?.id
     }
 
     func toggle() { wantsPlayback ? pause() : resume() }
@@ -304,26 +324,15 @@ final class PlayerModel: NSObject {
         } else { isSeeking = false; error = L10n.text("mobile.seekFailed") }
     }
 
+    // Changing the order or repeat mode never interrupts the current track.
     func toggleShuffle() {
-        let position = elapsed
-        let playing = wantsPlayback
         queue.setShuffle(!queue.shuffled)
-        // Predecoded audio cannot be removed by clearQueue. Rebuild at the same
-        // position so changing the order never plays an obsolete next decoder.
-        restart(at: position, playing: playing)
+        queueEdited()
     }
 
     func cycleRepeat() {
-        let position = elapsed
-        let playing = wantsPlayback
         queue.repeatMode = PlaybackQueue.RepeatMode(rawValue: (queue.repeatMode.rawValue + 1) % 3) ?? .off
-        restart(at: position, playing: playing)
-    }
-
-    private func restart(at position: Double, playing: Bool) {
-        guard current != nil else { return }
-        wantsPlayback = playing
-        beginCurrent(at: position)
+        queueEdited()
     }
 
     func stop() {
@@ -331,6 +340,7 @@ final class PlayerModel: NSObject {
         cancelTransfers()
         engine.stop()
         entries.removeAll()
+        discarded.removeAll()
         current = nil
         queue = PlaybackQueue()
         wantsPlayback = false
@@ -390,7 +400,14 @@ final class PlayerModel: NSObject {
     }
 
     private func rendered(_ id: ObjectIdentifier) {
+        if discarded.removeValue(forKey: id) != nil {
+            // The engine started a next track that a queue edit had removed.
+            if queue.advance(automatic: true) { beginCurrent() } else { pause() }
+            return
+        }
         guard let entry = entries[id], entry.generation == generation else { return }
+        // Any other track starting means the removed decoders never will.
+        if id != activeID { discarded.removeAll() }
         let changed = current?.id != entry.queue.current?.id
         entries[id]?.isNext = false
         queue = entry.queue

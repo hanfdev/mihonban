@@ -78,17 +78,18 @@ struct NowPlayingView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(player.current?.title ?? "").font(Theme.title(27)).lineLimit(3)
-                    .accessibilityIdentifier("player.title")
-                Button { if let name = player.current?.credits.first?.name, !name.isEmpty { model.pendingRoute = .artist(name) } } label: {
-                    Text(player.current?.artist ?? "").font(Theme.body(16)).foregroundStyle(Theme.dim)
-                        .multilineTextAlignment(.leading)
-                }.buttonStyle(.plain)
+            // Title and artist only, as in the system music apps: the title opens
+            // the album and the artist opens the artist page.
+            VStack(alignment: .leading, spacing: 6) {
                 Button { if let album = player.current?.albumId { model.pendingRoute = .album(album) } } label: {
-                    Text(player.current?.albumTitle ?? "").font(Theme.body(13)).foregroundStyle(Theme.faint).lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }.buttonStyle(.plain).accessibilityHint(L10n.text("player.viewAlbum"))
+                    Text(player.current?.title ?? "").font(Theme.title(27)).foregroundStyle(Theme.ink)
+                        .lineLimit(2).multilineTextAlignment(.leading)
+                }.buttonStyle(.plain).disabled(player.current?.albumId == nil)
+                    .accessibilityHint(L10n.text("player.viewAlbum")).accessibilityIdentifier("player.title")
+                Button { if let name = player.current?.credits.first?.name, !name.isEmpty { model.pendingRoute = .artist(name) } } label: {
+                    Text(player.current?.artist ?? "").font(Theme.body(17)).foregroundStyle(Theme.dim)
+                        .lineLimit(1)
+                }.buttonStyle(.plain).accessibilityIdentifier("player.artist")
             }.frame(maxWidth: .infinity, alignment: .leading)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },

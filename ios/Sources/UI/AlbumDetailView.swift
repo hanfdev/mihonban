@@ -131,7 +131,7 @@ struct AlbumView: View {
             }
             HStack(spacing: 14) {
                 if let year = album.year, year > 0 { Text(String(year)) }
-                Text(L10n.text("count.tracks", String(album.normalizedTracks.count)))
+                Text(L10n.count("count.tracks", album.normalizedTracks.count))
                 if let duration = album.duration, duration > 0 { Text(timestamp(duration)) }
                 if album.hidden == true { Label(L10n.text("albumPage.hiddenBadge"), systemImage: "eye.slash") }
             }.font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
@@ -142,12 +142,19 @@ struct AlbumView: View {
                         Image(systemName: "play.fill").font(.system(size: 18)).foregroundStyle(Theme.ink)
                             .frame(width: 48, height: 48).background(Theme.accent, in: Circle())
                         Text(L10n.text("common.playAll")).font(.body.weight(.semibold))
+                            .lineLimit(1).fixedSize()
                     }
                 }.buttonStyle(.plain).accessibilityIdentifier("album.play")
-                Spacer()
+                Spacer(minLength: 8)
                 Button { model.player.play(album.normalizedTracks, shuffle: true) } label: {
-                    Label(L10n.text("common.shuffle"), systemImage: "shuffle").frame(minHeight: 48)
+                    // Long translations and large text drop the label before the
+                    // primary button would have to wrap.
+                    ViewThatFits(in: .horizontal) {
+                        Label(L10n.text("common.shuffle"), systemImage: "shuffle").lineLimit(1).fixedSize()
+                        Image(systemName: "shuffle").frame(width: 44)
+                    }.frame(minHeight: 48)
                 }.buttonStyle(.plain).foregroundStyle(Theme.dim)
+                    .accessibilityLabel(L10n.text("common.shuffle")).accessibilityIdentifier("album.shuffle")
                 if model.sessionStore.isAdmin {
                     let faved = model.favorites.contains(.album, id: album.id)
                     Button { Task { await model.favorites.toggle(.album, id: album.id) } } label: {

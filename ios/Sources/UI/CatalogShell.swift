@@ -44,7 +44,8 @@ struct CatalogShell: View {
             guard let route else { return }
             model.pendingRoute = nil
             model.player.isExpanded = false
-            paths[selected, default: []].append(route)
+            // Opening the page that is already on screen only closes the player.
+            if paths[selected]?.last != route { paths[selected, default: []].append(route) }
         }
     }
 
