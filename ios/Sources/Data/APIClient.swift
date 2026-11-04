@@ -112,9 +112,12 @@ final class APIClient: Sendable {
                                etag: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "ETag"))
     }
 
+    // CatalogStore keeps its own copies, so a stale HTTP cache entry must never answer after an edit.
     func album(_ id: String) async throws -> Album {
-        let (data, response) = try await session.data(from: url("api", "album", id))
-        try Self.validate(response)
+        var request = URLRequest(url: url("api", "album", id))
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await session.data(for: request)
+        try Self.validateServer(response, data: data)
         return try JSONDecoder().decode(Album.self, from: data)
     }
 

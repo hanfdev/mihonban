@@ -53,10 +53,8 @@ final class MihonbanUITests: XCTestCase {
         wait(for: [skipped], timeout: 10)
     }
 
-    func testRealConnectionAndNetworkPlayback() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(en)"]
-        app.launch()
+    // Signs out any remembered session first, so each test chooses its role.
+    private func signIn(_ app: XCUIApplication, password secret: String) {
         let address = app.textFields["connection.address"]
         if !address.waitForExistence(timeout: 5) {
             app.buttons["settings.open"].firstMatch.tap()
@@ -72,8 +70,58 @@ final class MihonbanUITests: XCTestCase {
         address.typeText("http://127.0.0.1:8766")
         let password = app.secureTextFields["connection.password"]
         password.tap()
-        password.typeText("fixture-password")
+        password.typeText(secret)
         app.buttons["connection.connect"].tap()
+    }
+
+    // Administrators edit album details natively; the fixture applies the
+    // worker's validation and is restored afterwards.
+    func testAdminEditsAnAlbum() throws {
+        resetFixture()
+        defer { resetFixture() }
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)"]
+        app.launch()
+        signIn(app, password: "fixture-admin")
+        let album = app.buttons["album.network-ogg"]
+        XCTAssertTrue(album.waitForExistence(timeout: 20))
+        album.tap()
+        let menu = app.buttons["album.menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        let edit = app.buttons["Edit album"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Hide"].exists)
+        screenshot("13-album-admin-menu")
+        edit.tap()
+
+        let title = element(app, "edit.title")
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        let save = app.buttons["edit.save"].firstMatch
+        XCTAssertFalse(save.isEnabled, "nothing to save before a change")
+        screenshot("14-album-edit")
+        // Tapping the trailing edge puts the cursor after the existing text.
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5)).tap()
+        let current = (title.value as? String) ?? ""
+        title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 2))
+        title.typeText("Edited in the app")
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+
+        // The sheet closes only after the service accepts the edit.
+        XCTAssertTrue(app.staticTexts["album.title"].waitForExistence(timeout: 15))
+        let saved = expectation(for: NSPredicate(format: "label == %@", "Edited in the app"),
+                                evaluatedWith: app.staticTexts["album.title"])
+        wait(for: [saved], timeout: 15)
+        XCTAssertFalse(title.exists)
+        screenshot("15-album-edited")
+    }
+
+    func testRealConnectionAndNetworkPlayback() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)"]
+        app.launch()
+        signIn(app, password: "fixture-password")
         let album = app.buttons["album.network-mp3"]
         XCTAssertTrue(album.waitForExistence(timeout: 20))
         album.tap()
@@ -151,6 +199,17 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(app.textFields["connection.address"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["connection.connect"].isEnabled)
         screenshot("00-connect-zh")
+    }
+
+    private func resetFixture() {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:8766/fixture/reset")!)
+        request.httpMethod = "POST"
+        let done = expectation(description: "fixture reset")
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
     }
 
     private func openTab(_ app: XCUIApplication, _ label: String) {

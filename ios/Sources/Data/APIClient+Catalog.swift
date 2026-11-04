@@ -5,6 +5,7 @@ struct ServerError: LocalizedError, Sendable {
     let code: String?
     var errorDescription: String? {
         switch status {
+        case 400, 422: L10n.text("mobile.inputRejected")
         case 401: L10n.text("mobile.sessionExpired")
         case 403: L10n.text("mobile.permissionDenied")
         case 404: L10n.text("mobile.itemMissing")

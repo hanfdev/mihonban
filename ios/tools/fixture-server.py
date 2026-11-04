@@ -54,13 +54,63 @@ def album(extension, detail=False):
     return out
 
 
-def track_row(extension):
+def edited(out, state, detail):
+    """Applies administrator edits, mirroring the columns PATCH /api/album/:id writes."""
+    changes = state.edits.get(out["id"], {})
+    for key in ("title", "year", "genres", "secondaryGenres"):
+        if key in changes:
+            out[key] = changes[key]
+    if "artists" in changes:
+        out["artists"] = changes["artists"]
+        out["artist"] = credit(changes["artists"])
+        out["artistSort"] = changes["artists"][0]["sort"]
+    if "descriptors" in changes and out.get("rym") is not None:
+        out["rym"] = dict(out["rym"], descriptors=changes["descriptors"])
+    if detail and "note" in changes:
+        out["note"] = changes["note"]
+    out["hidden"] = out["id"] in state.hidden
+    if changes:
+        out["updatedAt"] = state.revision
+    return out
+
+
+def visible(state, include_hidden):
+    return [ext for ext in FORMATS if f"network-{ext}" not in state.deleted
+            and (include_hidden or f"network-{ext}" not in state.hidden)]
+
+
+def clean_list(value):
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return None
+    seen, out = set(), []
+    for item in (item.strip() for item in value):
+        if item and item.lower() not in seen:
+            seen.add(item.lower())
+            out.append(item)
+    return out
+
+
+class State:
+    def __init__(self):
+        self.revision = 1
+        self.reset()
+
+    def reset(self):
+        # Revisions only grow, so an ETag from before a reset never matches again.
+        self.revision += 1
+        self.edits, self.hidden, self.deleted = {}, set(), set()
+        self.favorites = {"album": ["network-mp3", "network-ogg"], "track": ["network-flac"]}
+
+
+def track_row(extension, state=None):
     detail = album(extension, detail=True)
+    if state is not None:
+        detail = edited(detail, state, True)
     row = dict(detail["tracks"][0])
     for key in ("titleOverride", "bitrate", "size", "path"):
         row.pop(key)
     row.update({"albumId": detail["id"], "albumTitle": detail["title"], "year": detail["year"],
-                "addedAt": detail["createdAt"], "hidden": 0})
+                "addedAt": detail["createdAt"], "hidden": int(bool(detail["hidden"]))})
     return row
 
 
@@ -103,8 +153,35 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             return None
 
+    def admin_only(self):
+        if self.role() == "admin":
+            return True
+        self.reply(401 if self.role() is None else 403, {"error": "forbidden"})
+        return False
+
+    def known(self, album_id):
+        if album_id in {f"network-{ext}" for ext in FORMATS} and album_id not in self.server.state.deleted:
+            return True
+        self.reply(404, {"error": "not found"})
+        return False
+
     def do_POST(self):
-        if self.path != "/api/login":
+        path = urlsplit(self.path).path
+        state = self.server.state
+        if path == "/fixture/reset":
+            state.reset()
+            return self.reply(200, {"ok": True})
+        match = re.fullmatch(r"/api/album/(network-[a-z]+)/hide", path)
+        if match:
+            if not self.admin_only() or not self.known(match[1]):
+                return
+            hidden = (self.body() or {}).get("hidden")
+            if hidden not in (True, False, 1, 0, "1", "0"):
+                return self.reply(400, {"error": "hidden"})
+            (state.hidden.add if hidden in (True, 1, "1") else state.hidden.discard)(match[1])
+            state.revision += 1
+            return self.reply(200, {"ok": True})
+        if path != "/api/login":
             return self.reply(404, {})
         data = self.body()
         if data is None:
@@ -120,7 +197,75 @@ class Handler(BaseHTTPRequestHandler):
         self.write_favorite(True)
 
     def do_DELETE(self):
-        self.write_favorite(False)
+        parts = urlsplit(self.path)
+        match = re.fullmatch(r"/api/album/(network-[a-z]+)", parts.path)
+        if not match:
+            return self.write_favorite(False)
+        if not self.admin_only() or not self.known(match[1]):
+            return
+        state = self.server.state
+        state.deleted.add(match[1])
+        for items in state.favorites.values():
+            if match[1] in items:
+                items.remove(match[1])
+        state.revision += 1
+        self.reply(200, {"ok": True, "filesDeleted": parts.query == "files=1"})
+
+    # Validation follows the worker's PATCH /api/album/:id for the fields the app sends.
+    def do_PATCH(self):
+        match = re.fullmatch(r"/api/album/(network-[a-z]+)", urlsplit(self.path).path)
+        if not match:
+            return self.reply(404, {})
+        if not self.admin_only() or not self.known(match[1]):
+            return
+        state = self.server.state
+        data = self.body()
+        if not isinstance(data, dict):
+            return self.reply(400, {"error": "json"})
+        current = edited(album(match[1].split("-", 1)[1], detail=True), state, True)
+        changes = {}
+        if "title" in data:
+            title = data["title"].strip() if isinstance(data["title"], str) else ""
+            if not title or len(title) > 1000:
+                return self.reply(400, {"error": "title"})
+            changes["title"] = title
+        if "year" in data:
+            year = data["year"]
+            if year is not None and (isinstance(year, bool) or not isinstance(year, int) or not 1 <= year <= 9999):
+                return self.reply(400, {"error": "year"})
+            changes["year"] = year
+        if "artists" in data:
+            artists = data["artists"]
+            if not isinstance(artists, list) or not 1 <= len(artists) <= 24:
+                return self.reply(400, {"error": "artists"})
+            names = [a["name"].strip() if isinstance(a, dict) and isinstance(a.get("name"), str) else ""
+                     for a in artists]
+            if not all(names) or len({name.lower() for name in names}) != len(names):
+                return self.reply(400, {"error": "artists"})
+            changes["artists"] = [{"name": name, "sort": (a.get("sort") or "").strip()}
+                                  for name, a in zip(names, artists)]
+        if "genres" in data or "secondaryGenres" in data:
+            primary = clean_list(data["genres"]) if "genres" in data else current["genres"]
+            secondary = clean_list(data["secondaryGenres"]) if "secondaryGenres" in data else current["secondaryGenres"]
+            if primary is None or secondary is None:
+                return self.reply(400, {"error": "genre"})
+            taken = {item.lower() for item in primary}
+            changes["genres"] = primary
+            changes["secondaryGenres"] = [item for item in secondary if item.lower() not in taken]
+        if "descriptors" in data:
+            descriptors = clean_list(data["descriptors"])
+            if descriptors is None:
+                return self.reply(400, {"error": "descriptors"})
+            changes["descriptors"] = descriptors
+        if "note" in data:
+            if not isinstance(data["note"], str) or len(data["note"]) > 200_000:
+                return self.reply(400, {"error": "note"})
+            changes["note"] = data["note"].strip()
+        if not changes:
+            return self.reply(400, {"error": "no fields"})
+        state.edits.setdefault(match[1], {}).update(changes)
+        state.revision += 1
+        self.reply(200, {"ok": True})
 
     # Favorites writes mirror the worker: admin only, reorder takes the full list.
     def write_favorite(self, enabled):
@@ -130,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.role() != "admin":
             return self.reply(401 if self.role() is None else 403, {})
         kind, item = match[1], match[2]
-        items = self.server.favorites[kind]
+        items = self.server.state.favorites[kind]
         if item == "reorder" and enabled:
             ids = (self.body() or {}).get("ids")
             if not isinstance(ids, list) or sorted(ids) != sorted(items):
@@ -153,19 +298,22 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": self.authorized(), "role": self.role(), "guest": False})
         if path.startswith("/api/") and not self.authorized():
             return self.reply(401, {})
-        if path == "/api/library":
-            if self.headers.get("If-None-Match") == '"fixture-1"':
-                return self.reply(304, b"", headers={"ETag": '"fixture-1"'})
-            return self.reply(200, [album(ext) for ext in FORMATS], headers={"ETag": '"fixture-1"'})
-        if path == "/api/tracks":
-            if self.headers.get("If-None-Match") == '"fixture-trk-1"':
-                return self.reply(304, b"", headers={"ETag": '"fixture-trk-1"'})
-            return self.reply(200, [track_row(ext) for ext in FORMATS], headers={"ETag": '"fixture-trk-1"'})
+        state = self.server.state
+        include_hidden = urlsplit(self.path).query == "hidden=1" and self.role() == "admin"
+        if path in ("/api/library", "/api/tracks"):
+            prefix = "fixture" if path == "/api/library" else "fixture-trk"
+            tag = f'"{prefix}-{state.revision}{"-h" if include_hidden else ""}"'
+            if self.headers.get("If-None-Match") == tag:
+                return self.reply(304, b"", headers={"ETag": tag})
+            shown = visible(state, include_hidden)
+            rows = ([edited(album(ext), state, False) for ext in shown] if path == "/api/library"
+                    else [track_row(ext, state) for ext in shown])
+            return self.reply(200, rows, headers={"ETag": tag})
         if path == "/api/artists":
             return self.reply(200, artists())
         if path == "/api/favorites":
             pick = lambda kind: [{"id": item, "ts": 1, "order": index}
-                                 for index, item in enumerate(self.server.favorites[kind])]
+                                 for index, item in enumerate(state.favorites[kind])]
             return self.reply(200, {"albums": pick("album"), "tracks": pick("track")})
         match = re.fullmatch(r"/api/artists/([^/]+)/tracks", path)
         if match:
@@ -176,7 +324,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"bio": "Formed for **testing**." if name == "Test Ensemble" else ""})
         if path.startswith("/api/album/network-"):
             ext = path.rsplit("-", 1)[-1]
-            return self.reply(200, album(ext, detail=True)) if ext in FORMATS else self.reply(404, {})
+            album_id = f"network-{ext}"
+            if ext not in FORMATS or album_id in state.deleted or (album_id in state.hidden and self.role() != "admin"):
+                return self.reply(404, {})
+            return self.reply(200, edited(album(ext, detail=True), state, True))
         if path.startswith("/api/artist-art/") or path.startswith("/api/image/"):
             return self.reply(302, b"", headers={"Location": "/artwork/cover.png"})
         if path.startswith("/api/stream/network-"):
@@ -236,12 +387,12 @@ def main():
     parser.add_argument("--port", type=int, default=8766)
     args = parser.parse_args()
     root = args.fixtures.resolve()
-    favorites = {"album": ["network-mp3", "network-ogg"], "track": ["network-flac"]}
+    state = State()
     media_cookies = []
     servers = [ThreadingHTTPServer(("127.0.0.1", port), Handler) for port in (args.port, args.port + 1)]
     for server in servers:
         server.fixtures = root
-        server.favorites = favorites
+        server.state = state
         server.media_cookies = media_cookies
         server.cover = root.parent / "Resources/Assets.xcassets/Logo.imageset/logo.png"
     # The second port stands in for a storage host on a different origin.

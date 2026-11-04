@@ -162,6 +162,32 @@ final class CatalogStore {
 
     func cachedAlbum(_ id: String) -> Album? { details[id] }
 
+    // Administrator writes. The service is the source of truth: local copies
+    // change only after it accepts the write, so a refusal leaves them intact.
+    func save(_ id: String, edit: AlbumEdit) async throws {
+        try await session.perform { try await $0.editAlbum(id, edit) }
+        await invalidateAlbum(id)
+    }
+
+    func setHidden(_ id: String, hidden: Bool) async throws {
+        try await session.perform { try await $0.hideAlbum(id, hidden: hidden) }
+        if hidden && !showHidden { drop(id) }
+        await invalidateAlbum(id)
+    }
+
+    func delete(_ id: String, files: Bool) async throws {
+        try await session.perform { try await $0.deleteAlbum(id, files: files) }
+        drop(id)
+        // The refresh in invalidateAlbum also reloads favorites, which the service pruned.
+        await invalidateAlbum(id)
+    }
+
+    private func drop(_ id: String) {
+        albums.removeAll { $0.id == id }
+        tracks.removeAll { $0.albumId == id }
+        rebuildIndex()
+    }
+
     func invalidateAlbum(_ id: String) async {
         details.removeValue(forKey: id)
         requests.removeValue(forKey: id)?.cancel()

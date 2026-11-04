@@ -7,6 +7,12 @@ struct AlbumView: View {
     @State private var error: String?
     @State private var expandedNote = false
     @State private var gallery: String?
+    @State private var editing = false
+    @State private var confirmDelete = false
+    @State private var working = false
+    // Failures only; a successful write shows itself in the page.
+    @State private var notice: String?
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
@@ -37,8 +43,12 @@ struct AlbumView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if let album {
-                    Menu { AlbumActions(album: album, model: model) } label: { Image(systemName: "ellipsis") }
-                        .accessibilityLabel(L10n.text("mobile.moreActions"))
+                    Menu {
+                        AlbumActions(album: album, model: model)
+                        if model.sessionStore.isAdmin && !model.demo { adminActions(album) }
+                    } label: { Image(systemName: "ellipsis") }
+                        .accessibilityLabel(L10n.text("mobile.moreActions")).accessibilityIdentifier("album.menu")
+                        .disabled(working)
                 }
             }
         }
@@ -46,6 +56,59 @@ struct AlbumView: View {
         .task { await load() }
         .sheet(item: Binding(get: { gallery.map(GallerySelection.init) }, set: { gallery = $0?.id })) { selection in
             GalleryViewer(images: album?.images ?? [], client: model.imageClient, selection: selection.id)
+        }
+        .sheet(isPresented: $editing) {
+            if let album {
+                AlbumEditView(model: model, album: album) { Task { await load() } }
+            }
+        }
+        .confirmationDialog(L10n.text("albumPage.deleteTitle"), isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button(L10n.text("albumPage.deleteKeep"), role: .destructive) { Task { await delete(files: false) } }
+            Button(L10n.text("albumPage.deleteFiles"), role: .destructive) { Task { await delete(files: true) } }
+            Button(L10n.text("common.cancel"), role: .cancel) {}
+        } message: { Text(L10n.text("albumPage.deleteBody")) }
+        .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+            Button(L10n.text("common.done"), role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private func adminActions(_ album: Album) -> some View {
+        Section(L10n.text("mobile.manage")) {
+            Button(L10n.text("albumPage.edit"), systemImage: "pencil") { editing = true }
+            Button(L10n.text(album.hidden == true ? "albumPage.unhide" : "albumPage.hide"),
+                   systemImage: album.hidden == true ? "eye" : "eye.slash") { Task { await toggleHidden(album) } }
+            Button(L10n.text("common.delete"), systemImage: "trash", role: .destructive) { confirmDelete = true }
+        }
+    }
+
+    private func toggleHidden(_ album: Album) async {
+        guard !working else { return }
+        working = true
+        defer { working = false }
+        let next = album.hidden != true
+        do {
+            try await model.catalog.setHidden(album.id, hidden: next)
+            // Without Show Hidden the album leaves the library, so its page closes too.
+            if next && !model.catalog.showHidden { dismiss(); return }
+            self.album = try await model.catalog.album(album.id, refresh: true)
+        } catch is CancellationError {
+        } catch {
+            notice = L10n.text("albumPage.hideFail", error.localizedDescription)
+        }
+    }
+
+    // Deletion is irreversible, so a second request is never sent while one is running.
+    private func delete(files: Bool) async {
+        guard !working, let album else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await model.deleteAlbum(album.id, files: files)
+            dismiss()
+        } catch is CancellationError {
+        } catch {
+            notice = L10n.text("albumPage.deleteFail", error.localizedDescription)
         }
     }
 
@@ -57,7 +120,7 @@ struct AlbumView: View {
     private func header(_ album: Album) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(album.title).font(Theme.title(29)).fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("album.title")
             FlowLayout(spacing: 4) {
                 ForEach(Array(album.credits.enumerated()), id: \.offset) { index, credit in
                     NavigationLink(value: CatalogRoute.artist(credit.name)) {

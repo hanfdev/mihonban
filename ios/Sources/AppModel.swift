@@ -112,6 +112,12 @@ final class AppModel {
         catch { player.error = error.localizedDescription }
     }
 
+    // A deleted album's files are gone from the service, so its offline copy goes too.
+    func deleteAlbum(_ id: String, files: Bool) async throws {
+        try await catalog.delete(id, files: files)
+        downloads?.remove(album: id)
+    }
+
     func download(_ track: Track) async {
         guard let albumID = track.albumId, !albumID.isEmpty else { return }
         do { await downloads?.download(album: try await catalog.album(albumID), only: track.id) }
