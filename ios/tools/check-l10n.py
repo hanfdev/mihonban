@@ -12,7 +12,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # Literals in these positions are identifiers or file names, not catalog keys.
-NOT_KEYS = re.compile(r'(accessibilityIdentifier|appendingPathComponent|forResource)\(\s*$')
+# SwiftUI modifiers and UIKit identifier assignments are not localized text.
+NOT_KEYS = re.compile(r'(?:\b(?:accessibilityIdentifier|appendingPathComponent|forResource)\(\s*|\baccessibilityIdentifier\s*=\s*)$')
 LANGUAGES = ["en", "ja", "ko", "fr", "es", "zh-Hans", "zh-Hant"]
 # Only literals under catalog namespaces count, which skips identifiers such as "track.<id>".
 LITERAL = re.compile(r'"([a-z][A-Za-z0-9]*\.[A-Za-z0-9.]+)"')

@@ -30,24 +30,9 @@ struct PlaybackTitleButton: View {
     @State private var showingFullTitle = false
 
     var body: some View {
-        Button(action: openAlbum) {
-            // The UIKit marquee only draws. SwiftUI owns a stable hit region
-            // for both tap and context menu, independent of the moving labels.
-            Text(track?.title ?? "").font(Theme.title(27)).lineLimit(1)
-                .hidden().accessibilityHidden(true)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .overlay(alignment: .leading) {
-                    MarqueeTitle(text: track?.title ?? "", identity: track?.id ?? "")
-                        .allowsHitTesting(false).accessibilityHidden(true)
-                }
-                .contentShape(.interaction, Rectangle())
-                .contentShape(.contextMenuPreview, Rectangle())
-        }.buttonStyle(.plain).disabled(track?.albumId == nil)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(track?.title ?? "")
-            .accessibilityHint(L10n.text("player.viewAlbum")).accessibilityIdentifier("player.title")
-            .contextMenu { Button(L10n.text("mobile.fullTitle")) { showingFullTitle = true } }
-            .accessibilityAction(named: Text(L10n.text("mobile.fullTitle"))) { showingFullTitle = true }
+        MarqueeTitle(text: track?.title ?? "", identity: track?.id ?? "", canOpenAlbum: track?.albumId != nil,
+                     openAlbum: openAlbum, showFullTitle: { showingFullTitle = true })
+            .frame(maxWidth: .infinity, alignment: .leading)
             .sheet(isPresented: $showingFullTitle) {
                 NavigationStack {
                     ScrollView {
@@ -70,14 +55,17 @@ struct PlaybackTitleButton: View {
 struct MarqueeTitle: UIViewRepresentable {
     let text: String
     let identity: String
+    let canOpenAlbum: Bool
+    let openAlbum: () -> Void
+    let showFullTitle: () -> Void
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.layoutDirection) private var direction
 
-    func makeUIView(context: Context) -> MarqueeTitleView { MarqueeTitleView() }
-    func updateUIView(_ view: MarqueeTitleView, context: Context) {
+    func makeUIView(context: Context) -> MarqueeTitleControl { MarqueeTitleControl(frame: .zero) }
+    func updateUIView(_ view: MarqueeTitleControl, context: Context) {
         let categories: [DynamicTypeSize: UIContentSizeCategory] = [
             .xSmall: .extraSmall, .small: .small, .medium: .medium, .large: .large,
             .xLarge: .extraLarge, .xxLarge: .extraExtraLarge, .xxxLarge: .extraExtraExtraLarge,
@@ -87,13 +75,76 @@ struct MarqueeTitle: UIViewRepresentable {
         let font = UIFontMetrics(forTextStyle: .title1).scaledFont(
             for: UIFont(name: "ShipporiMincho-SemiBold", size: 27) ?? .systemFont(ofSize: 27),
             compatibleWith: UITraitCollection(preferredContentSizeCategory: categories[textSize] ?? .large))
+        view.openAlbum = openAlbum
+        view.showFullTitle = showFullTitle
+        view.isEnabled = canOpenAlbum
         view.configure(text: text, identity: identity, font: font,
                        animated: scenePhase == .active && !reduceMotion && !voiceOver && direction == .leftToRight)
     }
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: MarqueeTitleView, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? uiView.naturalWidth, height: uiView.lineHeight)
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: MarqueeTitleControl, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? uiView.titleDisplay.naturalWidth, height: uiView.titleHeight)
     }
-    static func dismantleUIView(_ uiView: MarqueeTitleView, coordinator: ()) { uiView.stop() }
+    static func dismantleUIView(_ uiView: MarqueeTitleControl, coordinator: ()) {
+        uiView.titleDisplay.stop()
+        uiView.openAlbum = nil
+        uiView.showFullTitle = nil
+    }
+}
+
+// A single UIKit control owns the touch target, long-press menu and accessible
+// title. Its drawing-only child can be hidden from accessibility without
+// suppressing the control, unlike a hidden label inside a SwiftUI Button.
+final class MarqueeTitleControl: UIButton {
+    let titleDisplay = MarqueeTitleView()
+    var openAlbum: (() -> Void)?
+    var showFullTitle: (() -> Void)?
+    var titleHeight: CGFloat { max(44, titleDisplay.lineHeight) }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        accessibilityIdentifier = "player.title"
+        accessibilityHint = L10n.text("player.viewAlbum")
+        titleDisplay.accessibilityElementsHidden = true
+        addSubview(titleDisplay)
+        addTarget(self, action: #selector(openAlbumFromTouch), for: .touchUpInside)
+        showsMenuAsPrimaryAction = false
+        menu = UIMenu(children: [UIAction(title: L10n.text("mobile.fullTitle")) { [weak self] _ in
+            _ = self?.readFullTitle()
+        }])
+        accessibilityCustomActions = [UIAccessibilityCustomAction(name: L10n.text("mobile.fullTitle"),
+            target: self, selector: #selector(readFullTitle))]
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(text: String, identity: String, font: UIFont, animated: Bool) {
+        accessibilityLabel = text
+        let previousHeight = titleHeight
+        titleDisplay.configure(text: text, identity: identity, font: font, animated: animated)
+        if titleHeight != previousHeight { invalidateIntrinsicContentSize() }
+        setNeedsLayout()
+    }
+
+    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: titleHeight) }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        titleDisplay.frame = bounds
+    }
+    override func accessibilityActivate() -> Bool {
+        guard isEnabled, let openAlbum else { return false }
+        openAlbum()
+        return true
+    }
+    @objc private func openAlbumFromTouch() {
+        guard isEnabled else { return }
+        openAlbum?()
+    }
+    @objc func readFullTitle() -> Bool {
+        guard isEnabled, let showFullTitle else { return false }
+        showFullTitle()
+        return true
+    }
 }
 
 final class MarqueeTitleView: UIView {
