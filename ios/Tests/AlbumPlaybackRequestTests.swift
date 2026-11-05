@@ -114,4 +114,27 @@ final class AlbumPlaybackRequestTests: XCTestCase {
         XCTAssertEqual(model.player.current?.id, "old")
         XCTAssertEqual(model.player.error, L10n.text("mobile.incompleteQueue"))
     }
+
+    func testNaturalEndDoesNotCancelPendingPlayAll() async throws {
+        let model = try model()
+        defer { model.player.stop(); model.player.setForeground(false) }
+        model.player.play([Track(id: "ending", title: "Ending")])
+        for _ in 0..<100 {
+            if !model.player.isLoading && model.player.duration > 0 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertGreaterThan(model.player.duration, 0)
+        model.player.seek(to: model.player.duration - 0.2)
+        let request = Task { await model.playAlbums(albums) }
+        try await waitForRequest()
+        for _ in 0..<150 {
+            if !model.player.wantsPlayback { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertFalse(model.player.wantsPlayback, "the old song reached its natural end")
+        try BulkTracksProtocol.state.finish(tracks)
+        await request.value
+        XCTAssertEqual(model.player.current?.id, "a1")
+        XCTAssertTrue(model.player.wantsPlayback, "the explicit Play all request remains valid")
+    }
 }

@@ -60,7 +60,7 @@ const extra = {
   cacheUsed: ['Used', '使用中', '사용 중', 'Utilisé', 'Utilizado', '已使用', '已使用'],
   clearCache: ['Clear cache', 'キャッシュを消去', '캐시 비우기', 'Vider le cache', 'Vaciar caché', '清除缓存', '清除快取'],
   cacheCleared: ['Cache cleared', 'キャッシュを消去しました', '캐시를 비웠습니다', 'Cache vidé', 'Caché vaciada', '缓存已清除', '快取已清除'],
-  preloadNext: ['Preload the next queued track', '次のキュー曲を先読みする', '대기열의 다음 곡 미리 받기', 'Précharger le prochain titre', 'Precargar la siguiente canción', '提前缓存队列中的下一首', '提前快取佇列中的下一首'],
+  preloadNext: ['Preload the next queued track', '次のキュー曲を先読みする', '대기열의 다음 곡 미리 받기', 'Précharger le prochain titre', 'Precargar la siguiente canción', '预加载下一首歌曲', '預先載入下一首歌曲'],
   disconnectConfirm: ['Stop playback and sign out?', '再生を停止してログアウトしますか？', '재생을 중지하고 로그아웃할까요?', 'Arrêter la lecture et se déconnecter ?', '¿Detener la reproducción y cerrar sesión?', '停止播放并退出登录？', '停止播放並登出？'],
   permissionDenied: ['Your account cannot perform this action.', 'この操作は許可されていません。', '이 작업을 수행할 권한이 없습니다.', 'Votre compte ne permet pas cette action.', 'Tu cuenta no permite esta acción.', '当前账号没有此操作的权限。', '目前帳號沒有此操作的權限。'],
   itemMissing: ['This item is no longer available.', 'この項目は利用できなくなりました。', '이 항목은 더 이상 사용할 수 없습니다.', 'Cet élément n’est plus disponible.', 'Este elemento ya no está disponible.', '此项目已不可用。', '此項目已無法使用。'],

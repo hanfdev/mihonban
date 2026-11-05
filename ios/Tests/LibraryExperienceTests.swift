@@ -110,6 +110,9 @@ final class LibraryExperienceTests: XCTestCase {
             return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722
         }
         for style in [UIUserInterfaceStyle.light, .dark] {
+            let accent = luminance(Theme.accent, style)
+            let onAccent = luminance(Theme.onAccent, style)
+            XCTAssertGreaterThanOrEqual((max(accent, onAccent) + 0.05) / (min(accent, onAccent) + 0.05), 4.5)
             for background in [Theme.background, Theme.surface, Theme.raised] {
                 let bg = luminance(background, style)
                 for foreground in [Theme.ink, Theme.dim] {

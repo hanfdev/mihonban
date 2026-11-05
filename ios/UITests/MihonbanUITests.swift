@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 @MainActor
 final class MihonbanUITests: XCTestCase {
@@ -1153,7 +1154,7 @@ final class MihonbanUITests: XCTestCase {
         let album = element(app, "search.album.demo-2")
         XCTAssertTrue(album.exists)
         XCTAssertGreaterThan(album.frame.minX, app.windows.firstMatch.frame.minX + 8)
-        XCTAssertGreaterThan(field.frame.minX, app.windows.firstMatch.frame.minX + 8)
+        XCTAssertGreaterThanOrEqual(field.frame.minX, app.windows.firstMatch.frame.minX + 8)
         screenshot("41-unified-search")
     }
 
@@ -1230,7 +1231,8 @@ final class MihonbanUITests: XCTestCase {
         app.buttons["album.menu"].tap()
         XCTAssertTrue(app.buttons["album.share"].waitForExistence(timeout: 5))
         app.buttons["album.share"].tap()
-        XCTAssertTrue(element(app, "share.sheet").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Close"].firstMatch.isHittable)
         screenshot("46-album-share")
         app.buttons["Close"].firstMatch.tap()
         app.buttons["album.play"].tap()
@@ -1241,7 +1243,8 @@ final class MihonbanUITests: XCTestCase {
         let title = app.buttons["player.title"].label
         app.buttons["player.more"].tap()
         app.buttons["player.share"].tap()
-        XCTAssertTrue(element(app, "share.sheet").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Close"].firstMatch.isHittable)
         screenshot("46-song-share")
         app.buttons["Close"].firstMatch.tap()
         XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))

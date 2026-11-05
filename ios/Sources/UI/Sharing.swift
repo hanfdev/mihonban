@@ -35,9 +35,7 @@ struct ShareSelection: Identifiable {
 struct ActivitySheet: UIViewControllerRepresentable {
     let selection: ShareSelection
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: [selection.text, selection.url], applicationActivities: nil)
-        controller.view.accessibilityIdentifier = "share.sheet"
-        return controller
+        UIActivityViewController(activityItems: [selection.text, selection.url], applicationActivities: nil)
     }
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

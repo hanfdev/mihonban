@@ -45,6 +45,7 @@ jobs:
           python3 -I ios/tools/acknowledgements.py .spm/checkouts ios/Resources/ThirdParty/Acknowledgements.txt
           xcodegen generate --spec ios/project.yml
       - name: Build unsigned device archive
+        id: device-archive
         run: |
           set -o pipefail
           xcodebuild archive -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Release \
@@ -86,6 +87,7 @@ jobs:
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-simulator.log
       - name: Check iPad player layout
+        if: ${{ !cancelled() && steps.device-archive.outcome == 'success' }}
         run: |
           set -o pipefail
           python3 -I ios/tools/fixture-server.py ios/TestFixtures > fixture-ipad.log 2>&1 &

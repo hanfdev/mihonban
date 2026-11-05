@@ -343,6 +343,10 @@ final class PlayerModel: NSObject {
 
     func pause() {
         playbackIntent = UUID()
+        pausePlayback()
+    }
+
+    private func pausePlayback() {
         wantsPlayback = false
         engine.pause()
         updateNowPlaying()
@@ -475,7 +479,7 @@ final class PlayerModel: NSObject {
     private func rendered(_ id: ObjectIdentifier) {
         if discarded.removeValue(forKey: id) != nil {
             // The engine started a next track that a queue edit had removed.
-            if queue.advance(automatic: true) { beginCurrent() } else { pause() }
+            if queue.advance(automatic: true) { beginCurrent() } else { pausePlayback() }
             return
         }
         guard let entry = entries[id], entry.generation == generation else { return }
@@ -507,7 +511,7 @@ final class PlayerModel: NSObject {
         if nextIsPreparing { waitingForNext = true; return }
         waitingForNext = false
         if queue.advance(automatic: true) { beginCurrent() }
-        else { pause(); elapsed = duration; updateNowPlaying() }
+        else { pausePlayback(); elapsed = duration; updateNowPlaying() }
     }
 
     private func updateNowPlaying() {

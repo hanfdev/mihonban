@@ -10,7 +10,7 @@ nonisolated enum Theme {
     static let dim = adaptive(light: 0x62574c, dark: 0xb0a58f)
     static let faint = adaptive(light: 0x74685c, dark: 0x8d8370)
     static let accent = adaptive(light: 0xbc3d1d, dark: 0xe8542f)
-    static let onAccent = Color(hex: 0xfffcf7)
+    static let onAccent = adaptive(light: 0xfffcf7, dark: 0x0d0b09)
 
     private static func adaptive(light: UInt32, dark: UInt32) -> Color {
         Color(uiColor: UIColor { traits in
