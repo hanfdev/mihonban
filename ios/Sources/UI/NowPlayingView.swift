@@ -23,6 +23,7 @@ struct MiniPlayer: View {
             }.padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Theme.surface)
                 .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 0.5) }
+                .accessibilityHidden(model.player.isExpanded)
         }
     }
 }

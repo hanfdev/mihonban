@@ -94,6 +94,7 @@ struct CatalogShell: View {
                 MiniPlayer(model: model)
             }
         }
+        .accessibilityHidden(model.player.isExpanded)
     }
 }
 
@@ -124,6 +125,8 @@ struct NativeMiniPlayer: View {
             }.buttonStyle(.plain).accessibilityIdentifier("mini.next")
                 .accessibilityLabel(L10n.text("player.next"))
         }.padding(.horizontal, 12).padding(.vertical, 4)
+            // Safe-area content has its own host and needs its own AX boundary.
+            .accessibilityHidden(model.player.isExpanded)
     }
 }
 
