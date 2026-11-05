@@ -44,18 +44,20 @@ struct NowPlayingView: View {
         NavigationStack {
             GeometryReader { geometry in
                 ScrollView {
-                    let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: controlsHeight)
-                    let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side)
+                    let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: controlsHeight, isTablet: isTablet)
+                    let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side, isTablet: isTablet)
+                    let style = NowPlayingLayout.controlStyle(in: geometry.size, isTablet: isTablet)
                     Group {
                         if NowPlayingLayout.usesColumns(geometry.size) {
-                            HStack(alignment: isTablet ? .center : .top, spacing: NowPlayingLayout.columnSpacing) {
+                            HStack(alignment: isTablet ? .center : .top,
+                                   spacing: NowPlayingLayout.columnSpacing(in: geometry.size, isTablet: isTablet)) {
                                 cover.frame(width: side, height: side)
-                                controls.frame(width: width)
+                                controls(style: style, width: width).frame(width: width)
                             }
                         } else {
-                            VStack(spacing: NowPlayingLayout.coverSpacing) {
+                            VStack(spacing: NowPlayingLayout.coverSpacing(in: geometry.size, isTablet: isTablet)) {
                                 cover.frame(width: side, height: side)
-                                controls.frame(width: width)
+                                controls(style: style, width: width).frame(width: width)
                                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
                             }
                         }
@@ -74,7 +76,9 @@ struct NowPlayingView: View {
                         .accessibilityIdentifier("player.collapse")
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(L10n.text("mobile.nowPlaying")).font(Theme.body(13)).foregroundStyle(Theme.dim)
+                    Text(isTablet && !(player.current?.albumTitle ?? "").isEmpty
+                         ? player.current?.albumTitle ?? "" : L10n.text("mobile.nowPlaying"))
+                        .font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if let track = player.current {
@@ -129,7 +133,8 @@ struct NowPlayingView: View {
 
     private var cover: some View {
         Cover(albumID: player.current?.albumId ?? "", size: 800, client: model.imageClient)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: isTablet ? 18 : 14))
+            .shadow(color: .black.opacity(isTablet ? 0.12 : 0), radius: 22, x: 0, y: 12)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(player.current?.albumTitle ?? "")
             .accessibilityAddTraits(.isImage).accessibilityIdentifier("player.cover")
@@ -140,11 +145,12 @@ struct NowPlayingView: View {
         return PlayerFavoriteButton(trackID: track.id, favorites: model.favorites, session: model.sessionStore)
     }
 
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: NowPlayingLayout.controlSpacing) {
+    private func controls(style: NowPlayingLayout.ControlStyle, width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: style.spacing) {
             NowPlayingHeading(track: player.current, openAlbum: {
                 if let album = player.current?.albumId { model.pendingRoute = .album(album) }
-            }, openArtists: openArtists, favorite: favoriteButton)
+            }, openArtists: openArtists, favorite: favoriteButton,
+               titleSize: style.titleSize, artistSize: style.artistSize)
                 .environment(\.marqueeSuspended, routePickerPresented || queueVisible || creditsSheet != nil || sharing != nil)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
@@ -152,29 +158,32 @@ struct NowPlayingView: View {
                        in: 0...max(player.duration, 1), onEditingChanged: { editing in
                     if editing { scrubTime = player.elapsed; scrubbing = true }
                     else { scrubbing = false; player.seek(to: scrubTime) }
-                }).disabled(player.isLoading).accessibilityLabel(L10n.text("player.seek"))
+                }).tint(style == .tablet ? Theme.ink : Theme.accent)
+                    .disabled(player.isLoading).accessibilityLabel(L10n.text("player.seek"))
+                    .accessibilityIdentifier("player.seek")
                 HStack {
                     Text(timestamp(scrubbing ? scrubTime : player.elapsed))
                     Spacer()
                     if player.isLoading || player.isSeeking { Text(L10n.text("mobile.preparing")) }
                     Spacer()
                     Text("−" + timestamp(max(0, player.duration - (scrubbing ? scrubTime : player.elapsed))))
-                }.font(Theme.body(11)).monospacedDigit().foregroundStyle(Theme.faint)
+                }.font(Theme.body(style.timeSize)).monospacedDigit().foregroundStyle(Theme.faint)
             }
-            HStack {
+            HStack(spacing: 0) {
                 ShuffleToggle(player: player, identifier: "player.shuffle")
                 Spacer(minLength: 4)
-                IconButton(symbol: "backward.end.fill", label: L10n.text("player.prev")) { player.previous() }
-                Spacer(minLength: 8)
-                PlayButton(player: player, diameter: 70)
-                Spacer(minLength: 8)
-                IconButton(symbol: "forward.end.fill", label: L10n.text("player.next")) { player.next() }
+                IconButton(symbol: "backward.end.fill", label: L10n.text("player.prev"), symbolSize: style.skipSize) { player.previous() }
+                Spacer(minLength: 4)
+                PlayButton(player: player, diameter: style.playDiameter)
+                Spacer(minLength: 4)
+                IconButton(symbol: "forward.end.fill", label: L10n.text("player.next"), symbolSize: style.skipSize) { player.next() }
                     .accessibilityIdentifier("player.next")
                 Spacer(minLength: 4)
                 IconButton(symbol: player.queue.repeatMode == .one ? "repeat.1" : "repeat",
                            label: L10n.text(["player.repeatOff", "player.repeatAll", "player.repeatOne"][player.queue.repeatMode.rawValue]),
                            selected: player.queue.repeatMode != .off) { player.cycleRepeat() }
             }.padding(.vertical, 4)
+                .frame(width: min(width, style.transportWidth)).frame(maxWidth: .infinity)
             // Icons only, under shuffle and repeat, as in the system music app.
             HStack {
                 RoutePicker { routePickerPresented = $0 }
@@ -184,7 +193,7 @@ struct NowPlayingView: View {
                 Spacer()
                 IconButton(symbol: "list.bullet", label: L10n.text("mobile.queue")) { queueVisible = true }
                     .accessibilityIdentifier("player.queue")
-            }
+            }.frame(width: min(width, style.transportWidth)).frame(maxWidth: .infinity)
             if let error = player.error {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(error).font(Theme.body(14)).foregroundStyle(Theme.dim)

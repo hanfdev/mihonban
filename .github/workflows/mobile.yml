@@ -117,6 +117,7 @@ jobs:
             -resultBundlePath build/iPadTests.xcresult \
             -only-testing:MihonbanTests/CatalogLayoutTests \
             -only-testing:MihonbanTests/NowPlayingLayoutTests \
+            -only-testing:MihonbanTests/AlbumHeaderLayoutTests \
             -only-testing:MihonbanTests/GalleryZoomTests \
             -only-testing:MihonbanTests/MarqueeTests \
             -only-testing:MihonbanTests/MarkdownTests \
@@ -131,6 +132,8 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testSimilarAlbumCardsKeepSquareCoversAndSingleLineTitles \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsWithLargeTextAndLandscape \
             -only-testing:MihonbanUITests/MihonbanUITests/testTabletPlayerUsesWholeWindowAndReturnsFromQueue \
+            -only-testing:MihonbanUITests/MihonbanUITests/testDarkTabletPlayerUsesBalancedColumns \
+            -only-testing:MihonbanUITests/MihonbanUITests/testTabletAlbumHeaderBalancesArtworkAndInformation \
             -only-testing:MihonbanUITests/MihonbanUITests/testSingleGlobalSearchHasInsetsAndIncludesSongs \
             -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
             -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback \

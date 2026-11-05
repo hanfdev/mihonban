@@ -16,36 +16,41 @@ struct AlbumView: View {
     // Failures only; a successful write shows itself in the page.
     @State private var notice: String?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
 
     var body: some View {
-        ScrollView {
-            if let album {
-                VStack(alignment: .leading, spacing: 28) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: 32) {
-                            cover(album).frame(width: 300)
-                            header(album, centered: false).frame(minWidth: 300, maxWidth: .infinity, alignment: .leading)
-                        }
-                        // On a phone the cover takes about two thirds of the width,
-                        // leaving the title and controls in view without scrolling.
-                        VStack(spacing: 20) {
-                            cover(album).frame(maxWidth: 270).padding(.horizontal, 36).frame(maxWidth: .infinity)
-                            header(album, centered: true)
-                        }
+        GeometryReader { geometry in
+            ScrollView {
+                if let album {
+                    let layout = AlbumHeaderLayout(width: min(1000, geometry.size.width) - 40,
+                                                   accessibility: textSize.isAccessibilitySize)
+                    VStack(alignment: .leading, spacing: layout.usesColumns ? 40 : 28) {
+                        Group {
+                            if layout.usesColumns {
+                                HStack(alignment: .center, spacing: layout.spacing) {
+                                    cover(album).frame(width: layout.coverSide, height: layout.coverSide)
+                                    header(album, layout: layout).frame(width: layout.informationWidth)
+                                }.frame(width: layout.width)
+                            } else {
+                                VStack(spacing: layout.spacing) {
+                                    cover(album).frame(width: layout.coverSide, height: layout.coverSide)
+                                    header(album, layout: layout).frame(width: layout.informationWidth)
+                                }
+                            }
+                        }.frame(maxWidth: .infinity).padding(.vertical, layout.usesColumns ? 16 : 0)
+                        trackList(album)
+                        details(album)
+                    }.padding(.horizontal, 20).padding(.vertical, 16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+                } else if let error {
+                    ContentUnavailableView {
+                        Label(L10n.text("common.loadFailed"), systemImage: "wifi.exclamationmark")
+                    } description: { Text(error) } actions: {
+                        Button(L10n.text("common.retry")) { Task { await load() } }
                     }
-                    trackList(album)
-                    details(album)
-                }.padding(.horizontal, 20).padding(.vertical, 16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
-            } else if let error {
-                ContentUnavailableView {
-                    Label(L10n.text("common.loadFailed"), systemImage: "wifi.exclamationmark")
-                } description: { Text(error) } actions: {
-                    Button(L10n.text("common.retry")) { Task { await load() } }
-                }
-            } else { ProgressView().frame(maxWidth: .infinity).padding(80) }
+                } else { ProgressView().frame(maxWidth: .infinity).padding(80) }
+            }.accessibilityIdentifier("album.scroll")
         }
         .background(Theme.background).navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier("album.scroll")
         .toolbar {
             // Picks move to the bar so the play row stays symmetric.
             ToolbarItem(placement: .topBarTrailing) {
@@ -146,40 +151,52 @@ struct AlbumView: View {
             .accessibilityAddTraits(.isImage).accessibilityIdentifier("album.cover")
     }
 
-    private func header(_ album: Album, centered: Bool) -> some View {
-        VStack(alignment: centered ? .center : .leading, spacing: 10) {
-            Text(album.title).font(Theme.title(centered ? 26 : 29)).fixedSize(horizontal: false, vertical: true)
-                .multilineTextAlignment(centered ? .center : .leading)
+    private func header(_ album: Album, layout: AlbumHeaderLayout) -> some View {
+        VStack(spacing: layout.usesColumns ? 14 : 10) {
+            Text(album.title).font(Theme.title(layout.titleSize)).fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("album.title")
-            FlowLayout(spacing: 4, centered: centered) {
-                ForEach(Array(album.credits.enumerated()), id: \.offset) { index, credit in
-                    NavigationLink(value: CatalogRoute.artist(credit.name)) {
-                        Text(credit.name + (index < album.credits.count - 1 ? " ·" : ""))
-                            .font(.body).foregroundStyle(Theme.dim)
-                    }.buttonStyle(.plain)
-                }
-            }
-            HStack(spacing: 14) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { artistCredits(album, separated: true) }
+                    .fixedSize(horizontal: true, vertical: false)
+                VStack(spacing: 4) { artistCredits(album, separated: false) }
+            }.font(Theme.body(layout.usesColumns ? 19 : 17)).foregroundStyle(Theme.dim)
+            FlowLayout(spacing: 12, centered: true) {
                 if let year = album.year, year > 0 { Text(String(year)) }
                 Text(L10n.count("count.tracks", album.normalizedTracks.count))
                 if let duration = album.duration, duration > 0 { Text(timestamp(duration)) }
                 if album.hidden == true { Label(L10n.text("albumPage.hiddenBadge"), systemImage: "eye.slash") }
-            }.font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+            }.font(.footnote.monospacedDigit()).foregroundStyle(Theme.faint)
+            formatSummary(album)
             if let rym = album.rym, let rating = rym.validRating {
-                AlbumRatingLine(rym: rym, rating: rating, centered: centered)
+                AlbumRatingLine(rym: rym, rating: rating, centered: true)
             }
-            controls(album).padding(.top, 6).frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+            controls(album, diameter: layout.playDiameter)
+                .padding(.top, layout.usesColumns ? 12 : 6)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func artistCredits(_ album: Album, separated: Bool) -> some View {
+        ForEach(Array(album.credits.enumerated()), id: \.offset) { index, credit in
+            NavigationLink(value: CatalogRoute.artist(credit.name)) {
+                Text(credit.name + (separated && index < album.credits.count - 1 ? " ·" : ""))
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            }.buttonStyle(.plain)
+                .accessibilityIdentifier("album.artist.\(index)")
         }
     }
 
     // Shuffle, Play all, Download: icons only and symmetric about the play
     // button. Shuffle is a mode; Play all applies it.
-    private func controls(_ album: Album) -> some View {
-        HStack(spacing: 28) {
+    private func controls(_ album: Album, diameter: CGFloat) -> some View {
+        HStack(spacing: diameter > 60 ? 36 : 28) {
             ShuffleToggle(player: model.player, identifier: "album.shuffle")
             Button { model.player.play(album.normalizedTracks) } label: {
-                Image(systemName: "play.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.onAccent)
-                    .frame(width: 60, height: 60).background(Theme.accent, in: Circle())
+                Image(systemName: "play.fill").font(.system(size: diameter * 0.36, weight: .semibold)).foregroundStyle(Theme.onAccent)
+                    .frame(width: diameter, height: diameter).background(Theme.accent, in: Circle())
                     .contentShape(Circle())
             }.buttonStyle(.plain).accessibilityLabel(L10n.text("common.playAll")).accessibilityIdentifier("album.play")
             // An empty slot keeps the play button centred where downloads are unavailable.
@@ -263,7 +280,6 @@ struct AlbumView: View {
                 }
             }
         }
-        formatSummary(album)
         if let similar = album.similar, !similar.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeading(title: L10n.text("albumPage.similar"))
@@ -286,10 +302,11 @@ struct AlbumView: View {
         let formats = Array(Set(tracks.compactMap { $0.format?.uppercased().nonEmpty })).sorted()
         let bytes = tracks.compactMap(\.size).reduce(0, +)
         if !formats.isEmpty || bytes > 0 {
-            HStack(spacing: 10) {
-                if !formats.isEmpty { Text(formats.joined(separator: " · ")) }
+            FlowLayout(spacing: 10, centered: true) {
+                ForEach(formats, id: \.self) { Text($0) }
                 if bytes > 0 { Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)) }
-            }.font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+            }.font(.footnote.monospacedDigit()).foregroundStyle(Theme.faint)
+                .accessibilityElement(children: .combine).accessibilityIdentifier("album.format")
         }
     }
 

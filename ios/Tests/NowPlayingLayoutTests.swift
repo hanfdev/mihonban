@@ -46,4 +46,49 @@ final class NowPlayingLayoutTests: XCTestCase {
             XCTAssertLessThanOrEqual(controls, 480)
         }
     }
+
+    func testTabletLandscapeLeavesRoomAroundAsymmetricColumns() {
+        for size in [CGSize(width: 1024, height: 680), CGSize(width: 1194, height: 750),
+                     CGSize(width: 1376, height: 940), CGSize(width: 1600, height: 1000)] {
+            let cover = NowPlayingLayout.coverSide(in: size, controlsHeight: 360, isTablet: true)
+            let controls = NowPlayingLayout.controlsWidth(in: size, coverSide: cover, isTablet: true)
+            let gap = NowPlayingLayout.columnSpacing(in: size, isTablet: true)
+            let margin = (size.width - cover - controls - gap) / 2
+            XCTAssertEqual(controls / cover, 1.35, accuracy: 0.01)
+            XCTAssertGreaterThanOrEqual(margin, size.width * 0.09)
+            XCTAssertGreaterThanOrEqual(gap, 60)
+            XCTAssertGreaterThanOrEqual(cover, 300)
+            XCTAssertLessThanOrEqual(cover, 480)
+            XCTAssertLessThanOrEqual(controls, 600)
+            XCTAssertLessThanOrEqual(cover + NowPlayingLayout.topInset + NowPlayingLayout.bottomInset, size.height)
+        }
+    }
+
+    func testTabletWindowsAndLargeTextRemainReachable() {
+        for size in [CGSize(width: 320, height: 800), CGSize(width: 507, height: 900),
+                     CGSize(width: 600, height: 500), CGSize(width: 744, height: 960),
+                     CGSize(width: 834, height: 1100), CGSize(width: 800, height: 600)] {
+            for height in [CGFloat(360), 750] {
+                let cover = NowPlayingLayout.coverSide(in: size, controlsHeight: height, isTablet: true)
+                let controls = NowPlayingLayout.controlsWidth(in: size, coverSide: cover, isTablet: true)
+                XCTAssertGreaterThanOrEqual(cover, 160)
+                XCTAssertLessThanOrEqual(cover, NowPlayingLayout.contentWidth(size))
+                XCTAssertLessThanOrEqual(controls, NowPlayingLayout.contentWidth(size))
+                // Five controls must fit even when Dynamic Type forces vertical scrolling.
+                let style = NowPlayingLayout.controlStyle(in: size, isTablet: true)
+                XCTAssertGreaterThanOrEqual(min(controls, style.transportWidth), style.playDiameter + 4 * 44 + 16)
+                if NowPlayingLayout.usesColumns(size) {
+                    XCTAssertLessThanOrEqual(cover + controls + NowPlayingLayout.columnSpacing(in: size, isTablet: true),
+                                             NowPlayingLayout.contentWidth(size))
+                }
+            }
+        }
+        XCTAssertEqual(NowPlayingLayout.controlStyle(in: CGSize(width: 507, height: 900), isTablet: true), .compact)
+        XCTAssertEqual(NowPlayingLayout.controlStyle(in: CGSize(width: 844, height: 390), isTablet: true), .compact)
+        XCTAssertEqual(NowPlayingLayout.controlStyle(in: CGSize(width: 1024, height: 700), isTablet: false), .compact)
+        let portrait = CGSize(width: 834, height: 1100)
+        let cover = NowPlayingLayout.coverSide(in: portrait, controlsHeight: 360, isTablet: true)
+        XCTAssertEqual(NowPlayingLayout.controlsWidth(in: portrait, coverSide: cover, isTablet: true), cover,
+                       "portrait artwork and controls share their side margins when height permits")
+    }
 }

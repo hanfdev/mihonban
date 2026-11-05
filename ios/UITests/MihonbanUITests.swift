@@ -550,8 +550,9 @@ final class MihonbanUITests: XCTestCase {
         }
         XCTAssertTrue(app.buttons["player.queue"].isHittable)
         XCTAssertLessThanOrEqual(app.buttons["player.queue"].frame.maxY, scroll.frame.maxY - 19)
-        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.width, 70, accuracy: 1)
-        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.height, 70, accuracy: 1)
+        let playDiameter: CGFloat = window.width >= 600 ? 84 : 70
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.width, playDiameter, accuracy: 1)
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.height, playDiameter, accuracy: 1)
     }
 
     func testMiniPlayerFitsAccessibilityTextInBothOrientations() {
@@ -684,9 +685,10 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(descriptors.label.contains("1"))
     }
 
-    private func launchCreditsPlayer(largeText: Bool = false, queueStress: Bool = false) -> XCUIApplication {
+    private func launchCreditsPlayer(largeText: Bool = false, queueStress: Bool = false, appearance: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--demo", "--demo-credits", "--demo-long-playback", "-AppleLanguages", "(en)"]
+        if let appearance { app.launchArguments += ["-appearance", appearance] }
         if queueStress { app.launchArguments.append("--demo-queue-layout") }
         if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch()
@@ -1200,7 +1202,7 @@ final class MihonbanUITests: XCTestCase {
     }
 
     func testTabletPlayerUsesWholeWindowAndReturnsFromQueue() {
-        let app = launchCreditsPlayer()
+        let app = launchCreditsPlayer(appearance: "light")
         defer { XCUIDevice.shared.orientation = .portrait }
         for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
             XCUIDevice.shared.orientation = orientation
@@ -1224,6 +1226,19 @@ final class MihonbanUITests: XCTestCase {
                     let footer = app.buttons["player.queue"].frame
                     XCTAssertEqual(cover.midY, (heading.minY + footer.maxY) / 2, accuracy: 12,
                                    "landscape controls must be centered beside the cover")
+                    XCTAssertEqual(heading.width / cover.width, 1.35, accuracy: 0.03,
+                                   "tablet titles need a wider column than the artwork")
+                    XCTAssertGreaterThan(heading.minX - cover.maxX, window.width * 0.04)
+                    XCTAssertGreaterThan(cover.minX - window.minX, window.width * 0.08)
+                    let play = app.buttons["player.toggle"].firstMatch.frame
+                    XCTAssertEqual(play.midX, heading.midX, accuracy: 2)
+                    XCTAssertEqual(play.width, 84, accuracy: 1)
+                    XCTAssertEqual(play.width, play.height, accuracy: 1)
+                    XCTAssertLessThanOrEqual(footer.maxX, heading.maxX)
+                    if heading.width > 460 {
+                        XCTAssertLessThan(footer.maxX, heading.maxX - 20,
+                                          "secondary actions belong under the centered transport group")
+                    }
                 }
             }
             let title = app.buttons["player.title"].label
@@ -1237,6 +1252,87 @@ final class MihonbanUITests: XCTestCase {
         }
         app.buttons["player.collapse"].tap()
         XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 10))
+    }
+
+    func testDarkTabletPlayerUsesBalancedColumns() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("Tablet composition") }
+        let app = launchCreditsPlayer(appearance: "dark")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let rotated = expectation(for: NSPredicate { _, _ in
+            let frame = app.windows.firstMatch.frame
+            return frame.width > frame.height
+        }, evaluatedWith: app)
+        wait(for: [rotated], timeout: 10)
+        assertTabletPlayerBalance(app)
+        let title = app.buttons["player.title"]
+        let cover = element(app, "player.cover").frame
+        XCTAssertEqual(title.frame.width / cover.width, 1.35, accuracy: 0.03)
+        XCTAssertTrue(app.sliders["player.seek"].isHittable)
+        XCTAssertTrue(app.buttons["player.queue"].isHittable)
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+        screenshot("47-player-dark-landscape")
+        // A short title must keep the same composition as the scrolling title.
+        let before = cover
+        app.buttons["player.next"].tap()
+        waitForLabel(title, "Interlude")
+        app.buttons["player.toggle"].firstMatch.tap()
+        waitForLabel(app.buttons["player.toggle"].firstMatch, "Play")
+        let after = element(app, "player.cover").frame
+        XCTAssertEqual(before, after)
+        assertTabletPlayerBalance(app)
+        screenshot("47-player-dark-short-title")
+    }
+
+    func testTabletAlbumHeaderBalancesArtworkAndInformation() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("Tablet album composition") }
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-long-playback", "-AppleLanguages", "(en)", "-appearance", "dark"]
+        app.launch()
+        let album = app.buttons["album.demo-1"]
+        XCTAssertTrue(album.waitForExistence(timeout: 15))
+        album.tap()
+        let title = app.staticTexts["album.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            XCUIDevice.shared.orientation = orientation
+            let rotated = expectation(for: NSPredicate { _, _ in
+                let frame = app.windows.firstMatch.frame
+                return orientation == .portrait ? frame.height > frame.width : frame.width > frame.height
+            }, evaluatedWith: app)
+            wait(for: [rotated], timeout: 10)
+            let cover = element(app, "album.cover").frame
+            let heading = title.frame
+            let play = app.buttons["album.play"].frame
+            let scroll = app.scrollViews["album.scroll"].frame
+            let format = element(app, "album.format")
+            XCTAssertEqual(cover.width, cover.height, accuracy: 1)
+            XCTAssertGreaterThan(heading.minX - cover.maxX, 40)
+            XCTAssertEqual(heading.midX, play.midX, accuracy: 2,
+                           "play belongs at the center of the information column")
+            XCTAssertEqual(cover.midY, (heading.minY + play.maxY) / 2, accuracy: 8,
+                           "artwork and metadata share a vertical center")
+            let contentWidth = min(1000, scroll.width) - 40
+            let gap = min(72, contentWidth * 0.075)
+            let informationWidth = min(480, contentWidth - cover.width - gap)
+            XCTAssertEqual((cover.minX + play.midX + informationWidth / 2) / 2, scroll.midX, accuracy: 3,
+                           "the whole album header must be centered on the page")
+            XCTAssertGreaterThan(play.midX, scroll.midX + 100)
+            XCTAssertEqual(play.width, 72, accuracy: 1)
+            XCTAssertEqual(play.width, play.height, accuracy: 1)
+            XCTAssertTrue(format.isHittable)
+            XCTAssertLessThan(format.frame.maxY, play.minY)
+            XCTAssertTrue(app.buttons["track.0"].isHittable)
+            screenshot(orientation == .portrait ? "48-album-balanced-portrait" : "48-album-balanced-landscape")
+        }
+        app.buttons["album.play"].tap()
+        let pause = app.buttons["Pause"].firstMatch
+        XCTAssertTrue(pause.waitForExistence(timeout: 15))
+        pause.tap()
+        app.buttons["album.artist.0"].tap()
+        XCTAssertTrue(element(app, "artist.title").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["player.expand"].exists)
     }
 
     private func assertTabletPlayerBalance(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {

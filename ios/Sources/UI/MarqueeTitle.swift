@@ -38,12 +38,13 @@ extension EnvironmentValues {
 struct PlaybackTitleButton: View {
     let track: Track?
     let openAlbum: () -> Void
+    var fontSize: CGFloat = 27
     @State private var showingFullTitle = false
     @Environment(\.marqueeSuspended) private var suspended
 
     var body: some View {
         MarqueeTitle(text: track?.title ?? "", identity: track?.id ?? "", canOpenAlbum: track?.albumId != nil,
-                     openAlbum: openAlbum, showFullTitle: { showingFullTitle = true })
+                     openAlbum: openAlbum, showFullTitle: { showingFullTitle = true }, fontSize: fontSize)
             .environment(\.marqueeSuspended, suspended || showingFullTitle)
             .frame(maxWidth: .infinity, alignment: .leading)
             .sheet(isPresented: $showingFullTitle) {
@@ -71,6 +72,7 @@ struct MarqueeTitle: UIViewRepresentable {
     let canOpenAlbum: Bool
     let openAlbum: () -> Void
     let showFullTitle: () -> Void
+    var fontSize: CGFloat = 27
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.marqueeSuspended) private var suspended
@@ -87,7 +89,7 @@ struct MarqueeTitle: UIViewRepresentable {
             .accessibility3: .accessibilityExtraLarge, .accessibility4: .accessibilityExtraExtraLarge,
             .accessibility5: .accessibilityExtraExtraExtraLarge]
         let font = UIFontMetrics(forTextStyle: .title1).scaledFont(
-            for: UIFont(name: "ShipporiMincho-SemiBold", size: 27) ?? .systemFont(ofSize: 27),
+            for: UIFont(name: "ShipporiMincho-SemiBold", size: fontSize) ?? .systemFont(ofSize: fontSize),
             compatibleWith: UITraitCollection(preferredContentSizeCategory: categories[textSize] ?? .large))
         view.openAlbum = openAlbum
         view.showFullTitle = showFullTitle

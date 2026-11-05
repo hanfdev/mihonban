@@ -30,6 +30,7 @@ struct PlaybackCredits: Equatable, Sendable {
 struct PlaybackCreditsButton: View {
     let credits: PlaybackCredits
     let action: () -> Void
+    var fontSize: CGFloat = 17
 
     var body: some View {
         if !credits.isEmpty {
@@ -47,7 +48,7 @@ struct PlaybackCreditsButton: View {
                     if credits.summarizesNames || credits.names.isEmpty {
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).accessibilityHidden(true)
                     }
-                }.font(Theme.body(17)).foregroundStyle(Theme.dim)
+                }.font(Theme.body(fontSize)).foregroundStyle(Theme.dim)
                     .frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("player.artist")
                 .accessibilityLabel(credits.fullText)
@@ -62,14 +63,16 @@ struct NowPlayingHeading: View {
     let openAlbum: () -> Void
     let openArtists: () -> Void
     var favorite: PlayerFavoriteButton? = nil
+    var titleSize: CGFloat = 27
+    var artistSize: CGFloat = 17
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 12) {
-                PlaybackTitleButton(track: track, openAlbum: openAlbum)
+            HStack(alignment: .center, spacing: 12) {
+                PlaybackTitleButton(track: track, openAlbum: openAlbum, fontSize: titleSize)
                 if let favorite { favorite.id(track?.id).fixedSize() }
             }
-            PlaybackCreditsButton(credits: PlaybackCredits(track: track), action: openArtists)
+            PlaybackCreditsButton(credits: PlaybackCredits(track: track), action: openArtists, fontSize: artistSize)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

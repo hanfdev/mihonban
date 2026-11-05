@@ -91,10 +91,11 @@ struct IconButton: View {
     let symbol: String
     let label: String
     var selected = false
+    var symbolSize: CGFloat = 20
     var action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 20, weight: .medium))
+            Image(systemName: symbol).font(.system(size: symbolSize, weight: .medium))
                 .foregroundStyle(selected ? Theme.accent : Theme.ink)
                 .frame(width: 44, height: 44)
                 .background { if selected { Circle().fill(Theme.accent.opacity(0.18)) } }
