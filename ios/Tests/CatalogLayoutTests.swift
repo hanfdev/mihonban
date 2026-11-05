@@ -37,6 +37,20 @@ final class CatalogLayoutTests: XCTestCase {
         }
     }
 
+    func testSimilarAlbumCardsKeepOneTitleLineAndAStableSquare() {
+        let short = SimilarAlbum(id: "short", artist: "Solo", title: "Letters")
+        let long = SimilarAlbum(id: "long", artist: String(repeating: "Studio Ensemble ", count: 12),
+                                title: String(repeating: "A quiet room for evening studies ", count: 12))
+        for textSize in [DynamicTypeSize.large, .accessibility3, .accessibility5] {
+            let baseline = size(SimilarAlbumCard(album: short).environment(\.dynamicTypeSize, textSize), width: 136)
+            let overflow = size(SimilarAlbumCard(album: long).environment(\.dynamicTypeSize, textSize), width: 136)
+            XCTAssertEqual(overflow.width, 136, accuracy: 0.5)
+            XCTAssertEqual(overflow.height, baseline.height, accuracy: 0.5,
+                           "long titles and credits cannot wrap or shrink the cover")
+            XCTAssertGreaterThan(overflow.height, 136, "text is laid out below the full-height square")
+        }
+    }
+
     func testCoverStaysSquareForWideArtwork() throws {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1

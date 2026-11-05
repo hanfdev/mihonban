@@ -264,12 +264,7 @@ struct AlbumView: View {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(similar) { item in
                             NavigationLink(value: CatalogRoute.album(item.id)) {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Cover(albumID: item.id, size: 480, client: model.imageClient)
-                                        .frame(width: 136).clipShape(RoundedRectangle(cornerRadius: 8))
-                                    Text(item.title).font(.subheadline).foregroundStyle(Theme.ink).lineLimit(2)
-                                    Text(item.artist ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }.frame(width: 136, alignment: .leading)
+                                SimilarAlbumCard(album: item, client: model.imageClient)
                             }.buttonStyle(.plain).accessibilityIdentifier("similar.\(item.id)")
                         }
                     }
@@ -296,6 +291,28 @@ struct AlbumView: View {
         do { album = try await model.catalog.album(albumID, refresh: refresh) }
         catch is CancellationError { return }
         catch { if album == nil { self.error = error.localizedDescription } }
+    }
+}
+
+// A fixed square anchors the recommendation row; text may grow with Dynamic
+// Type, but long titles never borrow height from the cover or wrap to two lines.
+struct SimilarAlbumCard: View {
+    let album: SimilarAlbum
+    var client: APIClient?
+    static let coverSide: CGFloat = 136
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Cover(albumID: album.id, size: 480, client: client)
+                .frame(width: Self.coverSide, height: Self.coverSide)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            Text(album.title).font(.subheadline).foregroundStyle(Theme.ink)
+                .lineLimit(1).truncationMode(.tail)
+                .accessibilityIdentifier("similar.title.\(album.id)")
+            Text(album.artist ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .accessibilityIdentifier("similar.artist.\(album.id)")
+        }.frame(width: Self.coverSide, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -501,21 +501,35 @@ final class MihonbanUITests: XCTestCase {
     }
 
     private func assertShortTitleCover(_ app: XCUIApplication) {
-        let cover = element(app, "player.cover")
+        let cover = app.images["player.cover"]
         XCTAssertTrue(cover.waitForExistence(timeout: 10))
         let scroll = app.scrollViews["player.scroll"]
         let window = app.windows.firstMatch.frame
         if window.width < 600 {
-            let enlarged = expectation(for: NSPredicate { _, _ in cover.frame.width >= window.width * 0.8 },
-                                       evaluatedWith: cover)
-            wait(for: [enlarged], timeout: 5)
+            // Hosted simulators can spend several seconds on one AX snapshot.
+            // Keep the same size requirement, but allow more than one query.
+            let enlarged = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                cover.frame.width >= window.width * 0.8
+            }, object: nil)
+            guard XCTWaiter().wait(for: [enlarged], timeout: 20) == .completed else {
+                screenshot("player-cover-size-timeout")
+                let diagnostic = XCTAttachment(string: "Window: \(window)\nCover: \(cover.frame)\n" + app.debugDescription)
+                diagnostic.name = "Player cover geometry after bounded wait"
+                diagnostic.lifetime = .keepAlways
+                add(diagnostic)
+                XCTFail("The short-title cover must reach at least 80 percent of the phone width")
+                return
+            }
         }
-        XCTAssertEqual(cover.frame.width, cover.frame.height, accuracy: 1)
-        XCTAssertLessThanOrEqual(cover.frame.width, min(500, scroll.frame.width - 56) + 1)
-        XCTAssertEqual(cover.frame.midX, scroll.frame.midX, accuracy: 1)
+        let coverFrame = cover.frame
+        let scrollFrame = scroll.frame
+        if window.width < 600 { XCTAssertGreaterThanOrEqual(coverFrame.width, window.width * 0.8) }
+        XCTAssertEqual(coverFrame.width, coverFrame.height, accuracy: 1)
+        XCTAssertLessThanOrEqual(coverFrame.width, min(500, scrollFrame.width - 56) + 1)
+        XCTAssertEqual(coverFrame.midX, scrollFrame.midX, accuracy: 1)
         let collapse = app.buttons["player.collapse"].frame
-        XCTAssertGreaterThanOrEqual(cover.frame.minY, collapse.maxY)
-        XCTAssertLessThanOrEqual(cover.frame.minY - collapse.maxY, 40, "artwork must not inherit a large-title gap")
+        XCTAssertGreaterThanOrEqual(coverFrame.minY, collapse.maxY)
+        XCTAssertLessThanOrEqual(coverFrame.minY - collapse.maxY, 40, "artwork must not inherit a large-title gap")
         XCTAssertTrue(app.buttons["player.queue"].isHittable)
         XCTAssertLessThanOrEqual(app.buttons["player.queue"].frame.maxY, scroll.frame.maxY - 19)
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.width, 70, accuracy: 1)
@@ -718,6 +732,43 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertEqual(element(app, "tile.footer.demo-1").frame.minY,
                        element(app, "tile.footer.demo-2").frame.minY, accuracy: 1)
         screenshot("26-caption-grouping")
+    }
+
+    func testSimilarAlbumCardsKeepSquareCoversAndSingleLineTitles() {
+        for largeText in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--demo", "--demo-similar-layout", "-AppleLanguages", "(en)"]
+            if largeText {
+                app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+            }
+            app.launch()
+            defer { app.terminate() }
+            let album = app.buttons["album.demo-1"]
+            XCTAssertTrue(album.waitForExistence(timeout: 15))
+            album.tap()
+            let longCard = app.buttons["similar.demo-2"]
+            let shortCard = app.buttons["similar.demo-3"]
+            reveal(longCard, in: app, scrolling: app.scrollViews["album.scroll"])
+            XCTAssertTrue(longCard.isHittable)
+            XCTAssertTrue(shortCard.isHittable)
+            let longTitle = app.staticTexts["similar.title.demo-2"]
+            let shortTitle = app.staticTexts["similar.title.demo-3"]
+            XCTAssertTrue(longTitle.exists)
+            XCTAssertTrue(shortTitle.exists)
+            let fullTitle = longTitle.label
+            XCTAssertGreaterThan(fullTitle.count, 60, "the long fixture must actually exceed one visible line")
+            XCTAssertEqual(longTitle.frame.height, shortTitle.frame.height, accuracy: 0.5)
+            XCTAssertEqual(longCard.frame.height, shortCard.frame.height, accuracy: 0.5)
+            for (card, title) in [(longCard, longTitle), (shortCard, shortTitle)] {
+                XCTAssertEqual(card.frame.width, 136, accuracy: 0.5)
+                // The title follows the full square plus its existing five-point gap.
+                XCTAssertEqual(title.frame.minY - card.frame.minY, 141, accuracy: 0.5)
+                XCTAssertLessThanOrEqual(title.frame.width, 136.5)
+            }
+            screenshot(largeText ? "42-similar-accessible-titles" : "41-similar-single-line-titles")
+            longCard.tap()
+            waitForLabel(app.staticTexts["album.title"], fullTitle)
+        }
     }
 
     func testQueueEditKeepsLongRowsAtTheSameHeightAndPosition() {

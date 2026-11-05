@@ -52,6 +52,14 @@ enum DemoLibrary {
             result[1].title = "Lucky"
             result[1].rym = RymRating(rating: 4.3, votes: 120)
         }
+        if arguments.contains("--demo-similar-layout") {
+            result[1].title = "A quiet room for evening studies and the complete collection of late-night recordings"
+            result[2].title = "Letters"
+            result[2].artist = result[1].artist
+            result[0].similar = [result[1], result[2]].map {
+                SimilarAlbum(id: $0.id, artist: $0.artist, title: $0.title)
+            }
+        }
         if arguments.contains("--demo-descriptors") {
             result[0].rym?.descriptors = descriptorWords
             result[2].rym = RymRating(descriptors: ["calm"])

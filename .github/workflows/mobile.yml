@@ -106,6 +106,7 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testReadingSheetClosesWithoutLosingAlbumPosition \
             -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndArtistDescriptionsRenderMarkdownNatively \
             -only-testing:MihonbanUITests/MihonbanUITests/testQueueEditKeepsLongRowsAtTheSameHeightAndPosition \
+            -only-testing:MihonbanUITests/MihonbanUITests/testSimilarAlbumCardsKeepSquareCoversAndSingleLineTitles \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsWithLargeTextAndLandscape \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-ipad.log
