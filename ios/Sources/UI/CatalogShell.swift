@@ -15,7 +15,6 @@ struct CatalogShell: View {
     @State private var selected: LibraryTab = .albums
     @State private var paths: [LibraryTab: [CatalogRoute]] = [:]
     @State private var settings = false
-    @Environment(\.dynamicTypeSize) private var textSize
 
     var body: some View {
         PlayerPresentation(model: model) { library }
@@ -23,33 +22,8 @@ struct CatalogShell: View {
 
     private var library: some View {
         Group {
-            if #available(iOS 26.0, *), textSize.isAccessibilitySize {
-                // The system accessory has a compact height and clips two lines
-                // at accessibility sizes. A safe-area inset sizes to its content.
-                modernTabs.safeAreaInset(edge: .bottom, spacing: 8) {
-                    if model.player.current != nil {
-                        NativeMiniPlayer(model: model)
-                            .padding(8).frame(maxWidth: 900)
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
-                            .padding(.horizontal, 12).padding(.bottom, 8)
-                    }
-                }
-            } else if #available(iOS 26.1, *) {
-                modernTabs
-                    .tabViewBottomAccessory(isEnabled: model.player.current != nil) { NativeMiniPlayer(model: model) }
-            } else if #available(iOS 26.0, *) {
-                modernTabs.tabViewBottomAccessory {
-                    if model.player.current != nil { NativeMiniPlayer(model: model) }
-                }
-            } else if #available(iOS 18.0, *) {
-                modernTabs.safeAreaInset(edge: .bottom, spacing: 0) {
-                    if model.player.current != nil { MiniPlayer(model: model) }
-                }
-            } else {
-                legacyTabs.safeAreaInset(edge: .bottom, spacing: 0) {
-                    if model.player.current != nil { MiniPlayer(model: model) }
-                }
-            }
+            if #available(iOS 18.0, *) { modernTabs }
+            else { legacyTabs }
         }
         .sheet(isPresented: $settings) { SettingsView(model: model).modifier(AppAppearance()) }
         // Context menus and Now Playing request links here; the selected tab pushes them.
@@ -108,6 +82,16 @@ struct CatalogShell: View {
                     Button { settings = true } label: { Image(systemName: "slider.horizontal.3") }
                         .accessibilityLabel(L10n.text("mobile.settings")).accessibilityIdentifier("settings.open")
                 }
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 8) {
+            if #available(iOS 26.0, *), model.player.current != nil {
+                NativeMiniPlayer(model: model)
+                    .padding(8).frame(maxWidth: 900)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
+                    .padding(.horizontal, 12).padding(.bottom, 8)
+            } else if model.player.current != nil {
+                MiniPlayer(model: model)
             }
         }
     }

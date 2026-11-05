@@ -1,6 +1,9 @@
+import OSLog
 import SwiftUI
 
 enum PlayerMotion {
+    static let logger = Logger(subsystem: "org.mihonban.ios", category: "PlayerPresentation")
+
     static func completes(distance: CGFloat, predicted: CGFloat, height: CGFloat) -> Bool {
         distance >= min(140, height * 0.20)
             || (distance >= 24 && predicted >= min(240, height * 0.34))
@@ -44,13 +47,13 @@ struct PlayerPresentation<Library: View>: View {
             }, ended: { distance, predicted in
                 opening = false
                 let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
+                PlayerMotion.logger.info("Expand ended: distance=\(distance), predicted=\(predicted), completed=\(expand)")
                 model.player.isExpanded = expand
                 settle(expand)
             }))
             .allowsHitTesting(!mounted || opening)
             .accessibilityHidden(mounted && !opening)
-            // Keep TabView as the layout root: wrapping its native bottom
-            // accessory in GeometryReader changes its touch-coordinate mapping.
+            // Keep TabView at the layout root so it owns the library safe areas.
             .overlay {
                 if mounted {
                     GeometryReader { geometry in
@@ -59,6 +62,7 @@ struct PlayerPresentation<Library: View>: View {
                                 progress = 1 - PlayerMotion.progress(distance: distance, height: travelHeight)
                             }, ended: { distance, predicted in
                                 let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
+                                PlayerMotion.logger.info("Collapse ended: distance=\(distance), predicted=\(predicted), completed=\(collapse)")
                                 model.player.isExpanded = !collapse
                                 settle(!collapse)
                             }))
@@ -66,7 +70,7 @@ struct PlayerPresentation<Library: View>: View {
                             .offset(y: reduceMotion ? 0 : (1 - progress) * travelHeight)
                             .opacity(reduceMotion ? progress : 1)
                             .allowsHitTesting(model.player.isExpanded && !opening)
-                            .accessibilityHidden(opening)
+                            .accessibilityHidden(!model.player.isExpanded || opening)
                             .accessibilityAddTraits(.isModal)
                     }
                 }
@@ -78,6 +82,7 @@ struct PlayerPresentation<Library: View>: View {
                 if mounted && !opening { settle(model.player.isExpanded) }
             }
             .onChange(of: model.player.isExpanded) { _, expanded in
+                PlayerMotion.logger.info("Expanded state: \(expanded)")
                 if expanded && !mounted {
                     dismissKeyboard()
                     mounted = true
@@ -144,10 +149,17 @@ struct PlayerSwipe: ViewModifier {
         )
         .onChange(of: touching) { _, value in
             if !value {
-                // A system interruption may cancel a gesture without onEnded.
-                if accepted { actions?.ended(0, 0) }
-                accepted = false
-                rejected = false
+                // GestureState can reset before onEnded. Let that callback finish
+                // before treating a remaining accepted gesture as interrupted.
+                DispatchQueue.main.async {
+                    guard !touching else { return }
+                    if accepted {
+                        PlayerMotion.logger.info("Swipe cancelled: expanding=\(expanding)")
+                        actions?.ended(0, 0)
+                    }
+                    accepted = false
+                    rejected = false
+                }
             }
         }
     }

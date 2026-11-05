@@ -568,6 +568,10 @@ final class MihonbanUITests: XCTestCase {
         app.buttons["player.collapse"].tap()
         assertMiniPlayerContentVisible(app)
         screenshot("36-accessible-mini-portrait")
+        app.buttons["mini.toggle"].tap()
+        waitForLabel(app.buttons["mini.toggle"], "Pause")
+        app.buttons["mini.toggle"].tap()
+        waitForLabel(app.buttons["mini.toggle"], "Play")
         let originalTitle = app.staticTexts["mini.title"].label
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
@@ -1242,12 +1246,15 @@ final class MihonbanUITests: XCTestCase {
             XCTAssertEqual(app.buttons["mini.toggle"].label, "Play")
             let up = mini.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
             up.press(forDuration: 0.05, thenDragTo: up.withOffset(CGVector(dx: 0, dy: -220)), withVelocity: .slow, thenHoldForDuration: 0.2)
-            XCTAssertTrue(app.buttons["player.collapse"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["player.collapse"].wait(for: \.isHittable, toEqual: true, timeout: 10),
+                          "Swiping up must finish opening an interactive player")
             XCTAssertEqual(app.buttons["player.title"].label, title)
             XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
             let seek = app.sliders["player.seek"]
             seek.adjust(toNormalizedSliderPosition: 0.35)
-            XCTAssertTrue(app.buttons["player.collapse"].exists, "Seeking must not dismiss the player")
+            XCTAssertTrue(app.buttons["player.collapse"].wait(for: \.isHittable, toEqual: true, timeout: 10),
+                          "Seeking must leave the player visibly open and interactive")
+            XCTAssertFalse(app.buttons["player.expand"].exists, "The library remains behind the expanded player")
             screenshot(orientation == .portrait ? "48-player-swipe-portrait" : "48-player-swipe-landscape")
         }
     }
@@ -1517,7 +1524,9 @@ final class MihonbanUITests: XCTestCase {
 
     private func openTab(_ app: XCUIApplication, _ label: String) {
         let tab = app.tabBars.buttons[label]
-        if tab.waitForExistence(timeout: 3) { tab.tap() } else { app.buttons[label].firstMatch.tap() }
+        if tab.waitForExistence(timeout: 3) { tab.tap() }
+        else if app.cells[label].firstMatch.exists { app.cells[label].firstMatch.tap() }
+        else { app.buttons[label].firstMatch.tap() }
     }
 
     private func element(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
