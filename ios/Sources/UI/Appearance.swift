@@ -12,56 +12,41 @@ enum Appearance: String, CaseIterable {
     }
 }
 
-// Apply at presentation boundaries too: a presented controller owns its traits.
+// Set the window's native override and clear every presented controller's old
+// override. SwiftUI's preferredColorScheme(nil) can leave a sheet's previous
+// trait override alive until the sheet is presented again.
 struct AppAppearance: ViewModifier {
     @AppStorage("appearance") private var appearance = Appearance.system.rawValue
-    @State private var systemScheme: ColorScheme?
     func body(content: Content) -> some View {
-        content
-            .background(SystemAppearanceReader { systemScheme = $0 }.frame(width: 0, height: 0))
-            .preferredColorScheme((Appearance(rawValue: appearance) ?? .system).colorScheme ?? systemScheme)
+        content.background(WindowAppearance(appearance: Appearance(rawValue: appearance) ?? .system)
+            .frame(width: 0, height: 0))
     }
 }
 
-// The scene reports the actual system appearance, even when a presented
-// hosting controller still carries the app's previous light/dark override.
-private struct SystemAppearanceReader: UIViewRepresentable {
-    var changed: (ColorScheme) -> Void
-    func makeUIView(context: Context) -> Probe { Probe(changed: changed) }
+private struct WindowAppearance: UIViewRepresentable {
+    let appearance: Appearance
+    func makeUIView(context: Context) -> Probe { Probe() }
     func updateUIView(_ view: Probe, context: Context) {
-        view.changed = changed
-        view.report()
+        view.style = switch appearance {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        view.apply()
     }
 
     final class Probe: UIView {
-        var changed: (ColorScheme) -> Void
-        private var reported: ColorScheme?
-        private weak var observedScene: UIWindowScene?
-        private var registration: (any UITraitChangeRegistration)?
-        init(changed: @escaping (ColorScheme) -> Void) {
-            self.changed = changed
-            super.init(frame: .zero)
-            isUserInteractionEnabled = false
-            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: Probe, _: UITraitCollection) in
-                view.report()
+        var style = UIUserInterfaceStyle.unspecified
+        override func didMoveToWindow() { super.didMoveToWindow(); apply() }
+        func apply() {
+            guard let window else { return }
+            if window.overrideUserInterfaceStyle != style { window.overrideUserInterfaceStyle = style }
+            func update(_ controller: UIViewController) {
+                if controller.overrideUserInterfaceStyle != style { controller.overrideUserInterfaceStyle = style }
+                controller.children.forEach(update)
+                if let presented = controller.presentedViewController { update(presented) }
             }
-        }
-        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            if let registration { observedScene?.unregisterForTraitChanges(registration) }
-            observedScene = window?.windowScene
-            registration = observedScene?.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak self] (_: UIWindowScene, _: UITraitCollection) in
-                self?.report()
-            }
-            report()
-        }
-        func report() {
-            guard let scene = window?.windowScene else { return }
-            let next: ColorScheme = scene.traitCollection.userInterfaceStyle == .dark ? .dark : .light
-            guard next != reported else { return }
-            reported = next
-            DispatchQueue.main.async { [weak self] in self?.changed(next) }
+            if let root = window.rootViewController { update(root) }
         }
     }
 }

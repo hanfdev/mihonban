@@ -83,6 +83,18 @@ jobs:
           xcrun simctl ui "$DEVICE" appearance dark
           # Ad-hoc signing binds the bundle identifier into the signature; an unsigned
           # build may be refused as a background transfer client (run 15/16, error -1).
+          # Catch presentation regressions before the longer catalog/network suite.
+          xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
+            -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
+            -resultBundlePath build/PresentationTests.xcresult \
+            -only-testing:MihonbanTests/TypographyTests \
+            -only-testing:MihonbanTests/FavoritesRefreshTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
+            -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            | tee build-presentation.log
           xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
@@ -95,6 +107,9 @@ jobs:
           if [ -d build/Tests.xcresult ]; then
             xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/iphone-failure || true
           fi
+          if [ -d build/PresentationTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/PresentationTests.xcresult --output-path build/iphone-failure/presentation || true
+          fi
       - name: Upload iPhone failure evidence
         if: ${{ !cancelled() && steps.iphone-tests.outcome == 'failure' }}
         uses: actions/upload-artifact@v4
@@ -102,6 +117,7 @@ jobs:
           name: iOS-iPhone-failure-${{ github.run_number }}
           path: |
             build-simulator.log
+            build-presentation.log
             build/iphone-failure
           retention-days: 14
       - name: Check iPad player layout
@@ -175,6 +191,9 @@ jobs:
           if [ -d build/Tests.xcresult ]; then
             xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/screenshots || true
           fi
+          if [ -d build/PresentationTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/PresentationTests.xcresult --output-path build/screenshots/presentation || true
+          fi
           if [ -d build/iPadTests.xcresult ]; then
             xcrun xcresulttool export attachments --path build/iPadTests.xcresult --output-path build/screenshots/ipad || true
           fi
@@ -204,10 +223,12 @@ jobs:
           name: iOS-test-results-${{ github.run_number }}
           path: |
             build/Tests.xcresult
+            build/PresentationTests.xcresult
             build/iPadTests.xcresult
             build/screenshots
             build-device.log
             build-simulator.log
+            build-presentation.log
             build-ipad.log
             fixture-server.log
             fixture-ipad.log

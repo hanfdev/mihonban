@@ -5,7 +5,7 @@ import UIKit
 // Han and Hangul. Registering a font alone does not put it in Core Text's cascade.
 enum Typography {
     static let displayName = "ShipporiMincho-SemiBold"
-    static let fallbackName = "GenRyuMin2PJP-R"
+    static let fallbackName = "GenRyuMin2PJP-B"
 
     static func display(_ size: CGFloat) -> UIFont {
         let descriptor = UIFontDescriptor(name: displayName, size: size).addingAttributes([

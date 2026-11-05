@@ -24,7 +24,9 @@ logo = Image.open(root / "cloud/web/public/icon-512.png").convert("RGBA").resize
 logo.save(logo_set / "logo.png")
 (logo_set / "Contents.json").write_text(json.dumps({"images": [{"filename": "logo.png", "idiom": "universal"}], "info": {"author": "xcode", "version": 1}}, indent=2) + "\n")
 
-font = TTFont(root / "cloud/web/public/fonts/genryu-mincho-shippori-fallback.woff2")
+# The fallback matches the semibold display face; regular glyphs looked too
+# light inside headings such as the simplified Chinese playback queue label.
+font = TTFont(root / "cloud/web/public/fonts/genryu-mincho-shippori-fallback-bold.woff2")
 font.flavor = None
 font.save(resources / "GenRyuMincho-Fallback.ttf")
 print("Generated iOS icon, logo, and fallback font")

@@ -32,57 +32,62 @@ struct PlayerPresentation<Library: View>: View {
     @State private var progress: CGFloat = 0
     @State private var opening = false
 
+    @State private var travelHeight: CGFloat = 900
+
     var body: some View {
-        GeometryReader { geometry in
-            let height = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
-            ZStack {
-                library()
-                    .environment(\.expandPlayer, PlayerDragActions(changed: { distance in
-                        opening = true
-                        mounted = true
-                        progress = PlayerMotion.progress(distance: distance, height: height)
-                    }, ended: { distance, predicted in
-                        opening = false
-                        let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: height)
-                        model.player.isExpanded = expand
-                        settle(expand)
-                    }))
-                    .allowsHitTesting(!model.player.isExpanded)
-                    .accessibilityHidden(mounted && !opening)
+        library()
+            .environment(\.expandPlayer, PlayerDragActions(changed: { distance in
+                if !mounted { dismissKeyboard() }
+                opening = true
+                mounted = true
+                progress = PlayerMotion.progress(distance: distance, height: travelHeight)
+            }, ended: { distance, predicted in
+                opening = false
+                let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
+                model.player.isExpanded = expand
+                settle(expand)
+            }))
+            .allowsHitTesting(!mounted || opening)
+            .accessibilityHidden(mounted && !opening)
+            // Keep TabView as the layout root: wrapping its native bottom
+            // accessory in GeometryReader changes its touch-coordinate mapping.
+            .overlay {
                 if mounted {
-                    NowPlayingView(model: model)
-                        .environment(\.collapsePlayer, PlayerDragActions(changed: { distance in
-                            progress = 1 - PlayerMotion.progress(distance: distance, height: height)
-                        }, ended: { distance, predicted in
-                            let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: height)
-                            model.player.isExpanded = !collapse
-                            settle(!collapse)
-                        }))
-                        .background(Theme.background.ignoresSafeArea())
-                        .offset(y: reduceMotion ? 0 : (1 - progress) * height)
-                        .opacity(reduceMotion ? progress : 1)
-                        .allowsHitTesting(model.player.isExpanded && !opening)
-                        .accessibilityHidden(opening)
-                        .accessibilityAddTraits(.isModal)
-                        .zIndex(1)
+                    GeometryReader { geometry in
+                        NowPlayingView(model: model)
+                            .environment(\.collapsePlayer, PlayerDragActions(changed: { distance in
+                                progress = 1 - PlayerMotion.progress(distance: distance, height: travelHeight)
+                            }, ended: { distance, predicted in
+                                let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
+                                model.player.isExpanded = !collapse
+                                settle(!collapse)
+                            }))
+                            .background(Theme.background.ignoresSafeArea())
+                            .offset(y: reduceMotion ? 0 : (1 - progress) * travelHeight)
+                            .opacity(reduceMotion ? progress : 1)
+                            .allowsHitTesting(model.player.isExpanded && !opening)
+                            .accessibilityHidden(opening)
+                            .accessibilityAddTraits(.isModal)
+                    }
                 }
             }
-            .onChange(of: geometry.size) { _, _ in
-                opening = false
-                settle(model.player.isExpanded)
+            .onGeometryChange(for: CGFloat.self) {
+                $0.size.height + $0.safeAreaInsets.top + $0.safeAreaInsets.bottom
+            } action: { height in
+                travelHeight = max(1, height)
+                if mounted && !opening { settle(model.player.isExpanded) }
             }
-        }
-        .onChange(of: model.player.isExpanded) { _, expanded in
-            if expanded && !mounted {
-                mounted = true
-                progress = 0
-                // Insert the surface before animating its first frame.
-                DispatchQueue.main.async { if model.player.isExpanded { settle(true) } }
-            } else { settle(expanded) }
-        }
-        .onChange(of: phase) { _, next in
-            if next != .active { opening = false; settle(model.player.isExpanded) }
-        }
+            .onChange(of: model.player.isExpanded) { _, expanded in
+                if expanded && !mounted {
+                    dismissKeyboard()
+                    mounted = true
+                    progress = 0
+                    DispatchQueue.main.async { if model.player.isExpanded { settle(true) } }
+                } else { settle(expanded) }
+            }
+            .onChange(of: phase) { _, next in
+                if next != .active { opening = false; settle(model.player.isExpanded) }
+            }
     }
 
     private func settle(_ expanded: Bool) {
@@ -91,6 +96,10 @@ struct PlayerPresentation<Library: View>: View {
         } completion: {
             if !model.player.isExpanded && !opening && progress == 0 { mounted = false }
         }
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
