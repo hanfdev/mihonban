@@ -143,6 +143,7 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback \
             -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testChineseQueueUsesTheBundledDisplayFont \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-ipad.log
       - name: Preserve crash diagnostics and symbols

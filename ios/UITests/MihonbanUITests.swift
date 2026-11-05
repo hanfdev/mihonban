@@ -1232,16 +1232,16 @@ final class MihonbanUITests: XCTestCase {
             let cover = app.images["player.cover"]
             XCTAssertTrue(cover.waitForExistence(timeout: 10))
             let start = cover.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
-            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 35)), velocity: .slow)
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 35)), withVelocity: .slow, thenHoldForDuration: 0.2)
             XCTAssertTrue(app.buttons["player.collapse"].waitForExistence(timeout: 10))
             XCTAssertEqual(app.buttons["player.title"].label, title)
             let down = cover.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
-            down.press(forDuration: 0.05, thenDragTo: down.withOffset(CGVector(dx: 0, dy: 220)), velocity: .slow)
+            down.press(forDuration: 0.05, thenDragTo: down.withOffset(CGVector(dx: 0, dy: 220)), withVelocity: .slow, thenHoldForDuration: 0.2)
             let mini = app.buttons["player.expand"]
             XCTAssertTrue(mini.waitForExistence(timeout: 10))
             XCTAssertEqual(app.buttons["mini.toggle"].label, "Play")
             let up = mini.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
-            up.press(forDuration: 0.05, thenDragTo: up.withOffset(CGVector(dx: 0, dy: -220)), velocity: .slow)
+            up.press(forDuration: 0.05, thenDragTo: up.withOffset(CGVector(dx: 0, dy: -220)), withVelocity: .slow, thenHoldForDuration: 0.2)
             XCTAssertTrue(app.buttons["player.collapse"].waitForExistence(timeout: 10))
             XCTAssertEqual(app.buttons["player.title"].label, title)
             XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
@@ -1250,6 +1250,26 @@ final class MihonbanUITests: XCTestCase {
             XCTAssertTrue(app.buttons["player.collapse"].exists, "Seeking must not dismiss the player")
             screenshot(orientation == .portrait ? "48-player-swipe-portrait" : "48-player-swipe-landscape")
         }
+    }
+
+    func testChineseQueueUsesTheBundledDisplayFont() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-long-playback", "-AppleLanguages", "(zh-Hans)"]
+        app.launch()
+        let album = app.buttons["album.demo-1"]
+        XCTAssertTrue(album.waitForExistence(timeout: 15))
+        album.tap()
+        app.buttons["album.play"].tap()
+        XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 15))
+        app.buttons["mini.toggle"].tap()
+        app.buttons["player.expand"].tap()
+        XCTAssertTrue(app.buttons["player.queue"].waitForExistence(timeout: 10))
+        app.buttons["player.queue"].tap()
+        XCTAssertTrue(app.buttons["queue.close"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["播放队列"].exists)
+        screenshot("49-chinese-queue-typography")
+        app.buttons["queue.close"].tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
     }
 
     func testTabletPlayerUsesWholeWindowAndReturnsFromQueue() {
