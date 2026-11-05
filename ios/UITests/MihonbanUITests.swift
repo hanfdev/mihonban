@@ -868,7 +868,12 @@ final class MihonbanUITests: XCTestCase {
         let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder"))
         XCTAssertTrue(handles.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(handles.count, 2)
-        handles.element(boundBy: 1).press(forDuration: 1, thenDragTo: handles.element(boundBy: 0))
+        // Cross the first row's midpoint and hold before releasing. A center-to-center
+        // drag released immediately can snap back before the native drop commits.
+        let source = handles.element(boundBy: 1).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let destination = handles.element(boundBy: 0).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .withOffset(CGVector(dx: 0, dy: -20))
+        source.press(forDuration: 1, thenDragTo: destination, withVelocity: .slow, thenHoldForDuration: 1)
         app.buttons["queue.edit"].tap()
         waitForLabel(app.buttons["queue.0"], second)
         XCTAssertEqual(app.buttons["queue.1"].label, first)
@@ -1208,6 +1213,18 @@ final class MihonbanUITests: XCTestCase {
                 XCTAssertEqual(scroll.frame.maxX, window.maxX, accuracy: 2)
                 XCTAssertGreaterThan(scroll.frame.height, window.height * 0.75)
                 XCTAssertLessThan(app.buttons["player.collapse"].frame.maxY, window.minY + 130)
+                let cover = element(app, "player.cover").frame
+                let heading = app.buttons["player.title"].frame
+                let footer = app.buttons["player.queue"].frame
+                let composition = cover.union(heading).union(footer)
+                XCTAssertEqual(composition.midY, scroll.frame.midY, accuracy: 12,
+                               "the player must balance spare space above and below its content")
+                XCTAssertGreaterThanOrEqual(composition.minY, scroll.frame.minY)
+                XCTAssertLessThanOrEqual(composition.maxY, scroll.frame.maxY)
+                if orientation == .landscapeLeft {
+                    XCTAssertEqual(cover.midY, (heading.minY + footer.maxY) / 2, accuracy: 12,
+                                   "landscape controls must be centered beside the cover")
+                }
             }
             let title = app.buttons["player.title"].label
             app.buttons["player.queue"].tap()

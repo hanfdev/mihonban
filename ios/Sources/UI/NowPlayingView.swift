@@ -39,6 +39,7 @@ struct NowPlayingView: View {
     @State private var sharing: ShareSelection?
 
     private var player: PlayerModel { model.player }
+    private var isTablet: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
@@ -47,7 +48,7 @@ struct NowPlayingView: View {
                     let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side)
                     Group {
                         if NowPlayingLayout.usesColumns(geometry.size) {
-                            HStack(alignment: .top, spacing: NowPlayingLayout.columnSpacing) {
+                            HStack(alignment: isTablet ? .center : .top, spacing: NowPlayingLayout.columnSpacing) {
                                 cover.frame(width: side, height: side)
                                 controls.frame(width: width)
                             }
@@ -60,7 +61,9 @@ struct NowPlayingView: View {
                         }
                     }.padding(.horizontal, NowPlayingLayout.horizontalInset)
                         .padding(.top, NowPlayingLayout.topInset).padding(.bottom, NowPlayingLayout.bottomInset)
-                        .frame(maxWidth: .infinity)
+                        // Fill the tablet viewport so spare space surrounds the whole
+                        // composition. Taller content retains its natural scroll height.
+                        .frame(maxWidth: .infinity, minHeight: isTablet ? geometry.size.height : nil)
                 }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
                     .accessibilityIdentifier("player.scroll")
             }

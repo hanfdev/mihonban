@@ -68,6 +68,7 @@ jobs:
           cp ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved build/export/Package.resolved
           cp ios/Resources/ThirdParty/Acknowledgements.txt build/export/
       - name: Run simulator tests
+        id: iphone-tests
         run: |
           set -o pipefail
           python3 -I ios/tools/fixture-server.py ios/TestFixtures > fixture-server.log 2>&1 &
@@ -86,6 +87,21 @@ jobs:
             -resultBundlePath build/Tests.xcresult \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-simulator.log
+      - name: Preserve iPhone failure evidence before iPad tests
+        if: ${{ !cancelled() && steps.iphone-tests.outcome == 'failure' }}
+        run: |
+          if [ -d build/Tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/iphone-failure || true
+          fi
+      - name: Upload iPhone failure evidence
+        if: ${{ !cancelled() && steps.iphone-tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-iPhone-failure-${{ github.run_number }}
+          path: |
+            build-simulator.log
+            build/iphone-failure
+          retention-days: 14
       - name: Check iPad player layout
         if: ${{ !cancelled() && steps.device-archive.outcome == 'success' }}
         run: |
