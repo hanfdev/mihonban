@@ -86,9 +86,19 @@ final class NowPlayingLayoutTests: XCTestCase {
         XCTAssertEqual(NowPlayingLayout.controlStyle(in: CGSize(width: 507, height: 900), isTablet: true), .compact)
         XCTAssertEqual(NowPlayingLayout.controlStyle(in: CGSize(width: 844, height: 390), isTablet: true), .compact)
         XCTAssertEqual(NowPlayingLayout.controlStyle(in: CGSize(width: 1024, height: 700), isTablet: false), .compact)
-        let portrait = CGSize(width: 834, height: 1100)
-        let cover = NowPlayingLayout.coverSide(in: portrait, controlsHeight: 360, isTablet: true)
-        XCTAssertEqual(NowPlayingLayout.controlsWidth(in: portrait, coverSide: cover, isTablet: true), cover,
-                       "portrait artwork and controls share their side margins when height permits")
+    }
+
+    func testPortraitUsesTheTabletWidthInsteadOfANarrowPhoneColumn() {
+        for size in [CGSize(width: 744, height: 1000), CGSize(width: 834, height: 1100), CGSize(width: 1032, height: 1300)] {
+            let cover = NowPlayingLayout.coverSide(in: size, controlsHeight: 380, isTablet: true)
+            let controls = NowPlayingLayout.controlsWidth(in: size, coverSide: cover, isTablet: true)
+            XCTAssertGreaterThanOrEqual(cover, size.width * 0.60)
+            XCTAssertGreaterThanOrEqual(controls, size.width * 0.73)
+            XCTAssertGreaterThan(controls, cover + 60)
+            XCTAssertLessThanOrEqual(controls, size.width * 0.84)
+            XCTAssertLessThanOrEqual(cover + 380 + NowPlayingLayout.coverSpacing(in: size, isTablet: true)
+                + NowPlayingLayout.topInset + NowPlayingLayout.bottomInset, size.height)
+            XCTAssertEqual(NowPlayingLayout.controlStyle(in: size, isTablet: true), .tabletPortrait)
+        }
     }
 }

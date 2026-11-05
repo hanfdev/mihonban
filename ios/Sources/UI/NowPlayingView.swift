@@ -158,7 +158,7 @@ struct NowPlayingView: View {
                        in: 0...max(player.duration, 1), onEditingChanged: { editing in
                     if editing { scrubTime = player.elapsed; scrubbing = true }
                     else { scrubbing = false; player.seek(to: scrubTime) }
-                }).tint(style == .tablet ? Theme.ink : Theme.accent)
+                }).tint(style == .compact ? Theme.accent : Theme.ink)
                     .disabled(player.isLoading).accessibilityLabel(L10n.text("player.seek"))
                     .accessibilityIdentifier("player.seek")
                 HStack {

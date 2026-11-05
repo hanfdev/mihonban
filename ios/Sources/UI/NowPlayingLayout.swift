@@ -11,21 +11,22 @@ enum NowPlayingLayout {
     static let columnSpacing: CGFloat = 40
 
     enum ControlStyle: Equatable {
-        case compact, tablet
+        case compact, tablet, tabletPortrait
 
-        var titleSize: CGFloat { self == .tablet ? 34 : 27 }
-        var artistSize: CGFloat { self == .tablet ? 19 : 17 }
-        var timeSize: CGFloat { self == .tablet ? 13 : 11 }
-        var playDiameter: CGFloat { self == .tablet ? 84 : 70 }
-        var skipSize: CGFloat { self == .tablet ? 25 : 20 }
-        var spacing: CGFloat { self == .tablet ? 24 : NowPlayingLayout.controlSpacing }
-        var transportWidth: CGFloat { self == .tablet ? 420 : .infinity }
+        var titleSize: CGFloat { self == .compact ? 27 : self == .tabletPortrait ? 36 : 34 }
+        var artistSize: CGFloat { self == .compact ? 17 : self == .tabletPortrait ? 20 : 19 }
+        var timeSize: CGFloat { self == .compact ? 11 : 13 }
+        var playDiameter: CGFloat { self == .compact ? 70 : self == .tabletPortrait ? 96 : 84 }
+        var skipSize: CGFloat { self == .compact ? 20 : 25 }
+        var spacing: CGFloat { self == .compact ? NowPlayingLayout.controlSpacing : self == .tabletPortrait ? 28 : 24 }
+        var transportWidth: CGFloat { self == .compact ? .infinity : self == .tabletPortrait ? 560 : 420 }
     }
 
     // Window dimensions, rather than the device alone, decide whether tablet
     // typography and spacing fit. Narrow Stage Manager windows stay compact.
     static func controlStyle(in size: CGSize, isTablet: Bool) -> ControlStyle {
-        isTablet && size.width >= 600 && size.height >= 500 ? .tablet : .compact
+        guard isTablet && size.width >= 600 && size.height >= 500 else { return .compact }
+        return usesColumns(size) ? .tablet : .tabletPortrait
     }
 
     static func usesColumns(_ size: CGSize) -> Bool { size.width > 700 && size.width > size.height }
@@ -35,7 +36,8 @@ enum NowPlayingLayout {
     }
 
     static func coverSpacing(in size: CGSize, isTablet: Bool) -> CGFloat {
-        controlStyle(in: size, isTablet: isTablet) == .tablet ? 32 : coverSpacing
+        let style = controlStyle(in: size, isTablet: isTablet)
+        return style == .compact ? coverSpacing : style == .tabletPortrait ? 44 : 32
     }
 
     private static func tabletStageWidth(_ size: CGSize) -> CGFloat {
@@ -50,7 +52,7 @@ enum NowPlayingLayout {
 
     static func coverSide(in size: CGSize, controlsHeight: CGFloat, isTablet: Bool = false) -> CGFloat {
         let width = contentWidth(size)
-        let tablet = controlStyle(in: size, isTablet: isTablet) == .tablet
+        let tablet = controlStyle(in: size, isTablet: isTablet) != .compact
         if usesColumns(size) {
             if tablet {
                 let columns = tabletStageWidth(size) - columnSpacing(in: size, isTablet: isTablet)
@@ -61,7 +63,8 @@ enum NowPlayingLayout {
         let room = size.height - max(0, controlsHeight) - topInset - bottomInset - coverSpacing(in: size, isTablet: isTablet)
         // Very large text may scroll, but the cover never grows wider than the
         // content area and remains recognisable above the controls.
-        return min(tablet ? 460 : 500, width, max(min(160, width), room))
+        let preferred = tablet ? min(640, size.width * 0.70) : 500
+        return min(preferred, width, max(min(160, width), room))
     }
 
     static func controlsWidth(in size: CGSize, coverSide: CGFloat, isTablet: Bool = false) -> CGFloat {
@@ -71,7 +74,9 @@ enum NowPlayingLayout {
             }
             return min(480, max(0, contentWidth(size) - coverSide - columnSpacing))
         }
-        let limit: CGFloat = controlStyle(in: size, isTablet: isTablet) == .tablet ? 460 : 500
+        // Portrait has a broad control area below the independently sized cover,
+        // rather than stacking every element inside one narrow artwork column.
+        let limit: CGFloat = controlStyle(in: size, isTablet: isTablet) == .tabletPortrait ? min(760, size.width * 0.82) : 500
         return min(limit, contentWidth(size))
     }
 }

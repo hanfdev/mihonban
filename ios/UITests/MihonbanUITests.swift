@@ -539,7 +539,7 @@ final class MihonbanUITests: XCTestCase {
         let scrollFrame = scroll.frame
         if window.width < 600 { XCTAssertGreaterThanOrEqual(coverFrame.width, window.width * 0.8) }
         XCTAssertEqual(coverFrame.width, coverFrame.height, accuracy: 1)
-        XCTAssertLessThanOrEqual(coverFrame.width, min(500, scrollFrame.width - 56) + 1)
+        XCTAssertLessThanOrEqual(coverFrame.width, min(window.width >= 600 ? 640 : 500, scrollFrame.width - 56) + 1)
         XCTAssertEqual(coverFrame.midX, scrollFrame.midX, accuracy: 1)
         let collapse = app.buttons["player.collapse"].frame
         XCTAssertGreaterThanOrEqual(coverFrame.minY, collapse.maxY)
@@ -550,7 +550,7 @@ final class MihonbanUITests: XCTestCase {
         }
         XCTAssertTrue(app.buttons["player.queue"].isHittable)
         XCTAssertLessThanOrEqual(app.buttons["player.queue"].frame.maxY, scroll.frame.maxY - 19)
-        let playDiameter: CGFloat = window.width >= 600 ? 84 : 70
+        let playDiameter: CGFloat = window.width >= 600 ? 96 : 70
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.width, playDiameter, accuracy: 1)
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.height, playDiameter, accuracy: 1)
     }
@@ -707,15 +707,15 @@ final class MihonbanUITests: XCTestCase {
         miniPause.tap()
         expand.tap()
         XCTAssertTrue(app.buttons["player.artist"].waitForExistence(timeout: 10))
-        waitForLabel(app.buttons["player.toggle"].firstMatch, "Play")
+        waitForLabel(app.buttons["player.toggle"].firstMatch, "Play", timeout: 20)
         XCTAssertEqual(app.buttons["player.title"].label,
                        "A very long song title for an evening with the studio ensemble")
         return app
     }
 
-    private func waitForLabel(_ element: XCUIElement, _ label: String) {
+    private func waitForLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 10) {
         let changed = expectation(for: NSPredicate(format: "label == %@", label), evaluatedWith: element)
-        wait(for: [changed], timeout: 10)
+        wait(for: [changed], timeout: timeout)
     }
 
     private func reveal(_ target: XCUIElement, in app: XCUIApplication, scrolling container: XCUIElement? = nil) {
@@ -1220,6 +1220,15 @@ final class MihonbanUITests: XCTestCase {
                 XCTAssertGreaterThan(scroll.frame.height, window.height * 0.75)
                 XCTAssertLessThan(app.buttons["player.collapse"].frame.maxY, window.minY + 130)
                 assertTabletPlayerBalance(app)
+                if orientation == .portrait {
+                    let cover = element(app, "player.cover").frame
+                    let heading = app.buttons["player.title"].frame
+                    XCTAssertGreaterThanOrEqual(cover.width, window.width * 0.60)
+                    XCTAssertGreaterThanOrEqual(heading.width, window.width * 0.73)
+                    XCTAssertGreaterThan(heading.width, cover.width + 60)
+                    XCTAssertLessThan(heading.minX, cover.minX - 30)
+                    XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.width, 96, accuracy: 1)
+                }
                 if orientation == .landscapeLeft {
                     let cover = element(app, "player.cover").frame
                     let heading = app.buttons["player.title"].frame
@@ -1305,7 +1314,9 @@ final class MihonbanUITests: XCTestCase {
             let cover = element(app, "album.cover").frame
             let heading = title.frame
             let play = app.buttons["album.play"].frame
-            let scroll = app.scrollViews["album.scroll"].frame
+            // The scroll view's AX frame includes the sidebar on iPad. A track
+            // row measures the actual padded detail column in both orientations.
+            let content = app.buttons["track.0"].frame
             let format = element(app, "album.format")
             XCTAssertEqual(cover.width, cover.height, accuracy: 1)
             XCTAssertGreaterThan(heading.minX - cover.maxX, 40)
@@ -1313,12 +1324,12 @@ final class MihonbanUITests: XCTestCase {
                            "play belongs at the center of the information column")
             XCTAssertEqual(cover.midY, (heading.minY + play.maxY) / 2, accuracy: 8,
                            "artwork and metadata share a vertical center")
-            let contentWidth = min(1000, scroll.width) - 40
+            let contentWidth = content.width
             let gap = min(72, contentWidth * 0.075)
             let informationWidth = min(480, contentWidth - cover.width - gap)
-            XCTAssertEqual((cover.minX + play.midX + informationWidth / 2) / 2, scroll.midX, accuracy: 3,
+            XCTAssertEqual((cover.minX + play.midX + informationWidth / 2) / 2, content.midX, accuracy: 3,
                            "the whole album header must be centered on the page")
-            XCTAssertGreaterThan(play.midX, scroll.midX + 100)
+            XCTAssertGreaterThan(play.midX, content.midX + 100)
             XCTAssertEqual(play.width, 72, accuracy: 1)
             XCTAssertEqual(play.width, play.height, accuracy: 1)
             XCTAssertTrue(format.isHittable)
@@ -1353,7 +1364,7 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertLessThanOrEqual(composition.maxY, scroll.maxY, file: file, line: line)
     }
 
-    func testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback() {
+    func testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)"]
         app.launch()
@@ -1363,25 +1374,40 @@ final class MihonbanUITests: XCTestCase {
         app.buttons["album.menu"].tap()
         XCTAssertTrue(app.buttons["album.share"].waitForExistence(timeout: 5))
         app.buttons["album.share"].tap()
-        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Close"].firstMatch.isHittable)
-        screenshot("46-album-share")
-        app.buttons["Close"].firstMatch.tap()
-        app.buttons["album.play"].tap()
-        XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 15))
-        app.buttons["Pause"].firstMatch.tap()
+        try checkAndCloseShareSheet(app, screenshotName: "46-album-share")
+        let play = app.buttons["album.play"]
+        XCTAssertTrue(play.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        play.tap()
+        // The network fixture is eight seconds long; pause as soon as playback
+        // starts, before taking further snapshots of the player.
+        let pause = app.buttons["Pause"].firstMatch
+        XCTAssertTrue(pause.waitForExistence(timeout: 15))
+        pause.tap()
         app.buttons["player.expand"].tap()
         XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
         let title = app.buttons["player.title"].label
         app.buttons["player.more"].tap()
         app.buttons["player.share"].tap()
-        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Close"].firstMatch.isHittable)
-        screenshot("46-song-share")
-        app.buttons["Close"].firstMatch.tap()
+        try checkAndCloseShareSheet(app, screenshotName: "46-song-share")
         XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons["player.title"].label, title)
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+    }
+
+    private func checkAndCloseShareSheet(_ app: XCUIApplication, screenshotName: String) throws {
+        // The system share extension starts in another process. On a busy
+        // simulator its actions can appear well after the dimming background.
+        let copy = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch
+        let ready = copy.wait(for: \.isHittable, toEqual: true, timeout: 45)
+        XCTAssertTrue(ready, "the native share sheet must expose its Copy action")
+        guard ready else { throw NSError(domain: "ShareSheetNotReady", code: 1) }
+        let close = app.buttons["Close"].firstMatch
+        XCTAssertTrue(close.isHittable)
+        screenshot(screenshotName)
+        close.tap()
+        let dismissed = app.otherElements["ActivityListView"].waitForNonExistence(timeout: 15)
+        XCTAssertTrue(dismissed, "closing the share sheet must restore interaction with the app")
+        guard dismissed else { throw NSError(domain: "ShareSheetNotDismissed", code: 1) }
     }
 
     func testConnectionScreen() {
