@@ -45,13 +45,29 @@ final class MarqueeTests: XCTestCase {
 
     @MainActor
     func testAirPlayPresentationPausesTheSameAnimationClock() async throws {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        // Keep a visible render tree alive across suspension points. Core Animation
+        // can discard animations on an unshown, unretained test window at commit.
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
         let view = MarqueeTitleView()
         view.configure(text: String(repeating: "Long Title ", count: 20), identity: "a",
                        font: .systemFont(ofSize: 27), animated: true)
         view.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
-        window.addSubview(view)
+        host.view.addSubview(view)
         view.layoutIfNeeded()
+        CATransaction.flush()
+        await Task.yield()
+        XCTAssertTrue(view.hasScrollAnimation, "the visible test host must retain the animation after a render commit")
+        XCTAssertTrue(view.window === window)
         let generation = view.animationGeneration
         let didPause = expectation(description: "route presentation paused on the main actor")
         let didResume = expectation(description: "route dismissal resumed on the main actor")
@@ -82,6 +98,62 @@ final class MarqueeTests: XCTestCase {
         let timeAfterResume = view.scrollTime
         XCTAssertLessThanOrEqual(timeAfterResume - pausedTime, CACurrentMediaTime() - resumedAt + 0.005)
         view.removeFromSuperview()
+    }
+
+    @MainActor
+    func testNativeSheetPreservesTheMarqueeAcrossPresentationAndDismissal() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
+        let control = MarqueeTitleControl(frame: CGRect(x: 28, y: 100, width: 250, height: 44))
+        control.configure(text: String(repeating: "Long Title ", count: 20), identity: "sheet",
+                          font: .systemFont(ofSize: 27), animated: true)
+        host.view.addSubview(control)
+        host.view.layoutIfNeeded()
+        control.layoutIfNeeded()
+        control.titleDisplay.layoutIfNeeded()
+        CATransaction.flush()
+        let display = control.titleDisplay
+        let generation = display.animationGeneration
+        let frame = control.frame
+        XCTAssertTrue(display.isAnimating)
+
+        for _ in 0..<2 {
+            display.setSuspended(true)
+            let pausedTime = display.scrollTime
+            let sheet = UIViewController()
+            sheet.view.backgroundColor = .systemBackground
+            sheet.modalPresentationStyle = .pageSheet
+            sheet.sheetPresentationController?.detents = [.medium()]
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                host.present(sheet, animated: true) { continuation.resume() }
+            }
+            XCTAssertTrue(host.presentedViewController === sheet)
+            XCTAssertTrue(display.isScrollPaused)
+            XCTAssertEqual(display.scrollTime, pausedTime, accuracy: 0.001)
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                host.dismiss(animated: true) { continuation.resume() }
+            }
+            XCTAssertNil(host.presentedViewController)
+            XCTAssertEqual(display.scrollTime, pausedTime, accuracy: 0.001)
+            let resumedAt = CACurrentMediaTime()
+            display.setSuspended(false)
+            host.view.layoutIfNeeded()
+            XCTAssertTrue(display.isAnimating)
+            XCTAssertEqual(display.animationGeneration, generation)
+            XCTAssertEqual(control.frame, frame)
+            XCTAssertEqual(display.frame, control.bounds)
+            XCTAssertGreaterThanOrEqual(display.scrollTime, pausedTime)
+            XCTAssertLessThanOrEqual(display.scrollTime - pausedTime, CACurrentMediaTime() - resumedAt + 0.005)
+        }
     }
 
     @MainActor
