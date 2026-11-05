@@ -89,6 +89,15 @@ struct PlaybackQueue: Sendable {
         return true
     }
 
+    // An explicit next command at the end reuses the edited playback order.
+    // This does not turn on repeat or reshuffle the queue behind the user's back.
+    @discardableResult
+    mutating func restart() -> Bool {
+        guard !order.isEmpty else { return false }
+        cursor = 0
+        return true
+    }
+
     // Queue edits address upcoming entries by position, since one track may be
     // queued more than once. Offsets are relative to `upcoming`.
     mutating func enqueue(_ items: [Track], next: Bool) {

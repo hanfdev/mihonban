@@ -1254,7 +1254,10 @@ final class MihonbanUITests: XCTestCase {
             seek.adjust(toNormalizedSliderPosition: 0.35)
             XCTAssertTrue(app.buttons["player.collapse"].wait(for: \.isHittable, toEqual: true, timeout: 10),
                           "Seeking must leave the player visibly open and interactive")
-            XCTAssertFalse(app.buttons["player.expand"].exists, "The library remains behind the expanded player")
+            // XCTest may retain hidden elements in its snapshot. Their presence
+            // does not mean they can receive input through the player overlay.
+            XCTAssertFalse(app.buttons["player.expand"].isHittable, "The covered mini player cannot receive input")
+            XCTAssertFalse(app.buttons["mini.toggle"].isHittable, "The covered playback control cannot receive input")
             screenshot(orientation == .portrait ? "48-player-swipe-portrait" : "48-player-swipe-landscape")
         }
     }

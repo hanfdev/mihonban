@@ -90,6 +90,7 @@ jobs:
             -resultBundlePath build/PresentationTests.xcresult \
             -only-testing:MihonbanTests/TypographyTests \
             -only-testing:MihonbanTests/FavoritesRefreshTests \
+            -only-testing:MihonbanTests/PlaybackCompletionTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
             -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
@@ -99,6 +100,12 @@ jobs:
             -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
             -resultBundlePath build/Tests.xcresult \
+            -skip-testing:MihonbanTests/TypographyTests \
+            -skip-testing:MihonbanTests/FavoritesRefreshTests \
+            -skip-testing:MihonbanTests/PlaybackCompletionTests \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-simulator.log
       - name: Preserve iPhone failure evidence before iPad tests
@@ -135,6 +142,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPAD" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
             -resultBundlePath build/iPadTests.xcresult \
+            -only-testing:MihonbanTests/PlaybackCompletionTests \
             -only-testing:MihonbanTests/CatalogLayoutTests \
             -only-testing:MihonbanTests/NowPlayingLayoutTests \
             -only-testing:MihonbanTests/TypographyTests \

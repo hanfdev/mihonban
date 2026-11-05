@@ -67,7 +67,22 @@ final class QueueTests: XCTestCase {
         queue.repeatMode = .all
         XCTAssertFalse(queue.advance())
         XCTAssertFalse(queue.previous())
+        XCTAssertFalse(queue.restart())
         XCTAssertNil(queue.current)
+    }
+
+    func testExplicitRestartPreservesEditedShuffleOrderAndRepeatMode() {
+        var queue = PlaybackQueue()
+        queue.replace(tracks, startingAt: 2, shuffle: true)
+        queue.removeUpcoming(at: IndexSet(integer: 0))
+        queue.moveUpcoming(from: IndexSet(integer: 2), to: 0)
+        let order = queue.order
+        while queue.advance(automatic: true) {}
+        XCTAssertTrue(queue.restart())
+        XCTAssertEqual(queue.current?.id, tracks[order[0]].id)
+        XCTAssertEqual(queue.order, order)
+        XCTAssertTrue(queue.shuffled)
+        XCTAssertEqual(queue.repeatMode, .off)
     }
 
     func testPrefetchDoesNotAdvanceVisibleQueue() {

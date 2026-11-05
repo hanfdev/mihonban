@@ -17,6 +17,7 @@ final class PlayerModel: NSObject {
     private(set) var wantsPlayback = false
     private(set) var isLoading = false
     private(set) var isSeeking = false
+    private(set) var hasEnded = false
     private(set) var elapsed: Double = 0
     private(set) var duration: Double = 0
     private(set) var buffered: Double = 0
@@ -113,6 +114,7 @@ final class PlayerModel: NSObject {
 
     private func beginCurrent(at position: Double = 0) {
         waitingForNext = false
+        hasEnded = false
         generation = UUID()
         cancelTransfers()
         engine.stop()
@@ -358,7 +360,7 @@ final class PlayerModel: NSObject {
         wantsPlayback = true
         error = nil
         if !isLoading {
-            if entries.isEmpty { beginCurrent() }
+            if hasEnded || entries.isEmpty { beginCurrent() }
             else { do { try activateAndPlay() } catch { fail() } }
         }
         updateNowPlaying()
@@ -374,23 +376,33 @@ final class PlayerModel: NSObject {
 
     func next() {
         playbackIntent = UUID()
-        if queue.advance() { wantsPlayback = true; beginCurrent() }
-        else { pause() }
+        // A deliberate skip may start another pass; automatic completion still
+        // respects repeat-off and stops at the last entry.
+        if queue.advance() || queue.restart() { wantsPlayback = true; beginCurrent() }
     }
 
     func previous() {
         playbackIntent = UUID()
-        if elapsed > 3 { seek(to: 0) }
+        if hasEnded {
+            _ = queue.previous()
+            wantsPlayback = true
+            beginCurrent()
+        } else if elapsed > 3 { seek(to: 0) }
         else if queue.previous() { wantsPlayback = true; beginCurrent() }
         else { seek(to: 0) }
     }
 
     func seek(to value: Double) {
         playbackIntent = UUID()
-        guard !isLoading, engine.supportsSeeking, value.isFinite else { return }
+        guard current != nil, !isLoading, value.isFinite else { return }
+        let position = min(max(0, value), max(0, duration - 0.05))
+        // After EOF the engine no longer owns a seekable decoder. Reopen it at
+        // the requested position, keeping the existing paused/playing intent.
+        if hasEnded || entries.isEmpty { beginCurrent(at: position); return }
+        guard engine.supportsSeeking else { return }
         isSeeking = true
-        if engine.seek(time: min(max(0, value), max(0, duration - 0.05))) {
-            elapsed = value
+        if engine.seek(time: position) {
+            elapsed = position
             updateNowPlaying()
         } else { isSeeking = false; error = L10n.text("mobile.seekFailed") }
     }
@@ -410,6 +422,7 @@ final class PlayerModel: NSObject {
 
     func stop() {
         waitingForNext = false
+        hasEnded = false
         playbackIntent = UUID()
         generation = UUID()
         cancelTransfers()
@@ -465,6 +478,7 @@ final class PlayerModel: NSObject {
     }
 
     private func tick() {
+        guard !hasEnded else { return }
         if let time = engine.currentTime, time.isFinite, !isSeeking { elapsed = max(0, time) }
         if let total = engine.totalTime, total.isFinite, total > 0 { duration = total }
         if let decoder = engine.nowPlaying, let entry = entries[ObjectIdentifier(decoder as AnyObject)] {
@@ -507,11 +521,22 @@ final class PlayerModel: NSObject {
     }
 
     private func ended() {
-        guard !isLoading, current != nil else { return }
+        guard !isLoading, !hasEnded, current != nil else { return }
         if nextIsPreparing { waitingForNext = true; return }
         waitingForNext = false
         if queue.advance(automatic: true) { beginCurrent() }
-        else { pausePlayback(); elapsed = duration; updateNowPlaying() }
+        else {
+            hasEnded = true
+            wantsPlayback = false
+            isSeeking = false
+            cancelTransfers()
+            engine.stop()
+            entries.removeAll()
+            discarded.removeAll()
+            activeID = nil
+            elapsed = duration
+            updateNowPlaying()
+        }
     }
 
     private func updateNowPlaying() {
