@@ -15,7 +15,7 @@ struct AlbumTile: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(alignment: .topTrailing) {
                         if model.favorites.contains(.album, id: album.id) {
-                            Image(systemName: "heart.fill").font(.caption).foregroundStyle(Theme.accent)
+                            Image(systemName: "heart.fill").font(Theme.body(12)).foregroundStyle(Theme.accent)
                                 .padding(7).background(.regularMaterial, in: Circle()).padding(6)
                                 .accessibilityLabel(L10n.text("common.faved"))
                         }
@@ -44,18 +44,18 @@ struct AlbumCaption: View {
                     Image(systemName: "eye.slash").accessibilityLabel(L10n.text("albumPage.hiddenBadge"))
                 }
                 if let rating = album.rym?.validRating { RatingText(rating: rating).fixedSize() }
-            }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+            }.font(Theme.body(11).monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
                 .accessibilityElement(children: .combine).accessibilityIdentifier("tile.footer.\(album.id)")
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var title: some View {
-        Text(album.title).font(Theme.title(17, relativeTo: .headline)).foregroundStyle(Theme.ink)
+        Text(album.title).displayFont(17, relativeTo: .headline).foregroundStyle(Theme.ink)
             .multilineTextAlignment(.leading)
     }
 
     private var artist: some View {
-        Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        Text(album.artist).font(Theme.body(12)).foregroundStyle(.secondary).lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -115,12 +115,12 @@ struct AlbumRow: View {
             Cover(albumID: album.id, size: 160, revision: album.updatedAt, client: model.imageClient)
                 .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 3) {
-                Text(album.title).font(.body).foregroundStyle(Theme.ink).lineLimit(2)
-                Text(album.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(album.title).font(Theme.body(17)).foregroundStyle(Theme.ink).lineLimit(2)
+                Text(album.artist).font(Theme.body(12)).foregroundStyle(.secondary).lineLimit(1)
                 HStack(spacing: 8) {
                     if let year = album.year, year > 0 { Text(String(year)) }
                     if let rating = album.rym?.validRating { RatingText(rating: rating) }
-                }.font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                }.font(Theme.body(11).monospacedDigit()).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
                 // The separator follows the text column, not whichever text in
                 // the row the list happens to pick.

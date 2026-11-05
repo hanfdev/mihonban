@@ -44,7 +44,7 @@ struct ConnectionView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Image("Logo").resizable().scaledToFit().frame(width: 92, height: 92)
                         .clipShape(RoundedRectangle(cornerRadius: 22)).accessibilityHidden(true)
-                    Text("見本盤").font(Theme.title(44))
+                    Text("見本盤").displayFont(44)
                     Text(L10n.text("mobile.connectHint")).foregroundStyle(Theme.dim)
                 }.padding(.bottom, 12)
                 VStack(alignment: .leading, spacing: 20) {
@@ -88,6 +88,7 @@ struct ConnectionView: View {
 }
 
 struct SettingsView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDisconnect = false
@@ -138,7 +139,7 @@ struct SettingsView: View {
                             if usage.buffering > 0 {
                                 LabeledContent(L10n.text("mobile.cacheBuffer"), value: CacheSettings.size(usage.buffering))
                             }
-                        }.font(.subheadline).foregroundStyle(.secondary)
+                        }.font(Theme.body(15)).foregroundStyle(.secondary)
                     }
                     if let clearMessage {
                         Text(clearMessage).font(Theme.body(13)).foregroundStyle(Theme.dim)
@@ -175,6 +176,8 @@ struct SettingsView: View {
                 }.listRowBackground(Theme.surface)
             }
             .scrollContentBackground(.hidden).background(Theme.background)
+            .accessibilityIdentifier("settings.content")
+            .accessibilityValue(L10n.text(colorScheme == .dark ? "mobile.appearanceDark" : "mobile.appearanceLight"))
             .navigationTitle(L10n.text("mobile.settings")).navigationBarTitleDisplayMode(.inline)
             .task { await model.media?.refreshUsage() }
             .onChange(of: model.cache.enabled) { model.cacheSettingsChanged() }

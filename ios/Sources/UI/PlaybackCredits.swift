@@ -46,7 +46,7 @@ struct PlaybackCreditsButton: View {
                             .accessibilityIdentifier("player.artists.count")
                     }
                     if credits.summarizesNames || credits.names.isEmpty {
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).accessibilityHidden(true)
+                        Image(systemName: "chevron.right").font(Theme.body(12, weight: .semibold)).accessibilityHidden(true)
                     }
                 }.font(Theme.body(fontSize)).foregroundStyle(Theme.dim)
                     .frame(minHeight: 44).contentShape(Rectangle())
@@ -86,17 +86,17 @@ struct PlaybackCreditsSheet: View {
         NavigationStack {
             List {
                 if credits.names.isEmpty {
-                    Text(credits.rawText).font(.body).foregroundStyle(Theme.ink)
+                    Text(credits.rawText).font(Theme.body(17)).foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                         .listRowBackground(Theme.surface).accessibilityIdentifier("player.credits.raw")
                 } else {
                     ForEach(Array(credits.names.enumerated()), id: \.element) { index, name in
                         Button { selectArtist(name) } label: {
                             HStack(spacing: 12) {
-                                Text(name).font(.body).foregroundStyle(Theme.ink)
+                                Text(name).font(Theme.body(17)).foregroundStyle(Theme.ink)
                                     .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.dim)
+                                Image(systemName: "chevron.right").font(Theme.body(12)).foregroundStyle(Theme.dim)
                                     .accessibilityHidden(true)
                             }.frame(minHeight: 44).contentShape(Rectangle())
                         }.buttonStyle(.plain).listRowBackground(Theme.surface)

@@ -16,7 +16,7 @@ struct AlbumsScreen: View {
                 CatalogProblem(message: error) { Task { await model.catalog.refresh() } }
             }
             if !shown.isEmpty {
-                Text(L10n.count("count.albums", shown.count)).font(.footnote.monospacedDigit())
+                Text(L10n.count("count.albums", shown.count)).font(Theme.body(13).monospacedDigit())
                     .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20).padding(.top, 4)
             }

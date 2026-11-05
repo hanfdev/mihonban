@@ -71,7 +71,13 @@ struct FavoritesScreen: View {
                 }
             }
         }
-        .task(id: kind) { if kind == .track { await model.catalog.ensureTracks() } }
+        .task(id: kind) { await model.catalog.refresh() }
+        .task(id: model.favorites.value.tracks.map(\.id)) {
+            let known = Set(model.catalog.tracks.map(\.id))
+            if model.favorites.value.tracks.contains(where: { !known.contains($0.id) }) {
+                await model.catalog.ensureTracks(force: true)
+            }
+        }
         .onChange(of: canEdit) { _, value in if !value { editing = false } }
     }
 

@@ -23,7 +23,7 @@ struct ArtistScreen: View {
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeading(title: L10n.text("nav.library"), count: albums.count)
                     if albums.isEmpty {
-                        Text(L10n.text("artistPage.emptyAlbums")).font(.callout).foregroundStyle(.secondary)
+                        Text(L10n.text("artistPage.emptyAlbums")).font(Theme.body(16)).foregroundStyle(.secondary)
                     } else {
                         LazyVGrid(columns: CatalogLayout.grid, alignment: .leading, spacing: 24) {
                             ForEach(albums) { AlbumTile(album: $0, model: model) }
@@ -58,18 +58,18 @@ struct ArtistScreen: View {
     private var header: some View {
         VStack(spacing: 14) {
             ArtistAvatar(artist: artist, model: model, size: 148)
-            Text(name).font(Theme.title(28)).multilineTextAlignment(.center)
+            Text(name).displayFont(28).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("artist.title")
             let aliases = ([artist.sort?.nonEmpty].compactMap { $0 } + (artist.aliases ?? []))
                 .filter { $0 != name }
             if !aliases.isEmpty {
-                Text(aliases.joined(separator: " · ")).font(.subheadline).foregroundStyle(.secondary)
+                Text(aliases.joined(separator: " · ")).font(Theme.body(15)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             HStack(spacing: 18) {
                 Button { Task { await model.playArtist(name) } } label: {
-                    Label(L10n.text("common.playAll"), systemImage: "play.fill").font(.body.weight(.semibold))
+                    Label(L10n.text("common.playAll"), systemImage: "play.fill").font(Theme.body(17, weight: .semibold))
                         .padding(.horizontal, 20).frame(minHeight: 48)
                         .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent)
                 }.buttonStyle(.plain).accessibilityIdentifier("artist.play")

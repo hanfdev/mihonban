@@ -2,6 +2,29 @@ import XCTest
 @testable import Mihonban
 
 final class NowPlayingLayoutTests: XCTestCase {
+    func testOpticalCenterIsLiftedWithoutClippingOrNegativeInsets() {
+        for size in [CGSize(width: 1194, height: 700), CGSize(width: 1376, height: 900)] {
+            let cover = NowPlayingLayout.coverSide(in: size, controlsHeight: 360, isTablet: true)
+            let top = NowPlayingLayout.stageTop(in: size, coverSide: cover, controlsHeight: 360, isTablet: true)
+            let bottom = size.height - top - max(cover, 360)
+            XCTAssertGreaterThanOrEqual(top, 12)
+            XCTAssertGreaterThan(bottom - top, 70)
+            XCTAssertLessThan(bottom - top, 150)
+        }
+        XCTAssertEqual(NowPlayingLayout.stageTop(in: CGSize(width: 744, height: 600),
+            coverSide: 160, controlsHeight: 900, isTablet: true), 12)
+    }
+
+    func testPlayerGestureRequiresIntentAndSupportsFlicksAtDifferentSizes() {
+        for height: CGFloat in [600, 900, 1300] {
+            XCTAssertFalse(PlayerMotion.completes(distance: 15, predicted: 900, height: height))
+            XCTAssertFalse(PlayerMotion.completes(distance: 35, predicted: 45, height: height))
+            XCTAssertTrue(PlayerMotion.completes(distance: 180, predicted: 180, height: height))
+            XCTAssertTrue(PlayerMotion.completes(distance: 45, predicted: 300, height: height))
+            XCTAssertEqual(PlayerMotion.progress(distance: height / 2, height: height), 0.5)
+            XCTAssertEqual(PlayerMotion.progress(distance: -20, height: height), 0)
+        }
+    }
     func testShortTitleUsesAvailablePhoneWidth() {
         let available = CGSize(width: 402, height: 700)
         let side = NowPlayingLayout.coverSide(in: available, controlsHeight: 285)

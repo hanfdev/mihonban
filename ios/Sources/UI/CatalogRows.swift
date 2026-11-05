@@ -20,27 +20,27 @@ struct CatalogTrackRow: View {
                     Group {
                         if isCurrent { Image(systemName: "waveform").foregroundStyle(Theme.accent) }
                         else { Text(String(number)).foregroundStyle(.secondary) }
-                    }.font(.subheadline.monospacedDigit()).frame(width: 26)
+                    }.font(Theme.body(15).monospacedDigit()).frame(width: 26)
                 } else if showCover {
                     Cover(albumID: track.albumId ?? "", size: 160, client: model.imageClient)
                         .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(track.title).font(.body).foregroundStyle(isCurrent ? Theme.accent : Theme.ink)
+                    Text(track.title).font(Theme.body(17)).foregroundStyle(isCurrent ? Theme.accent : Theme.ink)
                         .lineLimit(2).multilineTextAlignment(.leading)
                     if !hideArtist {
-                        Text(track.artist ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(track.artist ?? "").font(Theme.body(12)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if model.favorites.contains(.track, id: track.id) {
-                    Image(systemName: "heart.fill").font(.caption).foregroundStyle(Theme.accent)
+                    Image(systemName: "heart.fill").font(Theme.body(12)).foregroundStyle(Theme.accent)
                         .accessibilityLabel(L10n.text("common.faved"))
                 }
                 if model.downloads?.records[track.id]?.state == .done {
-                    Image(systemName: "arrow.down.circle.fill").font(.caption).foregroundStyle(.secondary)
+                    Image(systemName: "arrow.down.circle.fill").font(Theme.body(12)).foregroundStyle(.secondary)
                         .accessibilityLabel(L10n.text("mobile.downloaded"))
                 }
-                Text(timestamp(track.duration ?? 0)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Text(timestamp(track.duration ?? 0)).font(Theme.body(12).monospacedDigit()).foregroundStyle(.secondary)
             }.padding(.vertical, 4).frame(minHeight: hideArtist ? 44 : 52).contentShape(Rectangle())
         }.buttonStyle(.plain)
             .accessibilityIdentifier(identifier ?? "track.\(track.id)")
@@ -99,7 +99,7 @@ struct CatalogProblem: View {
     let retry: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(message, systemImage: "exclamationmark.circle").font(.subheadline)
+            Label(message, systemImage: "exclamationmark.circle").font(Theme.body(15))
             Button(L10n.text("common.retry"), action: retry)
         }.padding().frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -110,9 +110,9 @@ struct SectionHeading: View {
     var count: Int?
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(Theme.title(22, relativeTo: .title2)).foregroundStyle(Theme.ink)
+            Text(title).displayFont(22, relativeTo: .title2).foregroundStyle(Theme.ink)
             Spacer()
-            if let count { Text(String(count)).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+            if let count { Text(String(count)).font(Theme.body(12).monospacedDigit()).foregroundStyle(.secondary) }
         }.accessibilityAddTraits(.isHeader)
     }
 }

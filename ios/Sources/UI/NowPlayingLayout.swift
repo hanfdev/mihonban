@@ -1,7 +1,7 @@
 import SwiftUI
 
-// Geometry is the safe content area supplied by NavigationStack. Do not
-// subtract navigation bars or safe-area insets a second time here.
+// Geometry is the safe content area below the player's custom header.
+// Do not subtract the header or safe-area insets a second time here.
 enum NowPlayingLayout {
     static let horizontalInset: CGFloat = 28
     static let topInset: CGFloat = 12
@@ -48,6 +48,18 @@ enum NowPlayingLayout {
 
     static func contentWidth(_ size: CGSize) -> CGFloat {
         max(0, size.width - 2 * horizontalInset)
+    }
+
+    static func stageTop(in size: CGSize, coverSide: CGFloat, controlsHeight: CGFloat, isTablet: Bool) -> CGFloat {
+        guard isTablet else { return topInset }
+        let stageHeight = usesColumns(size) ? max(coverSide, controlsHeight)
+            : coverSide + coverSpacing(in: size, isTablet: true) + controlsHeight
+        // Balance the full window rather than centering below a tall header.
+        // Give the larger bottom margin to the heavier play controls; clamp
+        // the optical lift so smaller windows and large text can still scroll.
+        let spare = max(0, size.height - stageHeight - topInset - bottomInset)
+        let lift = usesColumns(size) ? min(64, size.height * 0.08, spare * 0.35) : min(24, spare * 0.20)
+        return topInset + spare / 2 - lift
     }
 
     static func coverSide(in size: CGSize, controlsHeight: CGFloat, isTablet: Bool = false) -> CGFloat {

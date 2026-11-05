@@ -17,6 +17,7 @@ struct MiniPlayer: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("player.expand")
+                    .modifier(PlayerSwipe(expanding: true))
                 PlayButton(player: model.player, diameter: 36)
                 IconButton(symbol: "forward.end.fill", label: L10n.text("player.next")) { model.player.next() }
             }.padding(.horizontal, 14).padding(.vertical, 10)
@@ -27,8 +28,8 @@ struct MiniPlayer: View {
 }
 
 struct NowPlayingView: View {
+    private enum Space { case viewport }
     let model: AppModel
-    @Environment(\.dismiss) private var dismiss
     @State private var queueVisible = false
     @State private var creditsSheet: CreditsSelection?
     @State private var pendingArtist: (trackID: String, name: String)?
@@ -37,77 +38,96 @@ struct NowPlayingView: View {
     @State private var controlsHeight: CGFloat = 330
     @State private var routePickerPresented = false
     @State private var sharing: ShareSelection?
+    @State private var scrollTop: CGFloat = 0
+    @State private var seekFrame: CGRect = .zero
+    @State private var transportFrame: CGRect = .zero
+    @State private var footerFrame: CGRect = .zero
 
     private var player: PlayerModel { model.player }
     private var isTablet: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                ScrollView {
-                    let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: controlsHeight, isTablet: isTablet)
-                    let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side, isTablet: isTablet)
-                    let style = NowPlayingLayout.controlStyle(in: geometry.size, isTablet: isTablet)
-                    Group {
-                        if NowPlayingLayout.usesColumns(geometry.size) {
-                            HStack(alignment: isTablet ? .center : .top,
-                                   spacing: NowPlayingLayout.columnSpacing(in: geometry.size, isTablet: isTablet)) {
-                                cover.frame(width: side, height: side)
-                                controls(style: style, width: width).frame(width: width)
+            VStack(spacing: 0) {
+                header
+                GeometryReader { geometry in
+                    ScrollView {
+                        let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: controlsHeight, isTablet: isTablet)
+                        let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side, isTablet: isTablet)
+                        let style = NowPlayingLayout.controlStyle(in: geometry.size, isTablet: isTablet)
+                        Group {
+                            if NowPlayingLayout.usesColumns(geometry.size) {
+                                HStack(alignment: isTablet ? .center : .top,
+                                       spacing: NowPlayingLayout.columnSpacing(in: geometry.size, isTablet: isTablet)) {
+                                    cover.frame(width: side, height: side)
+                                    controls(style: style, width: width).frame(width: width)
+                                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
+                                }
+                            } else {
+                                VStack(spacing: NowPlayingLayout.coverSpacing(in: geometry.size, isTablet: isTablet)) {
+                                    cover.frame(width: side, height: side)
+                                    controls(style: style, width: width).frame(width: width)
+                                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
+                                }
                             }
-                        } else {
-                            VStack(spacing: NowPlayingLayout.coverSpacing(in: geometry.size, isTablet: isTablet)) {
-                                cover.frame(width: side, height: side)
-                                controls(style: style, width: width).frame(width: width)
-                                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
-                            }
-                        }
-                    }.padding(.horizontal, NowPlayingLayout.horizontalInset)
-                        .padding(.top, NowPlayingLayout.topInset).padding(.bottom, NowPlayingLayout.bottomInset)
-                        // Fill the tablet viewport so spare space surrounds the whole
-                        // composition. Taller content retains its natural scroll height.
-                        .frame(maxWidth: .infinity, minHeight: isTablet ? geometry.size.height : nil)
-                }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
-                    .accessibilityIdentifier("player.scroll")
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    IconButton(symbol: "chevron.down", label: L10n.text("mobile.collapse")) { dismiss() }
-                        .accessibilityIdentifier("player.collapse")
-                }
-                ToolbarItem(placement: .principal) {
-                    Text(isTablet && !(player.current?.albumTitle ?? "").isEmpty
-                         ? player.current?.albumTitle ?? "" : L10n.text("mobile.nowPlaying"))
-                        .font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if let track = player.current {
-                        Menu {
-                            if let selection = ShareSelection.track(track, client: model.imageClient) {
-                                Button(L10n.text("mobile.shareTrack"), systemImage: "square.and.arrow.up") { sharing = selection }
-                                    .accessibilityIdentifier("player.share")
-                                Divider()
-                            }
-                            TrackActions(track: track, model: model)
-                        } label: { Image(systemName: "ellipsis") }
-                            .accessibilityLabel(L10n.text("mobile.moreActions")).accessibilityIdentifier("player.more")
-                    }
+                        }.padding(.horizontal, NowPlayingLayout.horizontalInset)
+                            .padding(.top, NowPlayingLayout.stageTop(in: geometry.size, coverSide: side,
+                                controlsHeight: controlsHeight, isTablet: isTablet))
+                            .padding(.bottom, NowPlayingLayout.bottomInset)
+                            .frame(maxWidth: .infinity, minHeight: isTablet ? geometry.size.height : nil, alignment: .top)
+                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Space.viewport)).minY } action: { scrollTop = $0 }
+                    }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
+                        .coordinateSpace(name: Space.viewport)
+                        .modifier(PlayerSwipe(enabled: scrollTop >= -1 && !scrubbing,
+                            excluded: [seekFrame, transportFrame, footerFrame]))
+                        .accessibilityIdentifier("player.scroll")
                 }
             }
+            .background(Theme.background)
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $sharing) { ActivitySheet(selection: $0).modifier(AppAppearance()) }
-            .sheet(isPresented: $queueVisible) { QueueView(player: player) }
+            .sheet(isPresented: $queueVisible) { QueueView(player: player).modifier(AppAppearance()) }
             .sheet(item: $creditsSheet, onDismiss: finishArtistSelection) { selection in
                 PlaybackCreditsSheet(credits: selection.credits) { name in
                     guard selection.id == player.current?.id else { return }
                     pendingArtist = (selection.id, name)
                     creditsSheet = nil
-                }
+                }.modifier(AppAppearance())
             }
             .onChange(of: player.current?.id) { _, _ in
                 pendingArtist = nil
                 creditsSheet = nil
             }
-        }.presentationDragIndicator(UIDevice.current.userInterfaceIdiom == .pad ? .hidden : .visible).tint(Theme.accent)
+        }.tint(Theme.accent)
+            .accessibilityAction(.escape) { player.isExpanded = false }
+    }
+
+    private var header: some View {
+        HStack(spacing: 20) {
+            IconButton(symbol: "chevron.down", label: L10n.text("mobile.collapse")) { player.isExpanded = false }
+                .background(Theme.surface, in: Circle()).accessibilityIdentifier("player.collapse")
+            Spacer(minLength: 0)
+            Text(isTablet && !(player.current?.albumTitle ?? "").isEmpty
+                 ? player.current?.albumTitle ?? "" : L10n.text("mobile.nowPlaying"))
+                .font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
+            Spacer(minLength: 0)
+            Menu {
+                if let track = player.current {
+                    if let selection = ShareSelection.track(track, client: model.imageClient) {
+                        Button(L10n.text("mobile.shareTrack"), systemImage: "square.and.arrow.up") { sharing = selection }
+                            .accessibilityIdentifier("player.share")
+                        Divider()
+                    }
+                    TrackActions(track: track, model: model)
+                }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(Theme.ink).frame(width: 44, height: 44)
+                    .background(Theme.surface, in: Circle()).contentShape(Circle())
+            }.accessibilityLabel(L10n.text("mobile.moreActions")).accessibilityIdentifier("player.more")
+        }
+        .padding(.horizontal, isTablet ? 32 : 20)
+        .padding(.top, isTablet ? 24 : 12).padding(.bottom, isTablet ? 16 : 8)
+        .contentShape(Rectangle()).modifier(PlayerSwipe())
     }
 
     private struct CreditsSelection: Identifiable {
@@ -161,6 +181,7 @@ struct NowPlayingView: View {
                 }).tint(style == .compact ? Theme.accent : Theme.ink)
                     .disabled(player.isLoading).accessibilityLabel(L10n.text("player.seek"))
                     .accessibilityIdentifier("player.seek")
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global).insetBy(dx: -12, dy: -12) } action: { seekFrame = $0 }
                 HStack {
                     Text(timestamp(scrubbing ? scrubTime : player.elapsed))
                     Spacer()
@@ -184,6 +205,7 @@ struct NowPlayingView: View {
                            selected: player.queue.repeatMode != .off) { player.cycleRepeat() }
             }.padding(.vertical, 4)
                 .frame(width: min(width, style.transportWidth)).frame(maxWidth: .infinity)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { transportFrame = $0 }
             // Icons only, under shuffle and repeat, as in the system music app.
             HStack {
                 RoutePicker { routePickerPresented = $0 }
@@ -194,6 +216,7 @@ struct NowPlayingView: View {
                 IconButton(symbol: "list.bullet", label: L10n.text("mobile.queue")) { queueVisible = true }
                     .accessibilityIdentifier("player.queue")
             }.frame(width: min(width, style.transportWidth)).frame(maxWidth: .infinity)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { footerFrame = $0 }
             if let error = player.error {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(error).font(Theme.body(14)).foregroundStyle(Theme.dim)
@@ -212,7 +235,7 @@ struct QueueView: View {
         NavigationStack {
             List {
                 Section {
-                    Text(L10n.text("mobile.queue")).font(Theme.title(30)).foregroundStyle(Theme.ink)
+                    Text(L10n.text("mobile.queue")).displayFont(30).foregroundStyle(Theme.ink)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                 }

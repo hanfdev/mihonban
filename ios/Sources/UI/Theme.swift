@@ -21,9 +21,6 @@ nonisolated enum Theme {
         })
     }
 
-    static func title(_ size: CGFloat, relativeTo style: Font.TextStyle = .title) -> Font {
-        .custom("ShipporiMincho-SemiBold", size: size, relativeTo: style)
-    }
     static func body(_ size: CGFloat = 15, weight: Font.Weight = .regular) -> Font {
         .custom(weight == .semibold ? "Inter-SemiBold" : "Inter-Regular", size: size, relativeTo: .body)
     }
@@ -123,7 +120,6 @@ struct PlayAllRow: View {
     let player: PlayerModel
     var identifier = "list"
     var preparing = false
-    var shuffle: (() -> Void)? = nil
     let play: () -> Void
     var body: some View {
         HStack(spacing: 12) {
@@ -134,15 +130,12 @@ struct PlayAllRow: View {
                         if preparing { ProgressView().tint(Theme.onAccent) }
                         else { Image(systemName: "play.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.onAccent) }
                     }.frame(width: 44, height: 44)
-                    Text(L10n.text(preparing ? "mobile.preparingQueue" : "common.playAll")).font(.body.weight(.semibold)).foregroundStyle(Theme.ink)
+                    Text(L10n.text(preparing ? "mobile.preparingQueue" : "common.playAll")).font(Theme.body(17, weight: .semibold)).foregroundStyle(Theme.ink)
                         .lineLimit(1)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("\(identifier).play")
             Spacer(minLength: 8)
-            if let shuffle {
-                IconButton(symbol: "shuffle", label: L10n.text("common.shuffle"), action: shuffle)
-                    .accessibilityIdentifier("\(identifier).shuffle")
-            } else { ShuffleToggle(player: player, identifier: "\(identifier).shuffle") }
+            ShuffleToggle(player: player, identifier: "\(identifier).shuffle")
         }
         .disabled(preparing)
         .padding(.vertical, 4)

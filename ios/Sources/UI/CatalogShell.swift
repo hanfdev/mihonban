@@ -18,6 +18,10 @@ struct CatalogShell: View {
     @Environment(\.dynamicTypeSize) private var textSize
 
     var body: some View {
+        PlayerPresentation(model: model) { library }
+    }
+
+    private var library: some View {
         Group {
             if #available(iOS 26.0, *), textSize.isAccessibilitySize {
                 // The system accessory has a compact height and clips two lines
@@ -48,12 +52,6 @@ struct CatalogShell: View {
             }
         }
         .sheet(isPresented: $settings) { SettingsView(model: model).modifier(AppAppearance()) }
-        .sheet(isPresented: playerPresentation(fullScreen: false)) {
-            NowPlayingView(model: model).modifier(AppAppearance())
-        }
-        .fullScreenCover(isPresented: playerPresentation(fullScreen: true)) {
-            NowPlayingView(model: model).modifier(AppAppearance())
-        }
         // Context menus and Now Playing request links here; the selected tab pushes them.
         .onChange(of: model.pendingRoute) { _, route in
             guard let route else { return }
@@ -62,12 +60,6 @@ struct CatalogShell: View {
             // Opening the page that is already on screen only closes the player.
             if paths[selected]?.last != route { paths[selected, default: []].append(route) }
         }
-    }
-
-    private func playerPresentation(fullScreen: Bool) -> Binding<Bool> {
-        let usesFullScreen = UIDevice.current.userInterfaceIdiom == .pad
-        return Binding(get: { usesFullScreen == fullScreen && model.player.isExpanded },
-                       set: { if usesFullScreen == fullScreen { model.player.isExpanded = $0 } })
     }
 
     @available(iOS 18.0, *)
@@ -133,6 +125,7 @@ struct NativeMiniPlayer: View {
                                        artists: PlaybackCredits(track: model.player.current).compactText)
                 }.frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("player.expand")
+                .modifier(PlayerSwipe(expanding: true))
             Button { model.player.toggle() } label: {
                 Group {
                     if model.player.isLoading { ProgressView() }
@@ -156,9 +149,9 @@ struct MiniPlayerMetadata: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Text(title).font(Theme.body(15, weight: .semibold)).lineLimit(1)
                 .accessibilityIdentifier("mini.title")
-            Text(artists).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(artists).font(Theme.body(12)).foregroundStyle(.secondary).lineLimit(1)
                 .accessibilityIdentifier("mini.artists")
         }.fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)

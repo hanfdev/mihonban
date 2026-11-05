@@ -32,6 +32,7 @@ jobs:
       - name: Prepare synthetic audio and project
         run: |
           python3 -I ios/tools/check-l10n.py
+          python3 -I ios/tools/check-fonts.py
           mkdir -p ios/TestFixtures ios/Resources/ThirdParty
           ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a libmp3lame -q:a 3 ios/TestFixtures/tone.mp3
           ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a flac ios/TestFixtures/tone.flac
@@ -79,6 +80,7 @@ jobs:
           # The audio engine opens during app initialization. Finish the simulator's
           # first boot before launching the test host and its CoreAudio connection.
           xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl ui "$DEVICE" appearance dark
           # Ad-hoc signing binds the bundle identifier into the signature; an unsigned
           # build may be refused as a background transfer client (run 15/16, error -1).
           xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
@@ -111,12 +113,14 @@ jobs:
           trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
           IPAD=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"].startswith("iPad")))')
           xcrun simctl bootstatus "$IPAD" -b
+          xcrun simctl ui "$IPAD" appearance dark
           xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
             -destination "platform=iOS Simulator,id=$IPAD" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
             -resultBundlePath build/iPadTests.xcresult \
             -only-testing:MihonbanTests/CatalogLayoutTests \
             -only-testing:MihonbanTests/NowPlayingLayoutTests \
+            -only-testing:MihonbanTests/TypographyTests \
             -only-testing:MihonbanTests/AlbumHeaderLayoutTests \
             -only-testing:MihonbanTests/GalleryZoomTests \
             -only-testing:MihonbanTests/MarqueeTests \
@@ -137,7 +141,8 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testSingleGlobalSearchHasInsetsAndIncludesSongs \
             -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
             -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback \
-            -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleImmediatelyAndPlayAllUsesShownOrder \
+            -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-ipad.log
       - name: Preserve crash diagnostics and symbols

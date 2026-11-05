@@ -9,15 +9,15 @@ struct AlbumDescriptors: View {
     var body: some View {
         if !words.isEmpty {
             DisclosureGroup(isExpanded: $isExpanded) {
-                Text(words.joined(separator: " · ")).font(.footnote).foregroundStyle(Theme.dim)
+                Text(words.joined(separator: " · ")).font(Theme.body(13)).foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("album.descriptors.content")
             } label: {
                 HStack {
-                    Text(L10n.text("common.descriptors")).font(.subheadline).lineLimit(1)
+                    Text(L10n.text("common.descriptors")).font(Theme.body(15)).lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(String(words.count)).font(.caption.monospacedDigit()).fixedSize()
+                    Text(String(words.count)).font(Theme.body(12).monospacedDigit()).fixedSize()
                 }.foregroundStyle(Theme.dim)
             }.disclosureGroupStyle(DescriptorDisclosureStyle())
         }
@@ -37,7 +37,7 @@ private struct DescriptorDisclosureStyle: DisclosureGroupStyle {
                 HStack(spacing: 10) {
                     configuration.label
                     Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold)).foregroundStyle(Theme.dim).accessibilityHidden(true)
+                        .font(Theme.body(12, weight: .semibold)).foregroundStyle(Theme.dim).accessibilityHidden(true)
                 }.frame(minHeight: 44).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("album.descriptors")
                 .accessibilityValue(L10n.text(configuration.isExpanded ? "mobile.expanded" : "mobile.collapsed"))

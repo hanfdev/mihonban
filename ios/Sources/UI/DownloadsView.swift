@@ -60,9 +60,9 @@ struct DownloadsView: View {
             Cover(albumID: group.id, size: 160, client: model.imageClient)
                 .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6))
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.album?.title ?? group.records.first?.track.albumTitle ?? "").font(.subheadline.weight(.semibold))
+                Text(group.album?.title ?? group.records.first?.track.albumTitle ?? "").font(Theme.body(15, weight: .semibold))
                     .foregroundStyle(Theme.ink).lineLimit(1)
-                Text(group.album?.artist ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(group.album?.artist ?? "").font(Theme.body(12)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             Menu {
@@ -91,7 +91,7 @@ private struct DownloadRow: View {
         Button(action: play) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(record.track.title).font(.body).foregroundStyle(Theme.ink).lineLimit(2)
+                    Text(record.track.title).font(Theme.body(17)).foregroundStyle(Theme.ink).lineLimit(2)
                     status
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 indicator
@@ -103,15 +103,15 @@ private struct DownloadRow: View {
     @ViewBuilder private var status: some View {
         switch record.state {
         case .done:
-            Text(CacheSettings.size(Int(record.written))).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            Text(CacheSettings.size(Int(record.written))).font(Theme.body(12).monospacedDigit()).foregroundStyle(.secondary)
         case .downloading:
             ProgressView(value: record.fraction).tint(Theme.accent)
         case .queued:
-            Text(L10n.text("mobile.downloadQueued")).font(.caption).foregroundStyle(.secondary)
+            Text(L10n.text("mobile.downloadQueued")).font(Theme.body(12)).foregroundStyle(.secondary)
         case .failed:
-            Text(L10n.text("mobile.downloadFailed") + code).font(.caption).foregroundStyle(Theme.accent)
+            Text(L10n.text("mobile.downloadFailed") + code).font(Theme.body(12)).foregroundStyle(Theme.accent)
         case .interrupted:
-            Text(L10n.text("mobile.downloadInterrupted")).font(.caption).foregroundStyle(Theme.accent)
+            Text(L10n.text("mobile.downloadInterrupted")).font(Theme.body(12)).foregroundStyle(Theme.accent)
         }
     }
 

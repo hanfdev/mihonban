@@ -11,7 +11,7 @@ struct MarkdownContent: View {
                 MarkdownBlockContent(block: block)
             }
         }
-        .font(.body)
+        .font(Theme.body(17))
         .foregroundStyle(Theme.ink)
         .tint(Theme.accent)
         .textSelection(.enabled)
@@ -37,7 +37,7 @@ private struct MarkdownBlockContent: View {
             prose(block.text)
         case .heading(let level):
             prose(block.text)
-                .font(headingFont(level))
+                .displayFont(headingSize(level), relativeTo: .headline)
                 .foregroundStyle(Theme.ink)
                 .padding(.top, level <= 2 ? 8 : 2)
                 .accessibilityAddTraits(.isHeader)
@@ -47,7 +47,7 @@ private struct MarkdownBlockContent: View {
                 .accessibilityElement(children: .contain)
         case .listItem(let marker):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(verbatim: marker).font(.callout.monospacedDigit()).foregroundStyle(Theme.dim)
+                Text(verbatim: marker).font(Theme.body(16).monospacedDigit()).foregroundStyle(Theme.dim)
                     .fixedSize().frame(minWidth: markerWidth, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 8) { children }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,7 +63,7 @@ private struct MarkdownBlockContent: View {
         case .code(let language):
             VStack(alignment: .leading, spacing: 8) {
                 if let language {
-                    Text(verbatim: language).font(.caption.monospaced()).foregroundStyle(Theme.dim)
+                    Text(verbatim: language).font(Theme.body(12).monospaced()).foregroundStyle(Theme.dim)
                         .lineLimit(1)
                 }
                 ScrollView(.horizontal) {
@@ -133,7 +133,7 @@ private struct MarkdownBlockContent: View {
         let horizontal: Alignment = alignment == .center ? .center : alignment == .trailing ? .trailing : .leading
         let textAlignment: TextAlignment = alignment == .center ? .center : alignment == .trailing ? .trailing : .leading
         return Text(styled(cell.text))
-            .font(header ? .callout.weight(.semibold) : .callout)
+            .font(Theme.body(16, weight: header ? .semibold : .regular))
             .multilineTextAlignment(textAlignment)
             .lineSpacing(3)
             .frame(minWidth: 100, maxWidth: 240, alignment: horizontal)
@@ -146,12 +146,11 @@ private struct MarkdownBlockContent: View {
             .accessibilityIdentifier(cell.accessibilityIdentifier)
     }
 
-    private func headingFont(_ level: Int) -> Font {
+    private func headingSize(_ level: Int) -> CGFloat {
         switch level {
-        case 1: .title2.weight(.bold)
-        case 2: .title3.weight(.semibold)
-        case 3: .headline
-        default: .body.weight(.semibold)
+        case 1: 22
+        case 2: 20
+        default: 17
         }
     }
 }

@@ -16,10 +16,8 @@ struct TracksScreen: View {
                     CatalogProblem(message: error) { Task { await model.catalog.ensureTracks(force: true) } }
                 }
                 if !shown.isEmpty {
-                    PlayAllRow(player: model.player, identifier: "tracks", shuffle: {
-                        model.player.play(shown, shuffle: true)
-                    }) { model.player.play(shown, shuffle: false) }
-                    Text(L10n.count("count.tracks", shown.count)).font(.footnote.monospacedDigit())
+                    PlayAllRow(player: model.player, identifier: "tracks") { model.player.play(shown) }
+                    Text(L10n.count("count.tracks", shown.count)).font(Theme.body(13).monospacedDigit())
                         .foregroundStyle(Theme.dim).listRowBackground(Theme.background)
                         .accessibilityIdentifier("tracks.count")
                 }
@@ -67,7 +65,7 @@ struct TracksScreen: View {
         }
         .onChange(of: filters) { _, _ in update() }
         .onAppear { if !initialQuery.isEmpty && query.isEmpty { query = initialQuery }; update() }
-        .task { await model.catalog.ensureTracks(); update() }
+        .task { await model.catalog.ensureTracks(force: true); update() }
         .onChange(of: query) { _, _ in update() }
         .onChange(of: sort) { _, _ in update() }
         .onChange(of: model.catalog.revision) { _, _ in update() }

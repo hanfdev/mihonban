@@ -389,7 +389,7 @@ final class MihonbanUITests: XCTestCase {
         screenshot("18-genre-filtered")
     }
 
-    func testFilteredTracksShuffleImmediatelyAndPlayAllUsesShownOrder() {
+    func testFilteredTracksShuffleTogglesWithoutStartingPlayback() {
         let app = XCUIApplication()
         app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]
         app.launch()
@@ -406,7 +406,14 @@ final class MihonbanUITests: XCTestCase {
         screenshot("40-filtered-tracks")
         app.buttons["tracks.shuffle"].tap()
         let expand = app.buttons["player.expand"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 15), "Shuffle starts the filtered queue immediately")
+        XCTAssertTrue(app.buttons["tracks.shuffle"].isSelected)
+        XCTAssertFalse(expand.exists, "Choosing shuffle must not start playback")
+        app.buttons["tracks.shuffle"].tap()
+        XCTAssertFalse(app.buttons["tracks.shuffle"].isSelected)
+        XCTAssertFalse(expand.exists)
+        app.buttons["tracks.shuffle"].tap()
+        app.buttons["tracks.play"].tap()
+        XCTAssertTrue(expand.waitForExistence(timeout: 15))
         app.buttons["Pause"].firstMatch.tap()
         expand.tap()
         let playerShuffle = app.buttons["player.shuffle"]
@@ -418,11 +425,12 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertFalse(app.buttons["queue.2"].exists, "only the three matching tracks enter the queue")
         app.buttons["queue.close"].tap()
         app.buttons["player.collapse"].tap()
+        app.buttons["tracks.shuffle"].tap()
         app.buttons["tracks.play"].tap()
         app.buttons["Pause"].firstMatch.tap()
         expand.tap()
         waitForLabel(app.buttons["player.title"], "After the rain")
-        XCTAssertFalse(playerShuffle.isSelected, "Play all uses the displayed title order")
+        XCTAssertFalse(playerShuffle.isSelected, "Play all respects the disabled shuffle mode")
         app.buttons["player.collapse"].tap()
         app.buttons["tracks.filters"].tap()
         app.buttons["filters.decade"].tap()
@@ -1185,6 +1193,13 @@ final class MihonbanUITests: XCTestCase {
         screenshot("42-light-library")
         app.buttons["settings.open"].firstMatch.tap()
         picker.tap()
+        app.buttons["Follow System"].tap()
+        let appearance = app.descendants(matching: .any)["settings.content"].firstMatch
+        let dark = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Dark"), object: appearance)
+        XCTAssertEqual(XCTWaiter.wait(for: [dark], timeout: 10), .completed,
+                       "The open settings sheet must immediately follow the simulator's dark appearance")
+        screenshot("48-system-dark-open-settings")
+        picker.tap()
         app.buttons["Dark"].tap()
         screenshot("43-dark-settings")
         app.buttons["Done"].firstMatch.tap()
@@ -1199,6 +1214,42 @@ final class MihonbanUITests: XCTestCase {
         app.buttons["Follow System"].tap()
         screenshot("44-system-appearance")
         app.buttons["Done"].firstMatch.tap()
+    }
+
+    func testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback() {
+        let app = launchCreditsPlayer()
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let title = app.buttons["player.title"].label
+        let orientations: [UIDeviceOrientation] = UIDevice.current.userInterfaceIdiom == .pad
+            ? [.portrait, .landscapeLeft] : [.portrait]
+        for orientation in orientations {
+            XCUIDevice.shared.orientation = orientation
+            let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let frame = app.windows.firstMatch.frame
+                return orientation == .portrait ? frame.height > frame.width : frame.width > frame.height
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [rotated], timeout: 10), .completed)
+            let cover = app.images["player.cover"]
+            XCTAssertTrue(cover.waitForExistence(timeout: 10))
+            let start = cover.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 35)), velocity: .slow)
+            XCTAssertTrue(app.buttons["player.collapse"].waitForExistence(timeout: 10))
+            XCTAssertEqual(app.buttons["player.title"].label, title)
+            let down = cover.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            down.press(forDuration: 0.05, thenDragTo: down.withOffset(CGVector(dx: 0, dy: 220)), velocity: .slow)
+            let mini = app.buttons["player.expand"]
+            XCTAssertTrue(mini.waitForExistence(timeout: 10))
+            XCTAssertEqual(app.buttons["mini.toggle"].label, "Play")
+            let up = mini.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
+            up.press(forDuration: 0.05, thenDragTo: up.withOffset(CGVector(dx: 0, dy: -220)), velocity: .slow)
+            XCTAssertTrue(app.buttons["player.collapse"].waitForExistence(timeout: 10))
+            XCTAssertEqual(app.buttons["player.title"].label, title)
+            XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+            let seek = app.sliders["player.seek"]
+            seek.adjust(toNormalizedSliderPosition: 0.35)
+            XCTAssertTrue(app.buttons["player.collapse"].exists, "Seeking must not dismiss the player")
+            screenshot(orientation == .portrait ? "48-player-swipe-portrait" : "48-player-swipe-landscape")
+        }
     }
 
     func testTabletPlayerUsesWholeWindowAndReturnsFromQueue() {
@@ -1348,18 +1399,21 @@ final class MihonbanUITests: XCTestCase {
 
     private func assertTabletPlayerBalance(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let scroll = app.scrollViews["player.scroll"].frame
-        let navigation = app.navigationBars.containing(.button, identifier: "player.collapse").firstMatch.frame
+        let collapse = app.buttons["player.collapse"].frame
         let cover = element(app, "player.cover").frame
         let heading = app.buttons["player.title"].frame
         let footer = app.buttons["player.queue"].frame
         let composition = cover.union(heading).union(footer)
-        // AX reports the ScrollView behind the navigation bar too. Measure below
-        // that bar, allowing the bottom gesture inset and control hit-area rounding.
-        let visibleTop = max(scroll.minY, navigation.maxY)
-        let visibleCenter = (visibleTop + scroll.maxY) / 2
-        XCTAssertEqual(composition.midY, visibleCenter, accuracy: 24,
-                       "balanced tablet content: content=\(composition), navigation=\(navigation), scroll=\(scroll)",
-                       file: file, line: line)
+        let visibleTop = max(scroll.minY, collapse.maxY + 16)
+        let window = app.windows.firstMatch.frame
+        XCTAssertGreaterThanOrEqual(collapse.minY, window.minY + 44, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(collapse.minX, window.minX + 30, file: file, line: line)
+        if window.width > window.height {
+            XCTAssertGreaterThan(composition.midY, window.minY + window.height * 0.43, file: file, line: line)
+            XCTAssertLessThan(composition.midY, window.minY + window.height * 0.53, file: file, line: line)
+            XCTAssertGreaterThan(scroll.maxY - composition.maxY, composition.minY - visibleTop,
+                                 "the composition sits above the content area's mathematical center", file: file, line: line)
+        }
         XCTAssertGreaterThanOrEqual(composition.minY, visibleTop, file: file, line: line)
         XCTAssertLessThanOrEqual(composition.maxY, scroll.maxY, file: file, line: line)
     }

@@ -1,0 +1,145 @@
+import SwiftUI
+
+enum PlayerMotion {
+    static func completes(distance: CGFloat, predicted: CGFloat, height: CGFloat) -> Bool {
+        distance >= min(140, height * 0.20)
+            || (distance >= 24 && predicted >= min(240, height * 0.34))
+    }
+
+    static func progress(distance: CGFloat, height: CGFloat) -> CGFloat {
+        min(1, max(0, distance / max(1, height)))
+    }
+}
+
+struct PlayerDragActions {
+    var changed: (CGFloat) -> Void
+    var ended: (CGFloat, CGFloat) -> Void
+}
+
+extension EnvironmentValues {
+    @Entry var expandPlayer: PlayerDragActions?
+    @Entry var collapsePlayer: PlayerDragActions?
+}
+
+// One surface for both idioms keeps a finger-driven transition continuous;
+// nested queue/credits sheets retain their own native presentation and gestures.
+struct PlayerPresentation<Library: View>: View {
+    let model: AppModel
+    @ViewBuilder var library: () -> Library
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var phase
+    @State private var mounted = false
+    @State private var progress: CGFloat = 0
+    @State private var opening = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let height = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            ZStack {
+                library()
+                    .environment(\.expandPlayer, PlayerDragActions(changed: { distance in
+                        opening = true
+                        mounted = true
+                        progress = PlayerMotion.progress(distance: distance, height: height)
+                    }, ended: { distance, predicted in
+                        opening = false
+                        let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: height)
+                        model.player.isExpanded = expand
+                        settle(expand)
+                    }))
+                    .allowsHitTesting(!model.player.isExpanded)
+                    .accessibilityHidden(mounted && !opening)
+                if mounted {
+                    NowPlayingView(model: model)
+                        .environment(\.collapsePlayer, PlayerDragActions(changed: { distance in
+                            progress = 1 - PlayerMotion.progress(distance: distance, height: height)
+                        }, ended: { distance, predicted in
+                            let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: height)
+                            model.player.isExpanded = !collapse
+                            settle(!collapse)
+                        }))
+                        .background(Theme.background.ignoresSafeArea())
+                        .offset(y: reduceMotion ? 0 : (1 - progress) * height)
+                        .opacity(reduceMotion ? progress : 1)
+                        .allowsHitTesting(model.player.isExpanded && !opening)
+                        .accessibilityHidden(opening)
+                        .accessibilityAddTraits(.isModal)
+                        .zIndex(1)
+                }
+            }
+            .onChange(of: geometry.size) { _, _ in
+                opening = false
+                settle(model.player.isExpanded)
+            }
+        }
+        .onChange(of: model.player.isExpanded) { _, expanded in
+            if expanded && !mounted {
+                mounted = true
+                progress = 0
+                // Insert the surface before animating its first frame.
+                DispatchQueue.main.async { if model.player.isExpanded { settle(true) } }
+            } else { settle(expanded) }
+        }
+        .onChange(of: phase) { _, next in
+            if next != .active { opening = false; settle(model.player.isExpanded) }
+        }
+    }
+
+    private func settle(_ expanded: Bool) {
+        withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .spring(duration: 0.42, bounce: 0.06)) {
+            progress = expanded ? 1 : 0
+        } completion: {
+            if !model.player.isExpanded && !opening && progress == 0 { mounted = false }
+        }
+    }
+}
+
+struct PlayerSwipe: ViewModifier {
+    var expanding = false
+    var enabled = true
+    var excluded: [CGRect] = []
+    @Environment(\.expandPlayer) private var expand
+    @Environment(\.collapsePlayer) private var collapse
+    @State private var accepted = false
+    @State private var rejected = false
+    @GestureState private var touching = false
+
+    private var actions: PlayerDragActions? { expanding ? expand : collapse }
+
+    func body(content: Content) -> some View {
+        content.simultaneousGesture(
+            DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                .updating($touching) { _, state, _ in state = true }
+                .onChanged { value in
+                    guard !rejected, actions != nil else { return }
+                    let y = value.translation.height * (expanding ? -1 : 1)
+                    if !accepted {
+                        guard enabled, y > abs(value.translation.width) * 1.3,
+                              !excluded.contains(where: { $0.contains(value.startLocation) }) else {
+                            rejected = true
+                            return
+                        }
+                        accepted = true
+                    }
+                    actions?.changed(max(0, y))
+                }
+                .onEnded { value in
+                    if accepted {
+                        let direction: CGFloat = expanding ? -1 : 1
+                        actions?.ended(max(0, value.translation.height * direction),
+                                       max(0, value.predictedEndTranslation.height * direction))
+                    }
+                    accepted = false
+                    rejected = false
+                }
+        )
+        .onChange(of: touching) { _, value in
+            if !value {
+                // A system interruption may cancel a gesture without onEnded.
+                if accepted { actions?.ended(0, 0) }
+                accepted = false
+                rejected = false
+            }
+        }
+    }
+}

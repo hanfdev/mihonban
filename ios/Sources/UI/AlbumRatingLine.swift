@@ -30,7 +30,7 @@ struct AlbumRatingLine: View {
                 }
                 rank
             }
-        }.font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+        }.font(Theme.body(15).monospacedDigit()).foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
     }
 

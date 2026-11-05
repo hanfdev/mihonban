@@ -78,7 +78,7 @@ struct AlbumEditView: View {
                     TextField(L10n.text("albumPage.artistNamePh"), text: $credit.name)
                         .textInputAutocapitalization(.words)
                     TextField(L10n.text("albumPage.artistSortPh"), text: $credit.sort)
-                        .font(.subheadline).foregroundStyle(.secondary).autocorrectionDisabled()
+                        .font(Theme.body(15)).foregroundStyle(.secondary).autocorrectionDisabled()
                 }.padding(.vertical, 2)
             }
             .onDelete { draft.credits.remove(atOffsets: $0) }
@@ -90,7 +90,7 @@ struct AlbumEditView: View {
             HStack {
                 Text(L10n.text("albumPage.artists"))
                 Spacer()
-                if draft.credits.count > 1 { EditButton().font(.footnote).textCase(nil) }
+                if draft.credits.count > 1 { EditButton().font(Theme.body(13)).textCase(nil) }
             }
         } footer: { Text(L10n.text("albumPage.artistCasingHint")) }
             .listRowBackground(Theme.surface)
@@ -98,7 +98,7 @@ struct AlbumEditView: View {
 
     private func field(_ label: String, text: Binding<String>, prompt: String, id: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(L10n.text(label)).font(.footnote).foregroundStyle(.secondary)
+            Text(L10n.text(label)).font(Theme.body(13)).foregroundStyle(.secondary)
             TextField(L10n.text(prompt), text: text, axis: .vertical).accessibilityIdentifier(id)
         }.padding(.vertical, 2)
     }

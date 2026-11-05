@@ -153,7 +153,7 @@ struct AlbumView: View {
 
     private func header(_ album: Album, layout: AlbumHeaderLayout) -> some View {
         VStack(spacing: layout.usesColumns ? 14 : 10) {
-            Text(album.title).font(Theme.title(layout.titleSize)).fixedSize(horizontal: false, vertical: true)
+            Text(album.title).displayFont(layout.titleSize).fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("album.title")
@@ -167,7 +167,7 @@ struct AlbumView: View {
                 Text(L10n.count("count.tracks", album.normalizedTracks.count))
                 if let duration = album.duration, duration > 0 { Text(timestamp(duration)) }
                 if album.hidden == true { Label(L10n.text("albumPage.hiddenBadge"), systemImage: "eye.slash") }
-            }.font(.footnote.monospacedDigit()).foregroundStyle(Theme.faint)
+            }.font(Theme.body(13).monospacedDigit()).foregroundStyle(Theme.faint)
             formatSummary(album)
             if let rym = album.rym, let rating = rym.validRating {
                 AlbumRatingLine(rym: rym, rating: rating, centered: true)
@@ -221,7 +221,7 @@ struct AlbumView: View {
             ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                 if multiDisc && (index == 0 || track.disc != tracks[index - 1].disc) {
                     Text(L10n.text("common.disc", String(track.disc ?? 1)))
-                        .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        .font(Theme.body(13, weight: .semibold)).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.top, index == 0 ? 0 : 18).padding(.bottom, 6)
                 }
                 CatalogTrackRow(track: track, model: model, number: track.track ?? index + 1,
@@ -258,7 +258,7 @@ struct AlbumView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeading(title: L10n.text("albumPage.note"))
                 if let document = noteDocument, document.source == note {
-                    Text(document.plainPreview).font(.callout).foregroundStyle(Theme.dim).lineSpacing(4)
+                    Text(document.plainPreview).font(Theme.body(16)).foregroundStyle(Theme.dim).lineSpacing(4)
                         .lineLimit(6).accessibilityIdentifier("album.note.preview")
                 } else { ProgressView() }
                 Button(L10n.text("md.expand")) { readingNote = true }.accessibilityIdentifier("album.note.read")
@@ -305,7 +305,7 @@ struct AlbumView: View {
             FlowLayout(spacing: 10, centered: true) {
                 ForEach(formats, id: \.self) { Text($0) }
                 if bytes > 0 { Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)) }
-            }.font(.footnote.monospacedDigit()).foregroundStyle(Theme.faint)
+            }.font(Theme.body(13).monospacedDigit()).foregroundStyle(Theme.faint)
                 .accessibilityElement(children: .combine).accessibilityIdentifier("album.format")
         }
     }
@@ -330,10 +330,10 @@ struct SimilarAlbumCard: View {
             Cover(albumID: album.id, size: 480, client: client)
                 .frame(width: Self.coverSide, height: Self.coverSide)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text(album.title).font(.subheadline).foregroundStyle(Theme.ink)
+            Text(album.title).font(Theme.body(15)).foregroundStyle(Theme.ink)
                 .lineLimit(1).truncationMode(.tail)
                 .accessibilityIdentifier("similar.title.\(album.id)")
-            Text(album.artist ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(album.artist ?? "").font(Theme.body(12)).foregroundStyle(.secondary).lineLimit(1)
                 .accessibilityIdentifier("similar.artist.\(album.id)")
         }.frame(width: Self.coverSide, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)

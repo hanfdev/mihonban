@@ -18,8 +18,8 @@ struct ArtistsScreen: View {
                     HStack(spacing: 14) {
                         ArtistAvatar(artist: summary.artist, model: model)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(summary.artist.name).font(.body).foregroundStyle(Theme.ink).lineLimit(2)
-                            Text(caption(summary)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(summary.artist.name).font(Theme.body(17)).foregroundStyle(Theme.ink).lineLimit(2)
+                            Text(caption(summary)).font(Theme.body(12)).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }.padding(.vertical, 2)
                 }.listRowBackground(Theme.background).accessibilityIdentifier("artist.\(summary.artist.name)")

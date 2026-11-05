@@ -103,6 +103,10 @@ final class CatalogStore {
             artists = people
             favorites.replace(picks)
             rebuildIndex()
+            // Revalidate a cached song list with its ETag. A favorites response
+            // can already reference songs imported since that list was saved.
+            if tracksLoaded || !picks.tracks.isEmpty { await ensureTracks(force: true) }
+            guard token == generation else { return }
             await persist()
         } catch {
             if token == generation && !(error is CancellationError) { self.error = describe(error) }

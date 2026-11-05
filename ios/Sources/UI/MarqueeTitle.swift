@@ -50,7 +50,7 @@ struct PlaybackTitleButton: View {
             .sheet(isPresented: $showingFullTitle) {
                 NavigationStack {
                     ScrollView {
-                        Text(track?.title ?? "").font(.title2).textSelection(.enabled)
+                        Text(track?.title ?? "").displayFont(22, relativeTo: .title2).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(24)
                             .accessibilityIdentifier("player.fullTitle")
                     }.background(Theme.background)
@@ -89,7 +89,7 @@ struct MarqueeTitle: UIViewRepresentable {
             .accessibility3: .accessibilityExtraLarge, .accessibility4: .accessibilityExtraExtraLarge,
             .accessibility5: .accessibilityExtraExtraExtraLarge]
         let font = UIFontMetrics(forTextStyle: .title1).scaledFont(
-            for: UIFont(name: "ShipporiMincho-SemiBold", size: fontSize) ?? .systemFont(ofSize: fontSize),
+            for: Typography.display(fontSize),
             compatibleWith: UITraitCollection(preferredContentSizeCategory: categories[textSize] ?? .large))
         view.openAlbum = openAlbum
         view.showFullTitle = showFullTitle

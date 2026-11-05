@@ -87,7 +87,7 @@ struct Chip: View {
     let text: String
     var prominent = false
     var body: some View {
-        Text(text).font(.footnote)
+        Text(text).font(Theme.body(13))
             .padding(.horizontal, 11).padding(.vertical, 6)
             .foregroundStyle(prominent ? Theme.ink : Theme.dim)
             .background(prominent ? Theme.raised : Theme.surface, in: Capsule())
