@@ -18,7 +18,8 @@ struct SearchScreen: View {
         }
         .listStyle(.insetGrouped).scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle(L10n.text("common.search"))
-        // Default placement lets iOS 26 merge the field into the search tab.
+        .navigationBarTitleDisplayMode(.inline)
+        // One global search field belongs to the dedicated search tab.
         .searchable(text: $query, prompt: L10n.text("search.placeholder"))
         .overlay {
             if !trimmed.isEmpty && artists.isEmpty && albums.isEmpty && tracks.isEmpty
@@ -43,6 +44,7 @@ struct SearchScreen: View {
                 ForEach(Array(latest)) { album in
                     NavigationLink(value: CatalogRoute.album(album.id)) { AlbumRow(album: album, model: model) }
                         .listRowBackground(Theme.surface)
+                        .accessibilityIdentifier("search.album.\(album.id)")
                 }
             }
         }
@@ -67,6 +69,7 @@ struct SearchScreen: View {
                 ForEach(albums.prefix(limit)) { album in
                     NavigationLink(value: CatalogRoute.album(album.id)) { AlbumRow(album: album, model: model) }
                         .listRowBackground(Theme.surface)
+                        .accessibilityIdentifier("search.album.\(album.id)")
                 }
                 if albums.count > limit {
                     NavigationLink(L10n.text("mobile.allResults"), value: CatalogRoute.albumSearch(trimmed)).listRowBackground(Theme.surface)

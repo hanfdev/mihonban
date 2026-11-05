@@ -9,7 +9,18 @@ final class CacheSettings {
 
     var enabled: Bool { didSet { defaults.set(enabled, forKey: key("enabled")) } }
     var limitBytes: Int { didSet { defaults.set(limitBytes, forKey: key("limit")) } }
-    var preloadNext: Bool { didSet { defaults.set(preloadNext, forKey: key("preload")) } }
+    var preloadPolicy: PreloadPolicy {
+        didSet {
+            defaults.set(preloadPolicy.rawValue, forKey: key("preloadPolicy"))
+            preloadDidChange?()
+        }
+    }
+    @ObservationIgnored var preloadDidChange: (@MainActor () -> Void)?
+    // Compatibility for existing callers; the stored boolean is only migrated once.
+    var preloadNext: Bool {
+        get { preloadPolicy != .off }
+        set { preloadPolicy = newValue ? .automatic : .off }
+    }
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let prefix: String
@@ -23,7 +34,8 @@ final class CacheSettings {
         let limit = defaults.object(forKey: stored("limit")) as? Int ?? 0
         enabled = defaults.object(forKey: stored("enabled")) as? Bool ?? true
         limitBytes = CacheSettings.limits.contains(limit) ? limit : 1 << 30
-        preloadNext = defaults.object(forKey: stored("preload")) as? Bool ?? true
+        preloadPolicy = defaults.string(forKey: stored("preloadPolicy")).flatMap(PreloadPolicy.init(rawValue:))
+            ?? ((defaults.object(forKey: stored("preload")) as? Bool ?? true) ? .automatic : .off)
     }
 
     private func key(_ name: String) -> String { "\(prefix).\(name)" }

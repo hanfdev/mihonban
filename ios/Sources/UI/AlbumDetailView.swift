@@ -10,6 +10,7 @@ struct AlbumView: View {
     @State private var expandedDescriptors = false
     @State private var gallery: String?
     @State private var editing = false
+    @State private var sharing: ShareSelection?
     @State private var confirmDelete = false
     @State private var working = false
     // Failures only; a successful write shows itself in the page.
@@ -53,6 +54,11 @@ struct AlbumView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 if let album {
                     Menu {
+                        if let selection = ShareSelection.album(album, client: model.imageClient) {
+                            Button(L10n.text("mobile.shareAlbum"), systemImage: "square.and.arrow.up") { sharing = selection }
+                                .accessibilityIdentifier("album.share")
+                            Divider()
+                        }
                         AlbumActions(album: album, model: model)
                         if model.sessionStore.isAdmin && !model.demo { adminActions(album) }
                     } label: { Image(systemName: "ellipsis") }
@@ -61,6 +67,7 @@ struct AlbumView: View {
                 }
             }
         }
+        .sheet(item: $sharing) { ActivitySheet(selection: $0).modifier(AppAppearance()) }
         .refreshable { await load(refresh: true) }
         .task(id: albumID) { await load() }
         .task(id: album?.note) {
@@ -171,7 +178,7 @@ struct AlbumView: View {
         HStack(spacing: 28) {
             ShuffleToggle(player: model.player, identifier: "album.shuffle")
             Button { model.player.play(album.normalizedTracks) } label: {
-                Image(systemName: "play.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.ink)
+                Image(systemName: "play.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.onAccent)
                     .frame(width: 60, height: 60).background(Theme.accent, in: Circle())
                     .contentShape(Circle())
             }.buttonStyle(.plain).accessibilityLabel(L10n.text("common.playAll")).accessibilityIdentifier("album.play")

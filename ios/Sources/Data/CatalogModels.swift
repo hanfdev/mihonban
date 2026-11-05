@@ -89,6 +89,16 @@ struct AlbumFilters: Equatable, Sendable {
     var isActive: Bool { !genre.isEmpty || decade != nil || !artist.isEmpty || minimumRating > 0 }
     var count: Int { [!genre.isEmpty, decade != nil, !artist.isEmpty, minimumRating > 0].filter { $0 }.count }
 
+    // A track's own credit takes precedence over the album credit.
+    func matches(track: Track, album: Album?) -> Bool {
+        if !artist.isEmpty && !track.credits.contains(where: { $0.name == artist }) { return false }
+        if let decade, (track.year ?? album?.year ?? 0) / 10 * 10 != decade { return false }
+        if minimumRating > 0 && (album?.rym?.validRating ?? 0) < minimumRating { return false }
+        let selected = GenreName.key(genre)
+        let genres = (album?.genres ?? []) + (album?.secondaryGenres ?? [])
+        return selected.isEmpty || genres.contains { GenreName.key($0) == selected }
+    }
+
     func matches(_ album: Album) -> Bool {
         if minimumRating > 0 && (album.rym?.validRating ?? 0) < minimumRating { return false }
         if let decade, (album.year ?? 0) / 10 * 10 != decade { return false }

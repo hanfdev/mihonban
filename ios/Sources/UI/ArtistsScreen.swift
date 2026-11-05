@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ArtistsScreen: View {
     let model: AppModel
-    @State private var query = ""
     @State private var sort: ArtistSort = .count
     @State private var genre = ""
     @State private var shown: [ArtistSummary] = []
@@ -34,7 +33,7 @@ struct ArtistsScreen: View {
                 }
             }
             .navigationTitle(L10n.text("nav.artists"))
-            .searchable(text: $query, prompt: L10n.text("common.search"))
+
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -51,7 +50,6 @@ struct ArtistsScreen: View {
                 }
             }
             .onAppear(perform: update)
-            .onChange(of: query) { _, _ in update() }
             .onChange(of: sort) { _, _ in update() }
             .onChange(of: genre) { _, _ in update() }
             .onChange(of: model.catalog.revision) { _, _ in update() }
@@ -67,5 +65,5 @@ struct ArtistsScreen: View {
         return parts.joined(separator: " · ")
     }
 
-    private func update() { shown = model.catalog.index.artists(query: query, genre: genre, sort: sort) }
+    private func update() { shown = model.catalog.index.artists(query: "", genre: genre, sort: sort) }
 }

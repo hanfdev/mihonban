@@ -11,7 +11,7 @@ final class NetworkPlaybackTests: XCTestCase {
         XCTAssertTrue(session.ok)
         let library = try await api.library(previous: nil)
         XCTAssertEqual(library.albums.count, 3)
-        let player = PlayerModel()
+        let player = PlayerModel(monitorNetwork: false)
         let defaultsName = "org.mihonban.network-tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
         let preferences = CacheSettings(defaults: defaults)
@@ -57,7 +57,8 @@ final class NetworkPlaybackTests: XCTestCase {
             tracks += try await api.album(album.id).normalizedTracks
         }
         XCTAssertGreaterThanOrEqual(tracks.count, 3)
-        let player = PlayerModel()
+        let player = PlayerModel(monitorNetwork: false)
+        player.updatePreloadNetwork(PreloadNetwork(connected: true, wifiOrEthernet: true))
         let defaultsName = "org.mihonban.network-tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
         let preferences = CacheSettings(defaults: defaults)
@@ -106,6 +107,50 @@ final class NetworkPlaybackTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(600))
         XCTAssertGreaterThan(player.elapsed, start + 0.4, "playback continued through every change")
         XCTAssertEqual(player.current?.id, playing)
+        XCTAssertFalse(player.isLoading)
+        XCTAssertNil(player.error)
+    }
+
+    func testPreloadPolicyChangesLeaveCurrentPlaybackIntact() async throws {
+        let api = try APIClient(address: "http://127.0.0.1:8766")
+        api.clearCookies()
+        _ = try await api.login(password: "fixture-password")
+        var tracks: [Track] = []
+        for album in try await api.library(previous: nil).albums {
+            tracks += try await api.album(album.id).normalizedTracks
+        }
+        let name = "org.mihonban.network-policy.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        let preferences = CacheSettings(defaults: defaults)
+        preferences.enabled = false
+        let player = PlayerModel(monitorNetwork: false)
+        player.cache = preferences
+        preferences.preloadDidChange = { [weak player] in player?.preloadSettingsChanged() }
+        player.updatePreloadNetwork(PreloadNetwork(connected: true, wifiOrEthernet: true))
+        player.connect(api)
+        defer {
+            player.stop(); player.setForeground(false)
+            defaults.removePersistentDomain(forName: name)
+        }
+        player.play(tracks)
+        try await waitUntil { player.elapsed > 0.3 && player.preparedNextID != nil }
+        let current = player.current?.id
+        let elapsed = player.elapsed
+        preferences.preloadPolicy = .off
+        XCTAssertNil(player.preparedNextID)
+        XCTAssertEqual(player.current?.id, current)
+        XCTAssertFalse(player.isLoading)
+        preferences.preloadPolicy = .automatic
+        try await waitUntil { player.preparedNextID != nil }
+        player.updatePreloadNetwork(PreloadNetwork(connected: true, expensive: true))
+        XCTAssertNil(player.preparedNextID, "automatic mode stops speculative cellular transfers")
+        XCTAssertEqual(player.current?.id, current)
+        preferences.preloadPolicy = .always
+        try await waitUntil { player.preparedNextID != nil }
+        XCTAssertEqual(player.preparedNextID, player.queue.nextSnapshot()?.current?.id)
+        try await waitUntil { player.elapsed > elapsed + 0.4 }
+        XCTAssertEqual(player.current?.id, current)
+        XCTAssertTrue(player.wantsPlayback)
         XCTAssertFalse(player.isLoading)
         XCTAssertNil(player.error)
     }

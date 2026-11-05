@@ -10,6 +10,7 @@ struct FavoritesScreen: View {
     @State private var kind: FavoriteKind = .album
     @State private var sort: FavoriteSort = .order
     @State private var editing = false
+    @State private var preparing = false
 
     private var canEdit: Bool { model.sessionStore.isAdmin && sort == .order }
 
@@ -44,7 +45,7 @@ struct FavoritesScreen: View {
                     Text(L10n.text("favs.tracks")).tag(FavoriteKind.track)
                 }.pickerStyle(.segmented).listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
-                if let error = model.favorites.error ?? model.catalog.error {
+                if let error = model.player.error ?? model.favorites.error ?? model.catalog.error {
                     CatalogProblem(message: error) { Task { await model.catalog.refresh() } }
                 }
             }
@@ -89,7 +90,14 @@ struct FavoritesScreen: View {
         let list = albums
         Section {
             if !list.isEmpty && !editing {
-                PlayAllRow(player: model.player, identifier: "favorites") { Task { await playAlbums(list) } }
+                PlayAllRow(player: model.player, identifier: "favorites", preparing: preparing) {
+                    guard !preparing else { return }
+                    preparing = true
+                    Task {
+                        defer { preparing = false }
+                        await model.playAlbums(list)
+                    }
+                }
                     .moveDisabled(true).deleteDisabled(true)
             }
             ForEach(list) { album in
@@ -142,9 +150,4 @@ struct FavoritesScreen: View {
         Task { for id in targets { await model.favorites.toggle(kind, id: id) } }
     }
 
-    private func playAlbums(_ albums: [Album]) async {
-        var tracks: [Track] = []
-        for album in albums { if let detail = try? await model.catalog.album(album.id) { tracks += detail.normalizedTracks } }
-        if !tracks.isEmpty { model.player.play(tracks) }
-    }
 }

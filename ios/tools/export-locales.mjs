@@ -5,6 +5,20 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const languages = ['en', 'ja', 'ko', 'fr', 'es', 'zh-Hans', 'zh-Hant']
 const extra = {
+  appearance: ["Appearance", "外観", "화면 모드", "Apparence", "Apariencia", "外观", "外觀"],
+  appearanceSystem: ["Follow System", "システムに従う", "시스템 설정 따르기", "Selon le système", "Seguir el sistema", "跟随系统", "跟隨系統"],
+  appearanceLight: ["Light", "ライト", "라이트", "Clair", "Claro", "浅色", "淺色"],
+  appearanceDark: ["Dark", "ダーク", "다크", "Sombre", "Oscuro", "深色", "深色"],
+  preloadOff: ["Off", "オフ", "끔", "Désactivé", "Desactivado", "关闭", "關閉"],
+  preloadAutomatic: ["Automatic (Wi-Fi)", "自動（Wi-Fi）", "자동 (Wi-Fi)", "Automatique (Wi-Fi)", "Automático (Wi-Fi)", "自动（Wi-Fi）", "自動（Wi-Fi）"],
+  preloadAlways: ["Always (including cellular)", "常にオン（モバイル通信を含む）", "항상 (모바일 데이터 포함)", "Toujours (données mobiles incluses)", "Siempre (incluye datos móviles)", "始终开启（含移动网络）", "一律開啟（含行動網路）"],
+  preloadHint: ["Prepare only the next queued track. Automatic avoids cellular, metered connections and Low Data Mode. Always may use mobile data. This works even when the local cache is off.", "キューの次の1曲だけを先読みします。自動ではモバイル通信、従量制接続、低データモードを使いません。常にオンではモバイルデータを使用する場合があります。キャッシュを無効にしていても利用できます。", "대기열의 다음 한 곡만 미리 받습니다. 자동 모드에서는 모바일 데이터, 요금제 연결, 저데이터 모드를 사용하지 않습니다. 항상 모드에서는 모바일 데이터를 사용할 수 있습니다. 캐시가 꺼져 있어도 작동합니다.", "Prépare uniquement le prochain titre. Le mode automatique évite les données mobiles, les connexions limitées et le mode de données réduites. Toujours peut utiliser les données mobiles, même sans cache local.", "Prepara solo la siguiente canción. El modo automático evita datos móviles, conexiones medidas y el modo de datos reducidos. Siempre puede usar datos móviles. Funciona incluso sin caché local.", "仅提前准备队列中的下一首。自动模式避开移动网络、计费连接和低数据模式；始终开启可能消耗移动数据。关闭本地缓存时仍可使用。", "僅預先準備佇列中的下一首。自動模式避開行動網路、計費連線和低數據模式；一律開啟可能使用行動數據。關閉本機快取時仍可使用。"],
+  shareAlbum: ["Share album", "アルバムを共有", "앨범 공유", "Partager l’album", "Compartir álbum", "分享音盘", "分享音盤"],
+  shareTrack: ["Share song", "曲を共有", "곡 공유", "Partager le morceau", "Compartir canción", "分享歌曲", "分享歌曲"],
+  searchTracks: ["Search songs in this list", "この一覧の曲を検索", "이 목록에서 곡 검색", "Rechercher dans ces morceaux", "Buscar canciones en esta lista", "搜索当前列表中的歌曲", "搜尋目前列表中的歌曲"],
+  preparingQueue: ["Preparing queue…", "キューを準備中…", "대기열 준비 중…", "Préparation de la file…", "Preparando cola…", "正在准备队列…", "正在準備佇列…"],
+  incompleteQueue: ["The complete queue could not be loaded. Refresh the library and try again.", "キュー全体を読み込めませんでした。ライブラリを更新して再試行してください。", "전체 대기열을 불러오지 못했습니다. 라이브러리를 새로 고친 후 다시 시도하세요.", "Impossible de charger toute la file. Actualisez la bibliothèque et réessayez.", "No se pudo cargar la cola completa. Actualiza la biblioteca e inténtalo de nuevo.", "未能载入完整队列，请刷新曲库后重试。", "無法載入完整佇列，請重新整理曲庫後再試。"],
+
   address: ['Service address', 'サーバーアドレス', '서버 주소', 'Adresse du service', 'Dirección del servicio', '服务地址', '服務位址'],
   connect: ['Connect', '接続', '연결', 'Connecter', 'Conectar', '连接', '連線'],
   connecting: ['Connecting…', '接続中…', '연결 중…', 'Connexion…', 'Conectando…', '正在连接…', '正在連線…'],
@@ -107,6 +121,10 @@ for (const [index, language] of languages.entries()) {
   for (const [key, values] of Object.entries(extra)) {
     if (values.length !== languages.length || values.some(value => !value)) throw new Error(`Incomplete translation: ${key}`)
     result['mobile.' + key] = values[index]
+  }
+  // Normalize only the album term in Simplified Chinese, preserving proper names.
+  if (language === 'zh-Hans') {
+    for (const key of Object.keys(result)) result[key] = result[key].replaceAll('音盤', '音盘')
   }
   catalogs[language] = result
 }

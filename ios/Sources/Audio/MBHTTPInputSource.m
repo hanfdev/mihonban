@@ -28,6 +28,7 @@
     BOOL _receivedResponse;
     BOOL _rangeSupported;
     BOOL _persistent;
+    BOOL _unmeteredOnly;
 }
 @end
 
@@ -110,6 +111,9 @@
     _requestedOffset = offset;
     _receivedResponse = NO;
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:_remoteURL];
+    request.allowsCellularAccess = !_unmeteredOnly;
+    request.allowsExpensiveNetworkAccess = !_unmeteredOnly;
+    request.allowsConstrainedNetworkAccess = !_unmeteredOnly;
     [request setValue:[NSString stringWithFormat:@"bytes=%ld-", (long)offset] forHTTPHeaderField:@"Range"];
     [request setValue:@"identity" forHTTPHeaderField:@"Accept-Encoding"];
     [request setValue:@"Mihonban-iOS/0.1" forHTTPHeaderField:@"User-Agent"];
@@ -206,6 +210,23 @@
 }
 
 - (BOOL)supportsSeeking { return YES; }
+- (BOOL)unmeteredOnly {
+    [_condition lock]; BOOL value = _unmeteredOnly; [_condition unlock]; return value;
+}
+- (void)setUnmeteredOnly:(BOOL)value {
+    [_condition lock];
+    if (_unmeteredOnly != value) {
+        _unmeteredOnly = value;
+        // Promotion to the current song lifts only the speculative request policy.
+        // Keep buffered bytes and restart a live range with the new permissions.
+        if (_task && !_complete && !_cancelled && !_failure &&
+            (_length < 0 || _writeOffset < _length)) {
+            NSInteger nextOffset = _receivedResponse ? _writeOffset : _requestedOffset;
+            [self requestFromOffset:_rangeSupported ? nextOffset : 0];
+        }
+    }
+    [_condition unlock];
+}
 - (BOOL)isOpen { [_condition lock]; BOOL value = _opened && !_cancelled; [_condition unlock]; return value; }
 - (BOOL)atEOF { [_condition lock]; BOOL value = _length >= 0 && _offset >= _length; [_condition unlock]; return value; }
 - (double)downloadedFraction {
@@ -321,6 +342,11 @@
         return;
     }
     NSMutableURLRequest *safe = request.mutableCopy;
+    [_condition lock];
+    safe.allowsCellularAccess = !_unmeteredOnly;
+    safe.allowsExpensiveNetworkAccess = !_unmeteredOnly;
+    safe.allowsConstrainedNetworkAccess = !_unmeteredOnly;
+    [_condition unlock];
     if (![request.URL.host isEqualToString:_remoteURL.host] ||
         ![request.URL.port isEqual:_remoteURL.port] || ![request.URL.scheme isEqual:_remoteURL.scheme]) {
         [safe setValue:nil forHTTPHeaderField:@"Cookie"];

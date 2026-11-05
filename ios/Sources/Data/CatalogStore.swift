@@ -110,11 +110,19 @@ final class CatalogStore {
     }
 
     func ensureTracks(force: Bool = false) async {
-        if offline || (tracksLoaded && !force) { return }
+        let token = generation
+        do { _ = try await requireTracks(force: force) }
+        catch { if token == generation && !(error is CancellationError) { self.error = describe(error) } }
+    }
+
+    func requireTracks(force: Bool = false) async throws -> [Track] {
+        if offline || (tracksLoaded && !force) { return index.tracks }
         let token = generation
         if let request = trackRequest {
-            if let loaded = try? await request.value, token == generation { applyTracks(loaded) }
-            return
+            let loaded = try await request.value
+            guard token == generation else { throw CancellationError() }
+            applyTracks(loaded)
+            return index.tracks
         }
         let hidden = showHidden && session.canSeeHidden
         let previous = tracksLoaded ? Versioned(value: tracks, etag: trackETag) : nil
@@ -122,15 +130,25 @@ final class CatalogStore {
         let request = Task { try await session.perform { try await $0.allTracks(includeHidden: hidden, previous: previous) } }
         trackRequest = request
         loadingTracks = true
+        error = nil
         defer { if token == generation { trackRequest = nil; loadingTracks = false } }
-        do {
-            let loaded = try await request.value
-            guard token == generation else { return }
-            applyTracks(loaded)
-            await persist()
-        } catch {
-            if token == generation && !(error is CancellationError) { self.error = describe(error) }
+        let loaded = try await request.value
+        guard token == generation else { throw CancellationError() }
+        applyTracks(loaded)
+        let result = index.tracks
+        await persist()
+        guard token == generation else { throw CancellationError() }
+        return result
+    }
+
+    func playbackTracks(for selected: [Album]) async throws -> [Track] {
+        if tracksLoaded { return try AlbumPlayback.assemble(albums: selected, tracks: index.tracks) }
+        let local = selected.compactMap { details[$0.id] ?? localAlbum?($0.id) }
+        if local.count == selected.count {
+            return try AlbumPlayback.assemble(albums: selected, tracks: local.flatMap(\.normalizedTracks))
         }
+        let loaded = try await requireTracks()
+        return try AlbumPlayback.assemble(albums: selected, tracks: loaded)
     }
 
     func album(_ id: String, refresh: Bool = false) async throws -> Album {

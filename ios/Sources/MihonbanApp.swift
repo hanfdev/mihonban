@@ -8,7 +8,7 @@ struct MihonbanApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
-                .preferredColorScheme(.dark)
+                .modifier(AppAppearance())
                 .tint(Theme.accent)
                 .foregroundStyle(Theme.ink)
                 .font(Theme.body())
@@ -75,11 +75,11 @@ struct ConnectionView: View {
                 }
                 Button { Task { await model.connect() } } label: {
                     HStack {
-                        if model.connecting { ProgressView().tint(Theme.ink) }
+                        if model.connecting { ProgressView().tint(Theme.onAccent) }
                         Text(L10n.text(model.connecting ? "mobile.connecting" : "mobile.connect"))
                     }.font(Theme.body(16, weight: .semibold)).frame(maxWidth: .infinity).frame(minHeight: 52)
                 }
-                .buttonStyle(.plain).background(Theme.accent, in: RoundedRectangle(cornerRadius: 10))
+                .buttonStyle(.plain).foregroundStyle(Theme.onAccent).background(Theme.accent, in: RoundedRectangle(cornerRadius: 10))
                 .disabled(model.connecting || model.address.isEmpty).accessibilityIdentifier("connection.connect")
                 .opacity(model.connecting || model.address.isEmpty ? 0.55 : 1)
             }.padding(28).frame(maxWidth: 500).frame(maxWidth: .infinity).padding(.top, 42)
@@ -93,6 +93,7 @@ struct SettingsView: View {
     @State private var confirmDisconnect = false
     @State private var clearMessage: String?
     @State private var clearing = false
+    @AppStorage("appearance") private var appearance = Appearance.system.rawValue
 
     private var usage: CacheUsage { model.media?.usage ?? CacheUsage() }
 
@@ -112,6 +113,11 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section(L10n.text("mobile.appearance")) {
+                    Picker(L10n.text("mobile.appearance"), selection: $appearance) {
+                        ForEach(Appearance.allCases, id: \.rawValue) { Text(L10n.text($0.label)).tag($0.rawValue) }
+                    }.accessibilityIdentifier("settings.appearance")
+                }.listRowBackground(Theme.surface)
                 Section(L10n.text("mobile.connection")) {
                     Text(model.demo ? "Demo" : model.address).font(Theme.body(14)).textSelection(.enabled)
                     LabeledContent(L10n.text("login.menuTitle"), value: roleName)
@@ -137,8 +143,6 @@ struct SettingsView: View {
                     if let clearMessage {
                         Text(clearMessage).font(Theme.body(13)).foregroundStyle(Theme.dim)
                     }
-                    Toggle(L10n.text("mobile.preloadNext"), isOn: $model.cache.preloadNext)
-                        .disabled(!model.cache.enabled)
                     Button(L10n.text("mobile.clearCache"), role: .destructive) {
                         clearing = true
                         Task {
@@ -160,7 +164,10 @@ struct SettingsView: View {
                     } footer: { Text(L10n.text("mobile.downloadsHint")) }.listRowBackground(Theme.surface)
                 }
                 Section {
-                    Text(L10n.text("mobile.prefetchNotice"))
+                    Picker(L10n.text("mobile.preloadNext"), selection: $model.cache.preloadPolicy) {
+                        ForEach(PreloadPolicy.allCases, id: \.self) { Text(L10n.text($0.label)).tag($0) }
+                    }.accessibilityIdentifier("settings.preload")
+                    Text(L10n.text("mobile.preloadHint"))
                     Text("Mihonban " + version).foregroundStyle(Theme.faint)
                 }.font(Theme.body(14)).listRowBackground(Theme.surface)
                 Section {

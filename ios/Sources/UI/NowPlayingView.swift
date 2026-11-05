@@ -36,6 +36,7 @@ struct NowPlayingView: View {
     @State private var scrubTime: Double = 0
     @State private var controlsHeight: CGFloat = 330
     @State private var routePickerPresented = false
+    @State private var sharing: ShareSelection?
 
     private var player: PlayerModel { model.player }
     var body: some View {
@@ -74,11 +75,19 @@ struct NowPlayingView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if let track = player.current {
-                        Menu { TrackActions(track: track, model: model) } label: { Image(systemName: "ellipsis") }
+                        Menu {
+                            if let selection = ShareSelection.track(track, client: model.imageClient) {
+                                Button(L10n.text("mobile.shareTrack"), systemImage: "square.and.arrow.up") { sharing = selection }
+                                    .accessibilityIdentifier("player.share")
+                                Divider()
+                            }
+                            TrackActions(track: track, model: model)
+                        } label: { Image(systemName: "ellipsis") }
                             .accessibilityLabel(L10n.text("mobile.moreActions")).accessibilityIdentifier("player.more")
                     }
                 }
             }
+            .sheet(item: $sharing) { ActivitySheet(selection: $0).modifier(AppAppearance()) }
             .sheet(isPresented: $queueVisible) { QueueView(player: player) }
             .sheet(item: $creditsSheet, onDismiss: finishArtistSelection) { selection in
                 PlaybackCreditsSheet(credits: selection.credits) { name in
@@ -91,7 +100,7 @@ struct NowPlayingView: View {
                 pendingArtist = nil
                 creditsSheet = nil
             }
-        }.presentationDragIndicator(.visible).tint(Theme.accent)
+        }.presentationDragIndicator(UIDevice.current.userInterfaceIdiom == .pad ? .hidden : .visible).tint(Theme.accent)
     }
 
     private struct CreditsSelection: Identifiable {
@@ -133,7 +142,7 @@ struct NowPlayingView: View {
             NowPlayingHeading(track: player.current, openAlbum: {
                 if let album = player.current?.albumId { model.pendingRoute = .album(album) }
             }, openArtists: openArtists, favorite: favoriteButton)
-                .environment(\.marqueeSuspended, routePickerPresented || queueVisible || creditsSheet != nil)
+                .environment(\.marqueeSuspended, routePickerPresented || queueVisible || creditsSheet != nil || sharing != nil)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
                                       set: { scrubTime = $0 }),
@@ -227,8 +236,9 @@ struct QueueView: View {
                             withTransaction(transaction) { editMode = editMode.isEditing ? .inactive : .active }
                         }.accessibilityIdentifier("queue.edit")
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(L10n.text("common.done")) { dismiss() }.accessibilityIdentifier("queue.done")
+                    ToolbarItem(placement: .topBarTrailing) {
+                        IconButton(symbol: "xmark", label: L10n.text("common.close")) { dismiss() }
+                            .accessibilityIdentifier("queue.close")
                     }
                 }
         }.tint(Theme.accent)

@@ -144,7 +144,7 @@ struct GalleryViewer: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }
                 .navigationTitle(L10n.text("albumPage.gallery")).navigationBarTitleDisplayMode(.inline)
             }
-        }
+        }.preferredColorScheme(.dark)
     }
 }
 

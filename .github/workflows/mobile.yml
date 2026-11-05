@@ -17,7 +17,7 @@ jobs:
   ios:
     name: Build and test native iOS
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode and install build tools
@@ -88,6 +88,9 @@ jobs:
       - name: Check iPad player layout
         run: |
           set -o pipefail
+          python3 -I ios/tools/fixture-server.py ios/TestFixtures > fixture-ipad.log 2>&1 &
+          FIXTURE_PID=$!
+          trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
           IPAD=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"].startswith("iPad")))')
           xcrun simctl bootstatus "$IPAD" -b
           xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
@@ -101,6 +104,7 @@ jobs:
             -only-testing:MihonbanTests/MarkdownTests \
             -only-testing:MihonbanTests/PlaybackCreditsTests \
             -only-testing:MihonbanTests/RymYearRankTests \
+            -only-testing:MihonbanTests/LibraryExperienceTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
             -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
             -only-testing:MihonbanUITests/MihonbanUITests/testReadingSheetClosesWithoutLosingAlbumPosition \
@@ -108,6 +112,11 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testQueueEditKeepsLongRowsAtTheSameHeightAndPosition \
             -only-testing:MihonbanUITests/MihonbanUITests/testSimilarAlbumCardsKeepSquareCoversAndSingleLineTitles \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsWithLargeTextAndLandscape \
+            -only-testing:MihonbanUITests/MihonbanUITests/testTabletPlayerUsesWholeWindowAndReturnsFromQueue \
+            -only-testing:MihonbanUITests/MihonbanUITests/testSingleGlobalSearchHasInsetsAndIncludesSongs \
+            -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
+            -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleImmediatelyAndPlayAllUsesShownOrder \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
             | tee build-ipad.log
       - name: Preserve crash diagnostics and symbols
@@ -174,6 +183,7 @@ jobs:
             build-simulator.log
             build-ipad.log
             fixture-server.log
+            fixture-ipad.log
           retention-days: 14
       - name: Save relinkable build objects
         uses: actions/upload-artifact@v4

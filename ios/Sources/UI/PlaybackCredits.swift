@@ -44,7 +44,7 @@ struct PlaybackCreditsButton: View {
                         Text(credits.moreText).fixedSize()
                             .accessibilityIdentifier("player.artists.count")
                     }
-                    if credits.singleArtist == nil {
+                    if credits.summarizesNames || credits.names.isEmpty {
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).accessibilityHidden(true)
                     }
                 }.font(Theme.body(17)).foregroundStyle(Theme.dim)

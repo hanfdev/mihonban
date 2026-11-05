@@ -55,6 +55,7 @@ final class AppModel {
         self.favorites = favorites
         catalog = CatalogStore(session: session, favorites: favorites)
         player.cache = cache
+        cache.preloadDidChange = { [weak player = player] in player?.preloadSettingsChanged() }
         catalog.localAlbum = { [weak self] id in self?.downloads?.albums[id] }
     }
 
@@ -207,12 +208,30 @@ final class AppModel {
         try await catalog.album(id)
     }
 
+    func playAlbums(_ albums: [Album], shuffle: Bool? = nil) async {
+        let intent = player.reservePlaybackIntent()
+        let session = sessionStore.revision
+        do {
+            let tracks = try await catalog.playbackTracks(for: albums)
+            guard !Task.isCancelled, session == sessionStore.revision, intent == player.playbackIntent else { return }
+            if tracks.isEmpty { throw ClientError(key: "mobile.incompleteQueue") }
+            player.play(tracks, shuffle: shuffle)
+        } catch {
+            if !(error is CancellationError), session == sessionStore.revision, intent == player.playbackIntent {
+                player.error = error.localizedDescription
+            }
+        }
+    }
+
     func playAlbum(_ id: String, shuffle: Bool? = nil) async {
+        let intent = player.reservePlaybackIntent()
         do {
             let tracks = try await catalog.album(id).normalizedTracks
-            guard !tracks.isEmpty else { return }
+            guard !tracks.isEmpty, intent == player.playbackIntent, !Task.isCancelled else { return }
             player.play(tracks, shuffle: shuffle)
-        } catch { player.error = error.localizedDescription }
+        } catch {
+            if !(error is CancellationError), intent == player.playbackIntent { player.error = error.localizedDescription }
+        }
     }
 
     func enqueueAlbum(_ id: String, next: Bool) async {
@@ -222,15 +241,18 @@ final class AppModel {
 
     // Matches the web artist page: owned albums in catalog order, then guest appearances.
     func playArtist(_ name: String, shuffle: Bool? = nil) async {
+        let intent = player.reservePlaybackIntent()
         do {
             var tracks: [Track] = []
             let owned = catalog.index.albums.filter { $0.credits.contains { $0.name == name } }
                 .sorted { ($0.year ?? 0, $0.title) < ($1.year ?? 0, $1.title) }
             for album in owned { tracks += try await catalog.album(album.id).normalizedTracks }
             tracks += try await catalog.artistTracks(name)
-            guard !tracks.isEmpty else { return }
+            guard !tracks.isEmpty, intent == player.playbackIntent, !Task.isCancelled else { return }
             player.play(tracks, shuffle: shuffle)
-        } catch { player.error = error.localizedDescription }
+        } catch {
+            if !(error is CancellationError), intent == player.playbackIntent { player.error = error.localizedDescription }
+        }
     }
 
     func disconnect() {

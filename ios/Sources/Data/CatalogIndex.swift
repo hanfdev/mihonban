@@ -8,11 +8,13 @@ struct CatalogIndex: Sendable {
     private(set) var genres: [GenreOption]
     private(set) var artistGenres: [GenreOption]
     private var albumText: [String: String]
+    private var albumsByID: [String: Album]
     private var trackText: [String: String]
     private var artistText: [String: String]
 
     init(albums: [Album], tracks: [Track], artists: [Artist], includeHidden: Bool) {
         self.albums = albums.filter { includeHidden || $0.hidden != true }
+        albumsByID = Dictionary(self.albums.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.tracks = tracks.filter { includeHidden || $0.hidden != true }
         var metadata: [String: Artist] = [:]
         artists.forEach { metadata[$0.name] = $0 }
@@ -65,9 +67,13 @@ struct CatalogIndex: Sendable {
             .sorted { Self.compare($0, $1, sort: sort) }
     }
 
-    func tracks(query: String, sort: TrackSort = .title) -> [Track] {
+    func tracks(query: String, filters: AlbumFilters = .init(), sort: TrackSort = .title) -> [Track] {
         let needle = SearchNormalizer.text(query.trimmingCharacters(in: .whitespacesAndNewlines))
-        return tracks.filter { needle.isEmpty || trackText[$0.id]?.contains(needle) == true }
+        return tracks.filter { track in
+            let album = albumsByID[track.albumId ?? ""]
+            return filters.matches(track: track, album: album)
+                && (needle.isEmpty || trackText[track.id]?.contains(needle) == true)
+        }
             .sorted { Self.compare($0, $1, sort: sort) }
     }
 

@@ -47,9 +47,12 @@ struct CatalogShell: View {
                 }
             }
         }
-        .sheet(isPresented: $settings) { SettingsView(model: model) }
-        .sheet(isPresented: Binding(get: { model.player.isExpanded }, set: { model.player.isExpanded = $0 })) {
-            NowPlayingView(model: model)
+        .sheet(isPresented: $settings) { SettingsView(model: model).modifier(AppAppearance()) }
+        .sheet(isPresented: playerPresentation(fullScreen: false)) {
+            NowPlayingView(model: model).modifier(AppAppearance())
+        }
+        .fullScreenCover(isPresented: playerPresentation(fullScreen: true)) {
+            NowPlayingView(model: model).modifier(AppAppearance())
         }
         // Context menus and Now Playing request links here; the selected tab pushes them.
         .onChange(of: model.pendingRoute) { _, route in
@@ -59,6 +62,12 @@ struct CatalogShell: View {
             // Opening the page that is already on screen only closes the player.
             if paths[selected]?.last != route { paths[selected, default: []].append(route) }
         }
+    }
+
+    private func playerPresentation(fullScreen: Bool) -> Binding<Bool> {
+        let usesFullScreen = UIDevice.current.userInterfaceIdiom == .pad
+        return Binding(get: { usesFullScreen == fullScreen && model.player.isExpanded },
+                       set: { if usesFullScreen == fullScreen { model.player.isExpanded = $0 } })
     }
 
     @available(iOS 18.0, *)

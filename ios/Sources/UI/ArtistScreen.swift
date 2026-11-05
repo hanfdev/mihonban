@@ -71,7 +71,7 @@ struct ArtistScreen: View {
                 Button { Task { await model.playArtist(name) } } label: {
                     Label(L10n.text("common.playAll"), systemImage: "play.fill").font(.body.weight(.semibold))
                         .padding(.horizontal, 20).frame(minHeight: 48)
-                        .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.ink)
+                        .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent)
                 }.buttonStyle(.plain).accessibilityIdentifier("artist.play")
                 ShuffleToggle(player: model.player, identifier: "artist.shuffle")
             }.disabled(albums.isEmpty && featured.isEmpty)

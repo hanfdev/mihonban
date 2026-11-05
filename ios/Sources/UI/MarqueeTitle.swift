@@ -193,6 +193,11 @@ private final class MarqueeGlyphView: UIView {
             .font: font, .foregroundColor: UIColor(Theme.ink), .paragraphStyle: paragraph
         ])
     }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) { setNeedsDisplay() }
+    }
 }
 
 final class MarqueeTitleView: UIView {

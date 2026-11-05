@@ -9,6 +9,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// is only a playback buffer and is removed when the source is closed.
 - (instancetype)initWithRemoteURL:(NSURL *)url cacheURL:(NSURL *)cacheURL persistent:(BOOL)persistent;
 - (void)cancel;
+/// Restricted requests cannot migrate to cellular, metered or Low Data Mode paths.
+@property(nonatomic) BOOL unmeteredOnly;
 @property(nonatomic, readonly) double downloadedFraction;
 @end
 

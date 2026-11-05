@@ -388,35 +388,48 @@ final class MihonbanUITests: XCTestCase {
         screenshot("18-genre-filtered")
     }
 
-    func testShuffleToggleWaitsForPlayAll() {
+    func testFilteredTracksShuffleImmediatelyAndPlayAllUsesShownOrder() {
         let app = XCUIApplication()
         app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]
         app.launch()
         XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
         openTab(app, "Tracks")
-        let shuffle = app.buttons["tracks.shuffle"]
-        XCTAssertTrue(shuffle.waitForExistence(timeout: 10))
-        XCTAssertFalse(shuffle.isSelected)
-        shuffle.tap()
-        XCTAssertTrue(shuffle.isSelected)
-        XCTAssertFalse(app.buttons["player.expand"].exists, "setting shuffle must not start a track")
-        screenshot("16-shuffle-enabled")
-        app.buttons["tracks.play"].tap()
+        app.buttons["tracks.filters"].tap()
+        let decade = app.buttons["filters.decade"]
+        XCTAssertTrue(decade.waitForExistence(timeout: 10))
+        decade.tap()
+        app.buttons["1990s"].tap()
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["track.demo-4-0"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["track.demo-1-0"].exists)
+        screenshot("40-filtered-tracks")
+        app.buttons["tracks.shuffle"].tap()
         let expand = app.buttons["player.expand"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 15))
+        XCTAssertTrue(expand.waitForExistence(timeout: 15), "Shuffle starts the filtered queue immediately")
+        app.buttons["Pause"].firstMatch.tap()
         expand.tap()
         let playerShuffle = app.buttons["player.shuffle"]
         XCTAssertTrue(playerShuffle.waitForExistence(timeout: 10))
-        XCTAssertTrue(playerShuffle.isSelected, "Play all must keep the selected shuffle mode")
-        app.buttons["player.toggle"].firstMatch.tap()
-        let title = app.buttons["player.title"].label
-        playerShuffle.tap()
-        XCTAssertFalse(playerShuffle.isSelected)
-        XCTAssertEqual(app.buttons["player.title"].label, title)
-        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play", "changing mode must not resume playback")
+        XCTAssertTrue(playerShuffle.isSelected)
+        XCTAssertEqual(app.images["player.cover"].label, "Evening studies")
+        app.buttons["player.queue"].tap()
+        XCTAssertTrue(app.buttons["queue.1"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["queue.2"].exists, "only the three matching tracks enter the queue")
+        app.buttons["queue.close"].tap()
         app.buttons["player.collapse"].tap()
-        XCTAssertTrue(shuffle.waitForExistence(timeout: 10))
-        XCTAssertFalse(shuffle.isSelected, "the list and player show the same mode")
+        app.buttons["tracks.play"].tap()
+        app.buttons["Pause"].firstMatch.tap()
+        expand.tap()
+        waitForLabel(app.buttons["player.title"], "After the rain")
+        XCTAssertFalse(playerShuffle.isSelected, "Play all uses the displayed title order")
+        app.buttons["player.collapse"].tap()
+        app.buttons["tracks.filters"].tap()
+        app.buttons["filters.decade"].tap()
+        app.buttons["1980s"].tap()
+        app.buttons["Done"].firstMatch.tap()
+        expand.tap()
+        XCTAssertEqual(app.images["player.cover"].label, "Evening studies", "changing a filter leaves the existing queue intact")
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
     }
 
     func testPlayerCreditsStayCompactAndOpenEveryArtist() {
@@ -781,11 +794,24 @@ final class MihonbanUITests: XCTestCase {
         let frames = [first.frame, second.frame]
         let labels = [first.label, second.label]
         let edit = app.buttons["queue.edit"]
+        let close = app.buttons["queue.close"]
+        let doneButtons = app.buttons.matching(NSPredicate(format: "label == %@", "Done"))
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertEqual(close.label, "Close")
+        XCTAssertEqual(edit.label, "Edit")
+        XCTAssertEqual(doneButtons.count, 0, "closing the queue is not a Done action")
+        XCTAssertGreaterThanOrEqual(close.frame.width, 43.5)
+        XCTAssertGreaterThanOrEqual(close.frame.height, 43.5)
+        XCTAssertLessThan(edit.frame.midX, close.frame.midX)
         let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder"))
         for _ in 0..<3 {
             edit.tap()
             XCTAssertTrue(handles.firstMatch.waitForExistence(timeout: 5))
             XCTAssertEqual(handles.count, 2)
+            XCTAssertEqual(edit.label, "Done")
+            XCTAssertEqual(doneButtons.count, 1, "only ending edit mode may be labelled Done")
+            XCTAssertEqual(close.label, "Close")
+            XCTAssertTrue(close.isHittable)
             for (index, row) in [first, second].enumerated() {
                 XCTAssertEqual(row.frame.height, frames[index].height, accuracy: 1)
                 XCTAssertEqual(row.frame.minY, frames[index].minY, accuracy: 1,
@@ -798,6 +824,8 @@ final class MihonbanUITests: XCTestCase {
             edit.tap()
             let finished = expectation(for: NSPredicate(format: "label == %@", "Edit"), evaluatedWith: edit)
             wait(for: [finished], timeout: 5)
+            XCTAssertEqual(doneButtons.count, 0)
+            XCTAssertTrue(close.isHittable, "ending edit mode leaves the queue open")
             for (index, row) in [first, second].enumerated() {
                 XCTAssertEqual(row.frame.height, frames[index].height, accuracy: 1)
                 XCTAssertEqual(row.frame.minY, frames[index].minY, accuracy: 1)
@@ -805,10 +833,29 @@ final class MihonbanUITests: XCTestCase {
             }
         }
         screenshot("40-queue-edit-stable")
-        app.buttons["queue.done"].tap()
-        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["player.title"].label.hasPrefix("A very long"))
+        close.tap()
+        let title = app.buttons["player.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let currentTitle = title.label
+        XCTAssertTrue(currentTitle.hasPrefix("A very long"))
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+
+        // Closing while editing must dismiss the sheet without touching playback
+        // or applying another queue mutation; edits take effect as they happen.
+        app.buttons["player.queue"].tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        XCTAssertEqual(edit.label, "Edit", "a reopened queue starts outside edit mode")
+        XCTAssertEqual(first.label, labels[0])
+        XCTAssertEqual(second.label, labels[1])
+        edit.tap()
+        XCTAssertTrue(handles.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(doneButtons.count, 1)
+        XCTAssertEqual(close.label, "Close")
+        screenshot("43-queue-edit-single-done")
+        close.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.label, currentTitle)
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play", "closing cannot resume a paused track")
     }
 
     func testQueueDragKeepsRowsAndPlaybackIntact() {
@@ -828,7 +875,7 @@ final class MihonbanUITests: XCTestCase {
         let gap = app.buttons["queue.1"].frame.minY - app.buttons["queue.0"].frame.maxY
         XCTAssertLessThan(abs(gap), 4, "a completed drag must not leave a row-sized hole")
         screenshot("30-queue-reordered")
-        app.buttons["queue.done"].tap()
+        app.buttons["queue.close"].tap()
         XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
         XCTAssertTrue(app.buttons["player.title"].label.hasPrefix("A very long"))
@@ -847,6 +894,7 @@ final class MihonbanUITests: XCTestCase {
         let artist = app.buttons["player.artist"]
         XCTAssertTrue(artist.waitForExistence(timeout: 10))
         XCTAssertEqual(artist.label, "First Artist · Second Artist · Third Artist")
+        XCTAssertEqual(artist.images.count, 0, "three artists have no disclosure arrow")
         XCTAssertEqual(artist.value as? String, "")
         XCTAssertFalse(app.staticTexts["player.artists.count"].exists)
         screenshot("31-three-artists")
@@ -858,6 +906,7 @@ final class MihonbanUITests: XCTestCase {
         waitForLabel(app.buttons["player.title"], "Interlude")
         app.buttons["player.toggle"].firstMatch.tap()
         XCTAssertEqual(artist.label, "First Artist · Second Artist")
+        XCTAssertEqual(artist.images.count, 0, "two artists have no disclosure arrow")
         XCTAssertEqual(artist.value as? String, "")
         artist.tap()
         XCTAssertTrue(app.buttons["player.credit.1"].waitForExistence(timeout: 5))
@@ -1085,6 +1134,119 @@ final class MihonbanUITests: XCTestCase {
             return zoomed ? scale > 1.05 : abs(scale - 1) < 0.02
         }, evaluatedWith: image)
         wait(for: [state], timeout: 10)
+    }
+
+    func testSingleGlobalSearchHasInsetsAndIncludesSongs() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 15))
+        app.swipeDown()
+        XCTAssertEqual(app.searchFields.count, 0, "the album page has no duplicate global search")
+        openTab(app, "Search")
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.searchFields.count, 1)
+        focus(field)
+        field.typeText("quiet room")
+        XCTAssertTrue(app.buttons["track.demo-2-2"].waitForExistence(timeout: 10), "album keywords also find their songs")
+        let album = element(app, "search.album.demo-2")
+        XCTAssertTrue(album.exists)
+        XCTAssertGreaterThan(album.frame.minX, app.windows.firstMatch.frame.minX + 8)
+        XCTAssertGreaterThan(field.frame.minX, app.windows.firstMatch.frame.minX + 8)
+        screenshot("41-unified-search")
+    }
+
+    func testAppearanceSettingsApplyAndPersist() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["settings.open"].firstMatch.waitForExistence(timeout: 15))
+        app.buttons["settings.open"].firstMatch.tap()
+        let picker = app.buttons["settings.appearance"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 10))
+        picker.tap()
+        app.buttons["Light"].tap()
+        screenshot("42-light-settings")
+        app.buttons["Done"].firstMatch.tap()
+        screenshot("42-light-library")
+        app.buttons["settings.open"].firstMatch.tap()
+        picker.tap()
+        app.buttons["Dark"].tap()
+        screenshot("43-dark-settings")
+        app.buttons["Done"].firstMatch.tap()
+        screenshot("43-dark-library")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["settings.open"].firstMatch.waitForExistence(timeout: 15))
+        app.buttons["settings.open"].firstMatch.tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 10))
+        XCTAssertTrue(picker.label.contains("Dark") || (picker.value as? String)?.contains("Dark") == true)
+        picker.tap()
+        app.buttons["Follow System"].tap()
+        screenshot("44-system-appearance")
+        app.buttons["Done"].firstMatch.tap()
+    }
+
+    func testTabletPlayerUsesWholeWindowAndReturnsFromQueue() {
+        let app = launchCreditsPlayer()
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            XCUIDevice.shared.orientation = orientation
+            let rotated = expectation(for: NSPredicate { _, _ in
+                let frame = app.windows.firstMatch.frame
+                return orientation == .portrait ? frame.height > frame.width : frame.width > frame.height
+            }, evaluatedWith: app)
+            wait(for: [rotated], timeout: 10)
+            let window = app.windows.firstMatch.frame
+            let scroll = app.scrollViews["player.scroll"]
+            XCTAssertTrue(scroll.waitForExistence(timeout: 10))
+            if min(window.width, window.height) >= 600 {
+                XCTAssertEqual(scroll.frame.minX, window.minX, accuracy: 2)
+                XCTAssertEqual(scroll.frame.maxX, window.maxX, accuracy: 2)
+                XCTAssertGreaterThan(scroll.frame.height, window.height * 0.75)
+                XCTAssertLessThan(app.buttons["player.collapse"].frame.maxY, window.minY + 130)
+            }
+            let title = app.buttons["player.title"].label
+            app.buttons["player.queue"].tap()
+            XCTAssertTrue(app.buttons["queue.close"].waitForExistence(timeout: 10))
+            app.buttons["queue.close"].tap()
+            XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
+            XCTAssertEqual(app.buttons["player.title"].label, title)
+            XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+            screenshot(orientation == .portrait ? "45-player-portrait" : "45-player-landscape")
+        }
+        app.buttons["player.collapse"].tap()
+        XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 10))
+    }
+
+    func testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)"]
+        app.launch()
+        signIn(app, password: "fixture-password")
+        XCTAssertTrue(app.buttons["album.network-mp3"].waitForExistence(timeout: 20))
+        app.buttons["album.network-mp3"].tap()
+        app.buttons["album.menu"].tap()
+        XCTAssertTrue(app.buttons["album.share"].waitForExistence(timeout: 5))
+        app.buttons["album.share"].tap()
+        XCTAssertTrue(element(app, "share.sheet").waitForExistence(timeout: 10))
+        screenshot("46-album-share")
+        app.buttons["Close"].firstMatch.tap()
+        app.buttons["album.play"].tap()
+        XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 15))
+        app.buttons["Pause"].firstMatch.tap()
+        app.buttons["player.expand"].tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
+        let title = app.buttons["player.title"].label
+        app.buttons["player.more"].tap()
+        app.buttons["player.share"].tap()
+        XCTAssertTrue(element(app, "share.sheet").waitForExistence(timeout: 10))
+        screenshot("46-song-share")
+        app.buttons["Close"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons["player.title"].label, title)
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
     }
 
     func testConnectionScreen() {

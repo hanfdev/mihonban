@@ -33,7 +33,7 @@ struct AlbumsScreen: View {
                 }
             }
         .navigationTitle(initialGenre.isEmpty ? L10n.text("nav.library") : initialGenre)
-        .searchable(text: $query, prompt: L10n.text("mobile.searchAlbums"))
+
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { filtering = true } label: {
@@ -71,16 +71,17 @@ struct AlbumsScreen: View {
     private func update() { shown = model.catalog.index.albums(query: query, filters: filters, sort: sort) }
 }
 
-private struct AlbumFilterSheet: View {
+struct AlbumFilterSheet: View {
     let albums: [Album]
     let genres: [GenreOption]
     @Binding var filters: AlbumFilters
+    var trackOptions: [Track]? = nil
     @Environment(\.dismiss) private var dismiss
     private var genreSelection: Binding<String> {
         Binding(get: { GenreName.key(filters.genre) }, set: { filters.genre = $0 })
     }
-    private var decades: [Int] { Array(Set(albums.compactMap(\.year).filter { $0 > 0 }.map { $0 / 10 * 10 })).sorted() }
-    private var artists: [String] { Array(Set(albums.flatMap { $0.credits.map(\.name) })).sorted() }
+    private var decades: [Int] { Array(Set((albums.compactMap(\.year) + (trackOptions ?? []).compactMap(\.year)).filter { $0 > 0 }.map { $0 / 10 * 10 })).sorted() }
+    private var artists: [String] { Array(Set((trackOptions.map { $0.flatMap { $0.credits.map(\.name) } } ?? albums.flatMap { $0.credits.map(\.name) }).filter { !$0.isEmpty })).sorted() }
 
     var body: some View {
         NavigationStack {
@@ -90,7 +91,7 @@ private struct AlbumFilterSheet: View {
                     ForEach([2.5, 3, 3.2, 3.4, 3.5, 3.6, 3.8, 4, 4.2], id: \.self) {
                         Text(String(format: "%.1f+", $0)).tag($0)
                     }
-                }
+                }.accessibilityIdentifier("filters.rating")
                 Picker(L10n.text("library.filterGenre"), selection: genreSelection) {
                     Text(L10n.text("library.anyGenre")).tag("")
                     ForEach(genres) { Text($0.title).tag($0.id) }
@@ -98,11 +99,11 @@ private struct AlbumFilterSheet: View {
                 Picker(L10n.text("library.filterDecade"), selection: $filters.decade) {
                     Text(L10n.text("library.anyDecade")).tag(Int?.none)
                     ForEach(decades, id: \.self) { Text(String($0) + "s").tag(Optional($0)) }
-                }
+                }.accessibilityIdentifier("filters.decade")
                 Picker(L10n.text("library.filterArtist"), selection: $filters.artist) {
                     Text(L10n.text("library.anyArtist")).tag("")
                     ForEach(artists, id: \.self) { Text($0).tag($0) }
-                }
+                }.accessibilityIdentifier("filters.artist")
                 Button(L10n.text("common.clearFilters")) { filters = .init() }
             }.navigationTitle(L10n.text("mobile.filters")).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("common.done")) { dismiss() } } }

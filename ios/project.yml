@@ -56,7 +56,6 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
-        UIUserInterfaceStyle: Dark
         UIApplicationSupportsIndirectInputEvents: true
         NSLocalNetworkUsageDescription: Connect to your Mihonban server on the local network.
         NSAppTransportSecurity:
