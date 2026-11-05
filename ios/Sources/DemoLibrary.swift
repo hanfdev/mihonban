@@ -3,6 +3,9 @@ import Foundation
 import AVFAudio
 
 enum DemoLibrary {
+    // UI automation on hosted tablets can take longer than a short audio clip.
+    // Use a normal five-minute track only for the layout-test launch argument.
+    static var trackDuration: Int { ProcessInfo.processInfo.arguments.contains("--demo-long-playback") ? 300 : 30 }
     static var albums: [Album] {
         var result = [
             album("demo-1", "夜の余白", "見本盤スタジオ", 1984, rating: 3.86, genre: "Shibuya-kei"),
@@ -119,10 +122,10 @@ enum DemoLibrary {
     private static func album(_ id: String, _ title: String, _ artist: String, _ year: Int,
                               rating: Double? = nil, genre: String = "Ambient") -> Album {
         let tracks = ["First light", "Interlude", "After the rain"].enumerated().map { index, name in
-            Track(id: "\(id)-\(index)", title: name, duration: 30, format: "wav", disc: 1,
+            Track(id: "\(id)-\(index)", title: name, duration: Double(trackDuration), format: "wav", disc: 1,
                   track: index + 1, albumId: id, albumTitle: title, artist: artist)
         }
-        var album = Album(id: id, title: title, artist: artist, year: year, trackCount: tracks.count, duration: 90,
+        var album = Album(id: id, title: title, artist: artist, year: year, trackCount: tracks.count, duration: Double(trackDuration * tracks.count),
                           genres: [genre], tracks: tracks)
         if let rating { album.rym = RymRating(rating: rating, votes: 120) }
         return album
@@ -139,7 +142,7 @@ enum DemoLibrary {
                 buffer.floatChannelData![channel][frame] = Float(sin(Double(frame) / 44100 * 440 * 2 * .pi)) * 0.03
             }
         }
-        for _ in 0..<30 { try file.write(from: buffer) }
+        for _ in 0..<trackDuration { try file.write(from: buffer) }
         return url
     }
 }

@@ -682,7 +682,7 @@ final class MihonbanUITests: XCTestCase {
 
     private func launchCreditsPlayer(largeText: Bool = false, queueStress: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--demo", "--demo-credits", "-AppleLanguages", "(en)"]
+        app.launchArguments = ["--demo", "--demo-credits", "--demo-long-playback", "-AppleLanguages", "(en)"]
         if queueStress { app.launchArguments.append("--demo-queue-layout") }
         if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch()
@@ -694,8 +694,7 @@ final class MihonbanUITests: XCTestCase {
         play.tap()
         let expand = app.buttons["player.expand"]
         XCTAssertTrue(expand.waitForExistence(timeout: 15))
-        // Pause before opening the sheet: navigating a large-text layout on a
-        // cold iPad runner can take longer than the 30-second fixture track.
+        // Pause before opening the player so layout assertions use one track.
         let miniPause = app.buttons["Pause"].firstMatch
         XCTAssertTrue(miniPause.waitForExistence(timeout: 10))
         XCTAssertTrue(miniPause.isHittable)
@@ -1148,6 +1147,8 @@ final class MihonbanUITests: XCTestCase {
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         XCTAssertEqual(app.searchFields.count, 1)
+        XCTAssertFalse(app.navigationBars["Search"].buttons["Search"].exists,
+                       "the search page must not add a second collapsed search button")
         focus(field)
         field.typeText("quiet room")
         XCTAssertTrue(app.buttons["track.demo-2-2"].waitForExistence(timeout: 10), "album keywords also find their songs")

@@ -11,6 +11,12 @@ struct SearchScreen: View {
     private let limit = 8
 
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var searchPlacement: SearchFieldPlacement {
+        // A toolbar placement on iPad creates a second search button inside
+        // the search tab. Keep the field visible immediately on that device.
+        UIDevice.current.userInterfaceIdiom == .pad
+            ? .navigationBarDrawer(displayMode: .always) : .automatic
+    }
 
     var body: some View {
         List {
@@ -20,7 +26,7 @@ struct SearchScreen: View {
         .navigationTitle(L10n.text("common.search"))
         .navigationBarTitleDisplayMode(.inline)
         // One global search field belongs to the dedicated search tab.
-        .searchable(text: $query, prompt: L10n.text("search.placeholder"))
+        .searchable(text: $query, placement: searchPlacement, prompt: L10n.text("search.placeholder"))
         .overlay {
             if !trimmed.isEmpty && artists.isEmpty && albums.isEmpty && tracks.isEmpty
                 && (model.catalog.tracksLoaded || !model.catalog.loadingTracks) {
