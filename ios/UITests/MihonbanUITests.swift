@@ -543,7 +543,11 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertEqual(coverFrame.midX, scrollFrame.midX, accuracy: 1)
         let collapse = app.buttons["player.collapse"].frame
         XCTAssertGreaterThanOrEqual(coverFrame.minY, collapse.maxY)
-        XCTAssertLessThanOrEqual(coverFrame.minY - collapse.maxY, 40, "artwork must not inherit a large-title gap")
+        if window.width < 600 {
+            XCTAssertLessThanOrEqual(coverFrame.minY - collapse.maxY, 40, "phone artwork must not inherit a large-title gap")
+        } else {
+            assertTabletPlayerBalance(app)
+        }
         XCTAssertTrue(app.buttons["player.queue"].isHittable)
         XCTAssertLessThanOrEqual(app.buttons["player.queue"].frame.maxY, scroll.frame.maxY - 19)
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.frame.width, 70, accuracy: 1)
@@ -1213,15 +1217,11 @@ final class MihonbanUITests: XCTestCase {
                 XCTAssertEqual(scroll.frame.maxX, window.maxX, accuracy: 2)
                 XCTAssertGreaterThan(scroll.frame.height, window.height * 0.75)
                 XCTAssertLessThan(app.buttons["player.collapse"].frame.maxY, window.minY + 130)
-                let cover = element(app, "player.cover").frame
-                let heading = app.buttons["player.title"].frame
-                let footer = app.buttons["player.queue"].frame
-                let composition = cover.union(heading).union(footer)
-                XCTAssertEqual(composition.midY, scroll.frame.midY, accuracy: 12,
-                               "the player must balance spare space above and below its content")
-                XCTAssertGreaterThanOrEqual(composition.minY, scroll.frame.minY)
-                XCTAssertLessThanOrEqual(composition.maxY, scroll.frame.maxY)
+                assertTabletPlayerBalance(app)
                 if orientation == .landscapeLeft {
+                    let cover = element(app, "player.cover").frame
+                    let heading = app.buttons["player.title"].frame
+                    let footer = app.buttons["player.queue"].frame
                     XCTAssertEqual(cover.midY, (heading.minY + footer.maxY) / 2, accuracy: 12,
                                    "landscape controls must be centered beside the cover")
                 }
@@ -1237,6 +1237,24 @@ final class MihonbanUITests: XCTestCase {
         }
         app.buttons["player.collapse"].tap()
         XCTAssertTrue(app.buttons["player.expand"].waitForExistence(timeout: 10))
+    }
+
+    private func assertTabletPlayerBalance(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let scroll = app.scrollViews["player.scroll"].frame
+        let navigation = app.navigationBars.containing(.button, identifier: "player.collapse").firstMatch.frame
+        let cover = element(app, "player.cover").frame
+        let heading = app.buttons["player.title"].frame
+        let footer = app.buttons["player.queue"].frame
+        let composition = cover.union(heading).union(footer)
+        // AX reports the ScrollView behind the navigation bar too. Measure below
+        // that bar, allowing the bottom gesture inset and control hit-area rounding.
+        let visibleTop = max(scroll.minY, navigation.maxY)
+        let visibleCenter = (visibleTop + scroll.maxY) / 2
+        XCTAssertEqual(composition.midY, visibleCenter, accuracy: 24,
+                       "balanced tablet content: content=\(composition), navigation=\(navigation), scroll=\(scroll)",
+                       file: file, line: line)
+        XCTAssertGreaterThanOrEqual(composition.minY, visibleTop, file: file, line: line)
+        XCTAssertLessThanOrEqual(composition.maxY, scroll.maxY, file: file, line: line)
     }
 
     func testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback() {
