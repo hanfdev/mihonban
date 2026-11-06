@@ -5,9 +5,20 @@ struct TracksScreen: View {
     var initialQuery = ""
     @State private var query = ""
     @State private var sort: TrackSort = .title
-    @State private var shown: [Track] = []
+    @State private var listing = TrackListing()
     @State private var filters = AlbumFilters()
     @State private var filtering = false
+
+    private var shown: [Track] { listing.result.tracks }
+    private var request: TrackListingRequest {
+        TrackListingRequest(revision: model.catalog.revision, query: query, filters: filters, sort: sort)
+    }
+
+    init(model: AppModel, initialQuery: String = "") {
+        self.model = model
+        self.initialQuery = initialQuery
+        _query = State(initialValue: initialQuery)
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -21,14 +32,16 @@ struct TracksScreen: View {
                         .foregroundStyle(Theme.dim).listRowBackground(Theme.background)
                         .accessibilityIdentifier("tracks.count")
                 }
-                ForEach(Array(shown.enumerated()), id: \.element.id) { index, track in
-                    CatalogTrackRow(track: track, model: model) { model.player.play(shown, index: index) }
-                        .listRowBackground(Theme.background).id(track.id)
+                ForEach(shown) { track in
+                    CatalogTrackRow(track: track, model: model) {
+                        if let index = listing.result.positions[track.id] { model.player.play(shown, index: index) }
+                    }
+                        .listRowBackground(Theme.background)
                 }
             }.listStyle(.plain).scrollContentBackground(.hidden).background(Theme.background)
                 .refreshable { await model.catalog.ensureTracks(force: true) }
                 .overlay {
-                    if model.catalog.loadingTracks && shown.isEmpty { ProgressView() }
+                    if (model.catalog.loadingTracks || listing.loading || !listing.ready) && shown.isEmpty { ProgressView() }
                     else if model.catalog.tracksLoaded && shown.isEmpty {
                         if query.isEmpty { ContentUnavailableView(L10n.text("empty.noMatch"), systemImage: "music.note.list") }
                         else { ContentUnavailableView.search(text: query) }
@@ -36,7 +49,7 @@ struct TracksScreen: View {
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        if let current = model.player.current, shown.contains(where: { $0.id == current.id }) {
+                        if let current = model.player.current, listing.result.positions[current.id] != nil {
                             Button { withAnimation { proxy.scrollTo(current.id, anchor: .center) } } label: { Image(systemName: "scope") }
                                 .accessibilityLabel(L10n.text("common.locate"))
                         }
@@ -63,12 +76,7 @@ struct TracksScreen: View {
             AlbumFilterSheet(albums: model.catalog.index.albums, genres: model.catalog.index.genres,
                              filters: $filters, trackOptions: model.catalog.index.tracks)
         }
-        .onChange(of: filters) { _, _ in update() }
-        .onAppear { if !initialQuery.isEmpty && query.isEmpty { query = initialQuery }; update() }
-        .task { await model.catalog.ensureTracks(force: true); update() }
-        .onChange(of: query) { _, _ in update() }
-        .onChange(of: sort) { _, _ in update() }
-        .onChange(of: model.catalog.revision) { _, _ in update() }
+        .task(id: request) { await listing.update(index: model.catalog.index, request: request) }
+        .task { await model.catalog.ensureTracks(force: true) }
     }
-    private func update() { shown = model.catalog.index.tracks(query: query, filters: filters, sort: sort) }
 }

@@ -45,6 +45,30 @@ private final class FavoritesRefreshProtocol: URLProtocol {
 
 @MainActor
 final class FavoritesRefreshTests: XCTestCase {
+    func testUnchangedTrackRefreshKeepsTheIndexAndConcurrentReadersSharePublication() async throws {
+        FavoritesRefreshProtocol.state.reset()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FavoritesRefreshProtocol.self]
+        let transport = URLSession(configuration: config)
+        defer { transport.invalidateAndCancel() }
+        let session = SessionStore()
+        session.connect(try APIClient(address: "https://example.invalid", session: transport),
+                        info: SessionInfo(ok: true, role: "user", guest: false))
+        let catalog = CatalogStore(session: session, favorites: FavoritesStore(session: session))
+        await catalog.ensureTracks()
+        let revision = catalog.revision
+        await catalog.ensureTracks(force: true)
+        XCTAssertEqual(catalog.revision, revision, "304 must not invalidate the rendered list or rebuild the search index")
+        FavoritesRefreshProtocol.state.lock.withLock { FavoritesRefreshProtocol.state.version = 2 }
+        async let first = catalog.requireTracks(force: true)
+        async let second = catalog.requireTracks(force: true)
+        let values = try await (first, second)
+        XCTAssertEqual(values.0.map(\.id), ["old", "new"])
+        XCTAssertEqual(values.1.map(\.id), ["old", "new"])
+        XCTAssertNotEqual(catalog.revision, revision)
+        XCTAssertEqual(FavoritesRefreshProtocol.state.lock.withLock { FavoritesRefreshProtocol.state.trackHeaders.count }, 3)
+    }
+
     func testRefreshResolvesNewFavoriteAgainstCachedTracksAndUsesConditionalRequests() async throws {
         FavoritesRefreshProtocol.state.reset()
         let config = URLSessionConfiguration.ephemeral

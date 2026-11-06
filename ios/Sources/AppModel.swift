@@ -135,7 +135,12 @@ final class AppModel {
             demo = true
             sessionStore.connect(api, info: SessionInfo(ok: true, role: "user", guest: true))
             let albums = DemoLibrary.albums
-            catalog.seed(albums: albums, artists: DemoLibrary.artists, tracks: albums.flatMap(\.normalizedTracks))
+            let tracks = ProcessInfo.processInfo.arguments.contains("--demo-large-tracks")
+                ? (0..<10_000).reversed().map {
+                    Track(id: "large-\($0)", title: "Song \($0)", duration: 300,
+                          albumId: "demo-1", albumTitle: "夜の余白", artist: "見本盤スタジオ")
+                } : albums.flatMap(\.normalizedTracks)
+            catalog.seed(albums: albums, artists: DemoLibrary.artists, tracks: tracks)
             player.connect(api, demoURL: try? DemoLibrary.tone())
             return
         }

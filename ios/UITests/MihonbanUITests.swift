@@ -390,6 +390,30 @@ final class MihonbanUITests: XCTestCase {
         screenshot("18-genre-filtered")
     }
 
+    func testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-large-tracks", "--demo-long-playback", "-AppleLanguages", "(en)"]
+        app.launch()
+        XCTAssertTrue(app.buttons["album.demo-1"].waitForExistence(timeout: 30))
+        for visit in 0..<3 {
+            let start = Date()
+            openTab(app, "Tracks")
+            XCTAssertTrue(app.buttons["track.large-0"].wait(for: \.isHittable, toEqual: true, timeout: 15))
+            print("Tracks tab visit \(visit): 10000 songs, first row hittable in \(Date().timeIntervalSince(start))s")
+            XCTAssertTrue(app.staticTexts["tracks.count"].exists)
+            XCTAssertFalse(app.buttons["player.expand"].exists, "changing tabs must not start playback")
+            if visit < 2 { openTab(app, "Albums") }
+        }
+        screenshot("59-large-tracks")
+        app.buttons["track.large-0"].tap()
+        let expand = app.buttons["player.expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 15))
+        app.buttons["mini.toggle"].tap()
+        expand.tap()
+        waitForLabel(app.buttons["player.title"], "Song 0")
+        XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
+    }
+
     func testFilteredTracksShuffleTogglesWithoutStartingPlayback() {
         let app = XCUIApplication()
         app.launchArguments = ["--demo", "-AppleLanguages", "(en)"]

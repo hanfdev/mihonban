@@ -27,7 +27,7 @@ final class CatalogStore {
     @ObservationIgnored private var trackETag: String?
     @ObservationIgnored private var details: [String: Album] = [:]
     @ObservationIgnored private var requests: [String: Task<Album, Error>] = [:]
-    @ObservationIgnored private var trackRequest: Task<Versioned<[Track]>, Error>?
+    @ObservationIgnored private var trackRequest: Task<[Track], Error>?
 
     init(session: SessionStore, favorites: FavoritesStore) {
         self.session = session
@@ -125,24 +125,24 @@ final class CatalogStore {
         if let request = trackRequest {
             let loaded = try await request.value
             guard token == generation else { throw CancellationError() }
-            applyTracks(loaded)
-            return index.tracks
+            return loaded
         }
         let hidden = showHidden && session.canSeeHidden
         let previous = tracksLoaded ? Versioned(value: tracks, etag: trackETag) : nil
         let session = session
-        let request = Task { try await session.perform { try await $0.allTracks(includeHidden: hidden, previous: previous) } }
+        let request = Task {
+            let loaded = try await session.perform { try await $0.allTracks(includeHidden: hidden, previous: previous) }
+            let changed = try await self.applyTracks(loaded, generation: token)
+            let result = self.index.tracks
+            if changed { await self.persist() }
+            guard token == self.generation else { throw CancellationError() }
+            return result
+        }
         trackRequest = request
         loadingTracks = true
         error = nil
         defer { if token == generation { trackRequest = nil; loadingTracks = false } }
-        let loaded = try await request.value
-        guard token == generation else { throw CancellationError() }
-        applyTracks(loaded)
-        let result = index.tracks
-        await persist()
-        guard token == generation else { throw CancellationError() }
-        return result
+        return try await request.value
     }
 
     func playbackTracks(for selected: [Album]) async throws -> [Track] {
@@ -239,11 +239,30 @@ final class CatalogStore {
         return error.localizedDescription
     }
 
-    private func applyTracks(_ value: Versioned<[Track]>) {
-        tracks = value.value
-        trackETag = value.etag
-        tracksLoaded = true
-        rebuildIndex()
+    private func applyTracks(_ value: Versioned<[Track]>, generation token: UUID) async throws -> Bool {
+        guard token == generation else { throw CancellationError() }
+        // A validated unchanged response must not rebuild every search key or
+        // invalidate the visible list when the user selects the Tracks tab.
+        if tracksLoaded, let etag = value.etag, etag == trackETag { return false }
+        while true {
+            let before = revision
+            let albums = albums, artists = artists
+            let hidden = showHidden && session.canSeeHidden
+            let next = await Task.detached(priority: .userInitiated) {
+                CatalogIndex(albums: albums, tracks: value.value, artists: artists, includeHidden: hidden)
+            }.value
+            try Task.checkCancellation()
+            guard token == generation else { throw CancellationError() }
+            // An album edit can finish while indexing. Rebuild against its new
+            // metadata instead of replacing it with an older snapshot.
+            guard before == revision else { continue }
+            tracks = value.value
+            trackETag = value.etag
+            tracksLoaded = true
+            index = next
+            revision = UUID()
+            return true
+        }
     }
 
     private func apply(_ value: CatalogSnapshot) {

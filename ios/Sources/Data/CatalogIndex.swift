@@ -2,6 +2,7 @@ import Foundation
 
 // Precompute searchable text when the catalog changes, not on every keystroke.
 struct CatalogIndex: Sendable {
+    private static let sortLocale = Locale(identifier: "ja_JP")
     private(set) var albums: [Album]
     private(set) var tracks: [Track]
     private(set) var artists: [ArtistSummary]
@@ -71,7 +72,7 @@ struct CatalogIndex: Sendable {
         let needle = SearchNormalizer.text(query.trimmingCharacters(in: .whitespacesAndNewlines))
         return tracks.filter { track in
             let album = albumsByID[track.albumId ?? ""]
-            return filters.matches(track: track, album: album)
+            return (!filters.isActive || filters.matches(track: track, album: album))
                 && (needle.isEmpty || trackText[track.id]?.contains(needle) == true)
         }
             .sorted { Self.compare($0, $1, sort: sort) }
@@ -144,7 +145,7 @@ struct CatalogIndex: Sendable {
     }
 
     static func less(_ a: String, _ b: String) -> Bool {
-        a.compare(b, options: [.caseInsensitive, .numeric], locale: Locale(identifier: "ja_JP")) == .orderedAscending
+        a.compare(b, options: [.caseInsensitive, .numeric], locale: sortLocale) == .orderedAscending
     }
 }
 
