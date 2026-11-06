@@ -291,8 +291,9 @@ final class MihonbanUITests: XCTestCase {
         let titleButton = app.buttons["player.title"]
         XCTAssertTrue(titleButton.isHittable)
         titleButton.tap()
-        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
-                                               object: app.buttons["player.collapse"])
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !app.buttons["player.collapse"].isHittable && app.buttons["album.play"].isHittable
+        }, object: nil)
         guard XCTWaiter().wait(for: [closed], timeout: 10) == .completed else {
             screenshot("06-title-navigation-failed")
             XCTFail("Tapping the song title must dismiss Now Playing before album actions run")
@@ -302,7 +303,7 @@ final class MihonbanUITests: XCTestCase {
         let albumTitle = app.staticTexts["album.title"]
         XCTAssertTrue(albumTitle.waitForExistence(timeout: 10))
         XCTAssertEqual(albumTitle.label, "Network MP3")
-        XCTAssertFalse(app.buttons["player.collapse"].exists)
+        XCTAssertFalse(app.buttons["player.collapse"].isHittable)
 
         // Downloading the open album finishes and flips the control to "remove".
         let download = app.buttons["album.download"]
@@ -465,7 +466,8 @@ final class MihonbanUITests: XCTestCase {
         let title = app.staticTexts["artist.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertEqual(title.label, "Final Artist")
-        XCTAssertFalse(app.buttons["player.collapse"].exists)
+        XCTAssertTrue(title.isHittable)
+        XCTAssertFalse(app.buttons["player.collapse"].isHittable)
         app.buttons["player.expand"].tap()
         XCTAssertTrue(app.buttons["player.artist"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play", "reading credits must not resume playback")

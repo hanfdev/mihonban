@@ -75,6 +75,8 @@ final class PlayerModel: NSObject {
                 let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) ?? 0
                 if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue {
                     Task { @MainActor in self?.pause() }
+                } else {
+                    Task { @MainActor in self?.updateNowPlaying() }
                 }
             })
         observers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
@@ -465,6 +467,9 @@ final class PlayerModel: NSObject {
 
     func setForeground(_ active: Bool) {
         foreground = active
+        // Re-anchor Control Center and the lock screen before stopping the UI
+        // timer. Their timeline must not depend on foreground elapsed updates.
+        updateNowPlaying()
         tickTask?.cancel()
         tickTask = nil
         if active {
@@ -541,12 +546,21 @@ final class PlayerModel: NSObject {
 
     private func updateNowPlaying() {
         guard let track = current else { return }
+        // Capture engine time at publication, not the last UI tick. Artwork,
+        // route changes, remote commands, and background events may arrive long
+        // after the foreground timer stopped. Never rebase onto that stale time.
+        let time = NowPlayingTimeline.capture(elapsed: elapsed, duration: duration,
+            engineTime: engine.currentTime, engineDuration: engine.totalTime,
+            playing: engine.isPlaying, wantsPlayback: wantsPlayback,
+            loading: isLoading, seeking: isSeeking, ended: hasEnded)
+        elapsed = time.elapsed
+        duration = time.duration
         var info: [String: Any] = [MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artist ?? "",
             MPMediaItemPropertyAlbumTitle: track.albumTitle ?? "",
-            MPMediaItemPropertyPlaybackDuration: duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
-            MPNowPlayingInfoPropertyPlaybackRate: wantsPlayback && !isLoading && !interrupted ? 1.0 : 0.0,
+            MPMediaItemPropertyPlaybackDuration: time.duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: time.elapsed,
+            MPNowPlayingInfoPropertyPlaybackRate: time.rate,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue]
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
@@ -610,6 +624,10 @@ private final class SourceBox: @unchecked Sendable {
 }
 
 extension PlayerModel: AudioPlayer.Delegate {
+    nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, nowPlayingChanged decoder: (any PCMDecoding)?) {
+        Task { @MainActor [weak self] in self?.updateNowPlaying() }
+    }
+
     nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, renderingStarted decoder: any PCMDecoding) {
         let id = ObjectIdentifier(decoder as AnyObject)
         Task { @MainActor [weak self] in self?.rendered(id) }
@@ -645,9 +663,10 @@ extension PlayerModel: AudioPlayer.Delegate {
     }
 
     nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, playbackStateChanged playbackState: AudioPlayer.PlaybackState) {
-        let paused = playbackState == .paused
         Task { @MainActor [weak self] in
-            guard let self, paused else { return }
+            guard let self else { return }
+            // The callback can be queued behind another command. Publish the
+            // engine's current state, including transitions back to playing.
             self.updateNowPlaying()
         }
     }
