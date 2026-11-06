@@ -9,12 +9,7 @@ parser.add_argument("repository", type=Path)
 args = parser.parse_args()
 root = args.repository.resolve()
 resources = root / "ios" / "Resources"
-icons = resources / "Assets.xcassets" / "AppIcon.appiconset"
-icons.mkdir(parents=True, exist_ok=True)
-
-icon = Image.open(root / "cloud/web/public/icon-maskable-512.png").convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS)
-icon.save(icons / "AppIcon.png")
-(icons / "Contents.json").write_text(json.dumps({"images": [{"filename": "AppIcon.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}], "info": {"author": "xcode", "version": 1}}, indent=2) + "\n")
+runpy.run_path(str(Path(__file__).with_name("prepare-app-icon.py")))["prepare"](root)
 
 # The in-app brand mark is the project logo used by the web client, so the
 # connection screen shows the same record sleeve the site does.

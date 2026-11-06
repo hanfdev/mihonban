@@ -497,7 +497,11 @@ final class MihonbanUITests: XCTestCase {
         let title = app.staticTexts["artist.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertEqual(title.label, "Final Artist")
-        XCTAssertTrue(title.isHittable)
+        let artistReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            title.isHittable && !app.buttons["player.collapse"].isHittable
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [artistReady], timeout: 5), .completed,
+            "Artist navigation must finish after the credits sheet and player close")
         XCTAssertFalse(app.buttons["player.collapse"].isHittable)
         app.buttons["player.expand"].tap()
         XCTAssertTrue(app.buttons["player.artist"].waitForExistence(timeout: 10))
@@ -606,6 +610,8 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(element(app, "album.title").waitForExistence(timeout: 10))
         XCTAssertEqual(element(app, "album.title").label, "Session 9")
         XCTAssertTrue(mini.isHittable)
+        XCUIDevice.shared.press(.home)
+        screenshot("63-ios-home-icon")
     }
 
     private func assertShortTitleCover(_ app: XCUIApplication) {

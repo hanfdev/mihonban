@@ -95,6 +95,7 @@ jobs:
             -only-testing:MihonbanTests/TrackListingTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
             -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsStayCompactAndOpenEveryArtist \
             -only-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
             -only-testing:MihonbanTests/NowPlayingTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
@@ -114,6 +115,7 @@ jobs:
             -skip-testing:MihonbanTests/TrackListingTests \
             -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
             -skip-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsStayCompactAndOpenEveryArtist \
             -skip-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
             -skip-testing:MihonbanTests/NowPlayingTests \
             -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
