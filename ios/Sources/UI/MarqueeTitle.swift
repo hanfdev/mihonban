@@ -81,16 +81,13 @@ struct MarqueeTitle: UIViewRepresentable {
     @Environment(\.layoutDirection) private var direction
 
     func makeUIView(context: Context) -> MarqueeTitleControl { MarqueeTitleControl(frame: .zero) }
-    func updateUIView(_ view: MarqueeTitleControl, context: Context) {
-        let categories: [DynamicTypeSize: UIContentSizeCategory] = [
-            .xSmall: .extraSmall, .small: .small, .medium: .medium, .large: .large,
-            .xLarge: .extraLarge, .xxLarge: .extraExtraLarge, .xxxLarge: .extraExtraExtraLarge,
-            .accessibility1: .accessibilityMedium, .accessibility2: .accessibilityLarge,
-            .accessibility3: .accessibilityExtraLarge, .accessibility4: .accessibilityExtraExtraLarge,
-            .accessibility5: .accessibilityExtraExtraExtraLarge]
-        let font = UIFontMetrics(forTextStyle: .title1).scaledFont(
+    private var font: UIFont {
+        UIFontMetrics(forTextStyle: .title1).scaledFont(
             for: Typography.display(fontSize),
-            compatibleWith: UITraitCollection(preferredContentSizeCategory: categories[textSize] ?? .large))
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: Typography.category(textSize)))
+    }
+
+    func updateUIView(_ view: MarqueeTitleControl, context: Context) {
         view.openAlbum = openAlbum
         view.showFullTitle = showFullTitle
         view.isEnabled = canOpenAlbum
@@ -99,7 +96,10 @@ struct MarqueeTitle: UIViewRepresentable {
                        animated: !reduceMotion && !voiceOver && direction == .leftToRight)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: MarqueeTitleControl, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? uiView.titleDisplay.naturalWidth, height: uiView.titleHeight)
+        // SwiftUI may measure before updateUIView configures the UIKit font.
+        // Derive both dimensions from this value, never the previous UIKit configuration.
+        CGSize(width: proposal.width ?? ceil((text as NSString).size(withAttributes: [.font: font]).width),
+               height: max(44, ceil(font.lineHeight)))
     }
     static func dismantleUIView(_ uiView: MarqueeTitleControl, coordinator: ()) {
         uiView.titleDisplay.stop()

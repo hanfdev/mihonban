@@ -77,6 +77,41 @@ extension EnvironmentValues {
     @Entry var playerTransitionActive = false
 }
 
+#if DEBUG
+@MainActor final class PlayerFrameProbe {
+    var cover: [CGRect] = []
+    var heading: [CGRect] = []
+    func record(_ frame: CGRect, cover: Bool) {
+        if cover { self.cover.append(frame) } else { heading.append(frame) }
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var playerFrameProbe: PlayerFrameProbe?
+}
+
+private struct PlayerFrameMeasurement: ViewModifier {
+    let cover: Bool
+    let space: AnyHashable
+    @Environment(\.playerFrameProbe) private var probe
+    func body(content: Content) -> some View {
+        content.onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: {
+            probe?.record($0, cover: cover)
+        }
+    }
+}
+#endif
+
+extension View {
+    @ViewBuilder func measurePlayerFrame(cover: Bool, in space: AnyHashable) -> some View {
+        #if DEBUG
+        modifier(PlayerFrameMeasurement(cover: cover, space: space))
+        #else
+        self
+        #endif
+    }
+}
+
 // One surface for both idioms keeps a finger-driven transition continuous;
 // nested queue/credits sheets retain their own native presentation and gestures.
 struct PlayerPresentation<Library: View>: View {
@@ -88,6 +123,9 @@ struct PlayerPresentation<Library: View>: View {
     @State private var translation = PlayerTranslation()
     @State private var opening = false
     @State private var moving = false
+    @State private var dragging = false
+    @State private var settlingTo: Bool?
+    @State private var motionRevision = 0
 
     @State private var travelHeight: CGFloat = 900
 
@@ -100,46 +138,52 @@ struct PlayerPresentation<Library: View>: View {
                 if !mounted { dismissKeyboard() }
                 if !opening { opening = true }
                 if !mounted { mounted = true }
-                if !moving { PlayerRenderWork.begin(); moving = true }
+                beginDrag()
                 translation.progress = PlayerMotion.progress(distance: distance, height: travelHeight)
             }, ended: { distance, predicted in
                 opening = false
+                dragging = false
                 let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
                 PlayerMotion.logger.info("Expand ended: distance=\(distance), predicted=\(predicted), completed=\(expand)")
-                model.player.isExpanded = expand
-                settle(expand)
+                finishDrag(expand)
             }))
             .allowsHitTesting(!mounted || opening)
             .accessibilityHidden(mounted && !opening)
             // Keep TabView at the layout root so it owns the library safe areas.
             .overlay {
-                // Prepare the player when a track is selected, before the first
-                // drag. Retain artwork and layout between presentations.
-                if model.player.current != nil {
+                GeometryReader { viewport in
+                    // Prepare the player when a track is selected, before the first
+                    // drag. Retain artwork and layout between presentations.
+                    if model.player.current != nil {
                         NowPlayingView(model: model)
                             .environment(\.collapsePlayer, PlayerDragActions(changed: { distance in
-                                if !moving { PlayerRenderWork.begin(); moving = true }
+                                beginDrag()
                                 translation.progress = 1 - PlayerMotion.progress(distance: distance, height: travelHeight)
                             }, ended: { distance, predicted in
                                 let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
                                 PlayerMotion.logger.info("Collapse ended: distance=\(distance), predicted=\(predicted), completed=\(collapse)")
-                                model.player.isExpanded = !collapse
-                                settle(!collapse)
+                                dragging = false
+                                finishDrag(!collapse)
                             }))
                             .environment(\.playerTransitionActive, moving || !mounted)
+                            // The stationary viewport supplies the final content
+                            // size. Moving across a screen edge cannot change it.
+                            .frame(width: viewport.size.width, height: viewport.size.height)
+                            .ignoresSafeArea(.container)
                             .background(Theme.background.ignoresSafeArea())
                             .modifier(PlayerTranslationEffect(translation: translation,
                                 height: travelHeight, reduceMotion: reduceMotion))
                             .allowsHitTesting(model.player.isExpanded && !opening)
                             .accessibilityHidden(!model.player.isExpanded || opening)
                             .accessibilityAddTraits(.isModal)
+                    }
                 }
             }
             .onGeometryChange(for: CGFloat.self) {
                 $0.size.height + $0.safeAreaInsets.top + $0.safeAreaInsets.bottom
             } action: { height in
                 travelHeight = max(1, height)
-                if mounted && !opening { settle(model.player.isExpanded) }
+                if mounted && !dragging { settle(model.player.isExpanded) }
             }
             .onChange(of: model.player.isExpanded) { _, expanded in
                 PlayerMotion.logger.info("Expanded state: \(expanded)")
@@ -151,18 +195,42 @@ struct PlayerPresentation<Library: View>: View {
                 } else { settle(expanded) }
             }
             .onChange(of: phase) { _, next in
-                if next != .active { opening = false; settle(model.player.isExpanded) }
+                if next != .active { opening = false; dragging = false; settle(model.player.isExpanded) }
             }
     }
 
-    private func settle(_ expanded: Bool) {
+    private func beginDrag() {
+        guard !dragging else { return }
+        dragging = true
+        settlingTo = nil
+        motionRevision += 1
+        PlayerRenderWork.begin()
         moving = true
-        withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .spring(duration: 0.42, bounce: 0.06)) {
-            translation.progress = expanded ? 1 : 0
+    }
+
+    private func finishDrag(_ expanded: Bool) {
+        // A changed state is settled by onChange exactly once. A cancelled drag
+        // keeps the same state, so it needs its own return animation.
+        if model.player.isExpanded != expanded { model.player.isExpanded = expanded }
+        else { settle(expanded) }
+    }
+
+    private func settle(_ expanded: Bool) {
+        guard settlingTo != expanded else { return }
+        let target: CGFloat = expanded ? 1 : 0
+        guard moving || translation.progress != target else { return }
+        settlingTo = expanded
+        motionRevision += 1
+        let revision = motionRevision
+        moving = true
+        withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .spring(duration: 0.42, bounce: 0),
+                      completionCriteria: .removed) {
+            translation.progress = target
         } completion: {
-            guard !opening, model.player.isExpanded == expanded else { return }
+            guard revision == motionRevision, !dragging, model.player.isExpanded == expanded else { return }
             if !expanded && translation.progress == 0 { mounted = false }
             moving = false
+            settlingTo = nil
             PlayerRenderWork.end()
         }
     }

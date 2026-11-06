@@ -36,7 +36,6 @@ struct NowPlayingView: View {
     @State private var pendingArtist: (trackID: String, name: String)?
     @State private var scrubbing = false
     @State private var scrubTime: Double = 0
-    @State private var controlsHeight: CGFloat = 330
     @State private var routePickerPresented = false
     @State private var sharing: ShareSelection?
     @State private var scrollTop: CGFloat = 0
@@ -49,34 +48,18 @@ struct NowPlayingView: View {
         #if DEBUG
         let _ = { PlayerRenderWork.content += 1 }()
         #endif
-        NavigationStack {
+        Group {
             VStack(spacing: 0) {
                 header
                 GeometryReader { geometry in
                     ScrollView {
-                        let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: controlsHeight, isTablet: isTablet)
+                        let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: 0, isTablet: isTablet)
                         let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side, isTablet: isTablet)
                         let style = NowPlayingLayout.controlStyle(in: geometry.size, isTablet: isTablet)
-                        Group {
-                            if NowPlayingLayout.usesColumns(geometry.size) {
-                                HStack(alignment: isTablet ? .center : .top,
-                                       spacing: NowPlayingLayout.columnSpacing(in: geometry.size, isTablet: isTablet)) {
-                                    cover.frame(width: side, height: side)
-                                    controls(style: style, width: width).frame(width: width)
-                                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
-                                }
-                            } else {
-                                VStack(spacing: NowPlayingLayout.coverSpacing(in: geometry.size, isTablet: isTablet)) {
-                                    cover.frame(width: side, height: side)
-                                    controls(style: style, width: width).frame(width: width)
-                                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
-                                }
-                            }
-                        }.padding(.horizontal, NowPlayingLayout.horizontalInset)
-                            .padding(.top, NowPlayingLayout.stageTop(in: geometry.size, coverSide: side,
-                                controlsHeight: controlsHeight, isTablet: isTablet))
-                            .padding(.bottom, NowPlayingLayout.bottomInset)
-                            .frame(maxWidth: .infinity, minHeight: isTablet ? geometry.size.height : nil, alignment: .top)
+                        NowPlayingStage(viewport: geometry.size, isTablet: isTablet) {
+                            cover.measurePlayerFrame(cover: true, in: Space.surface)
+                            controls(style: style, width: width)
+                        }
                             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Space.viewport)).minY } action: { scrollTop = $0 }
                     }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
                         .coordinateSpace(name: Space.viewport)
@@ -88,7 +71,6 @@ struct NowPlayingView: View {
             .coordinateSpace(name: Space.surface)
             .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { hitRegions.origin = $0 }
             .background(Theme.background)
-            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $sharing) { ActivitySheet(selection: $0).modifier(AppAppearance()) }
             .sheet(isPresented: $queueVisible) { QueueView(player: player).modifier(AppAppearance()) }
             .sheet(item: $creditsSheet, onDismiss: finishArtistSelection) { selection in
@@ -186,6 +168,7 @@ struct NowPlayingView: View {
             NowPlayingHeading(track: player.current, openAlbum: openAlbum,
                openArtists: openArtists, favorite: favoriteButton,
                titleSize: style.titleSize, artistSize: style.artistSize)
+                .measurePlayerFrame(cover: false, in: Space.surface)
                 .environment(\.marqueeSuspended, transitioning || routePickerPresented || queueVisible || creditsSheet != nil || sharing != nil)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },

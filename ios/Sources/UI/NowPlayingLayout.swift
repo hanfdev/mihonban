@@ -1,5 +1,59 @@
 import SwiftUI
 
+// Measure controls and place the artwork in the same layout pass. Publishing
+// a measured height through @State causes a second visible layout at arrival.
+struct NowPlayingStage: Layout {
+    let viewport: CGSize
+    let isTablet: Bool
+
+    private struct Metrics {
+        let cover: CGFloat
+        let controls: CGSize
+        let gap: CGFloat
+        let top: CGFloat
+        let columns: Bool
+        var width: CGFloat { columns ? cover + gap + controls.width : max(cover, controls.width) }
+        var height: CGFloat { columns ? max(cover, controls.height) : cover + gap + controls.height }
+    }
+
+    private func measure(_ subviews: Subviews) -> Metrics {
+        let columns = NowPlayingLayout.usesColumns(viewport)
+        let initialCover = NowPlayingLayout.coverSide(in: viewport, controlsHeight: 0, isTablet: isTablet)
+        let width = NowPlayingLayout.controlsWidth(in: viewport, coverSide: initialCover, isTablet: isTablet)
+        let controls = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
+        let cover = NowPlayingLayout.coverSide(in: viewport, controlsHeight: controls.height, isTablet: isTablet)
+        let gap = columns ? NowPlayingLayout.columnSpacing(in: viewport, isTablet: isTablet)
+            : NowPlayingLayout.coverSpacing(in: viewport, isTablet: isTablet)
+        return Metrics(cover: cover, controls: CGSize(width: width, height: controls.height), gap: gap,
+            top: NowPlayingLayout.stageTop(in: viewport, coverSide: cover,
+                controlsHeight: controls.height, isTablet: isTablet), columns: columns)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let metrics = measure(subviews)
+        return CGSize(width: viewport.width,
+            height: max(isTablet ? viewport.height : 0, metrics.top + metrics.height + NowPlayingLayout.bottomInset))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let metrics = measure(subviews)
+        let left = bounds.midX - metrics.width / 2
+        let top = bounds.minY + metrics.top
+        if metrics.columns {
+            subviews[0].place(at: CGPoint(x: left, y: top + (isTablet ? (metrics.height - metrics.cover) / 2 : 0)),
+                anchor: .topLeading, proposal: ProposedViewSize(width: metrics.cover, height: metrics.cover))
+            subviews[1].place(at: CGPoint(x: left + metrics.cover + metrics.gap,
+                y: top + (isTablet ? (metrics.height - metrics.controls.height) / 2 : 0)),
+                anchor: .topLeading, proposal: ProposedViewSize(metrics.controls))
+        } else {
+            subviews[0].place(at: CGPoint(x: bounds.midX - metrics.cover / 2, y: top),
+                anchor: .topLeading, proposal: ProposedViewSize(width: metrics.cover, height: metrics.cover))
+            subviews[1].place(at: CGPoint(x: bounds.midX - metrics.controls.width / 2,
+                y: top + metrics.cover + metrics.gap), anchor: .topLeading, proposal: ProposedViewSize(metrics.controls))
+        }
+    }
+}
+
 // Geometry is the safe content area below the player's custom header.
 // Do not subtract the header or safe-area insets a second time here.
 enum NowPlayingLayout {
