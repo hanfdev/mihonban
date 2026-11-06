@@ -15,6 +15,11 @@ enum DemoLibrary {
         ]
         // Opt-in stress fixtures leave the existing browse and queue tests intact.
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--demo-artist-grid") {
+            result += (0..<10).map {
+                album("demo-artist-\($0)", "Session \($0)", "見本盤スタジオ", 2000 + $0, rating: 3.8)
+            }
+        }
         if arguments.contains("--demo-credits") {
             var tracks = result[0].normalizedTracks
             tracks[0].title = "A very long song title for an evening with the studio ensemble"

@@ -16,34 +16,38 @@ struct ArtistScreen: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
-                if let error { CatalogProblem(message: error) { Task { await load() } } }
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionHeading(title: L10n.text("nav.library"), count: albums.count)
-                    if albums.isEmpty {
-                        Text(L10n.text("artistPage.emptyAlbums")).font(Theme.body(16)).foregroundStyle(.secondary)
-                    } else {
-                        LazyVGrid(columns: CatalogLayout.grid, alignment: .leading, spacing: 24) {
-                            ForEach(albums) { AlbumTile(album: $0, model: model) }
-                        }
-                    }
-                }
-                if !featured.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        SectionHeading(title: L10n.text("artistPage.featuredTracks"), count: featured.count)
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(featured.enumerated()), id: \.element.id) { index, track in
-                                CatalogTrackRow(track: track, model: model) { model.player.play(featured, index: index) }
-                                Divider().overlay(Theme.line)
+        GeometryReader { viewport in
+            let compactHeader = UIDevice.current.userInterfaceIdiom == .pad
+                && viewport.size.width > 700 && viewport.size.width > viewport.size.height
+            ScrollView {
+                VStack(alignment: .leading, spacing: compactHeader ? 24 : 28) {
+                    header(compact: compactHeader)
+                    if let error { CatalogProblem(message: error) { Task { await load() } } }
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeading(title: L10n.text("nav.library"), count: albums.count)
+                        if albums.isEmpty {
+                            Text(L10n.text("artistPage.emptyAlbums")).font(Theme.body(16)).foregroundStyle(.secondary)
+                        } else {
+                            LazyVGrid(columns: CatalogLayout.grid, alignment: .leading, spacing: 24) {
+                                ForEach(albums) { AlbumTile(album: $0, model: model) }
                             }
                         }
                     }
-                }
-            }.padding(.horizontal, 20).padding(.vertical, 16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+                    if !featured.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            SectionHeading(title: L10n.text("artistPage.featuredTracks"), count: featured.count)
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(featured.enumerated()), id: \.element.id) { index, track in
+                                    CatalogTrackRow(track: track, model: model) { model.player.play(featured, index: index) }
+                                    Divider().overlay(Theme.line)
+                                }
+                            }
+                        }
+                    }
+                }.padding(.horizontal, 20).padding(.vertical, 16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+            }
+            .background(Theme.background).accessibilityIdentifier("artist.scroll")
         }
-        .background(Theme.background).accessibilityIdentifier("artist.scroll")
         .navigationTitle(name).navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
         .task(id: name) { await load() }
@@ -55,9 +59,9 @@ struct ArtistScreen: View {
         .sheet(isPresented: $readingBio) { MarkdownReaderSheet(title: name, text: biography) }
     }
 
-    private var header: some View {
-        VStack(spacing: 14) {
-            ArtistAvatar(artist: artist, model: model, size: 148)
+    private func header(compact: Bool) -> some View {
+        VStack(spacing: compact ? 10 : 14) {
+            ArtistAvatar(artist: artist, model: model, size: compact ? 96 : 148)
             Text(name).displayFont(28).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("artist.title")
@@ -70,7 +74,7 @@ struct ArtistScreen: View {
             HStack(spacing: 18) {
                 Button { Task { await model.playArtist(name) } } label: {
                     Label(L10n.text("common.playAll"), systemImage: "play.fill").font(Theme.body(17, weight: .semibold))
-                        .padding(.horizontal, 20).frame(minHeight: 48)
+                        .padding(.horizontal, 20).frame(minHeight: compact ? 44 : 48)
                         .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent)
                 }.buttonStyle(.plain).accessibilityIdentifier("artist.play")
                 ShuffleToggle(player: model.player, identifier: "artist.shuffle")

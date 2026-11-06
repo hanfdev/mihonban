@@ -93,6 +93,8 @@ jobs:
             -only-testing:MihonbanTests/PlaybackCompletionTests \
             -only-testing:MihonbanTests/PlayerTransitionTests \
             -only-testing:MihonbanTests/TrackListingTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
+            -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
             -only-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
             -only-testing:MihonbanTests/NowPlayingTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
@@ -110,6 +112,8 @@ jobs:
             -skip-testing:MihonbanTests/PlaybackCompletionTests \
             -skip-testing:MihonbanTests/PlayerTransitionTests \
             -skip-testing:MihonbanTests/TrackListingTests \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
             -skip-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
             -skip-testing:MihonbanTests/NowPlayingTests \
             -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
@@ -169,6 +173,7 @@ jobs:
             -only-testing:MihonbanTests/RymYearRankTests \
             -only-testing:MihonbanTests/LibraryExperienceTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
+            -only-testing:MihonbanUITests/MihonbanUITests/testArtistLastAlbumClearsMiniPlayerAcrossRotation \
             -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
             -only-testing:MihonbanUITests/MihonbanUITests/testReadingSheetClosesWithoutLosingAlbumPosition \
             -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndArtistDescriptionsRenderMarkdownNatively \

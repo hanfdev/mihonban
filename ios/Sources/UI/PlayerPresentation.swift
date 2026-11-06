@@ -166,10 +166,12 @@ struct PlayerPresentation<Library: View>: View {
                                 finishDrag(!collapse)
                             }))
                             .environment(\.playerTransitionActive, moving || !mounted)
-                            // The stationary viewport supplies the final content
-                            // size. Moving across a screen edge cannot change it.
+                            // Reconstruct the full canvas before padding it. The
+                            // stationary viewport's size already excludes system
+                            // insets; padding that size would deduct them twice.
                             .padding(viewport.safeAreaInsets)
-                            .frame(width: viewport.size.width, height: viewport.size.height)
+                            .frame(width: viewport.size.width + viewport.safeAreaInsets.leading + viewport.safeAreaInsets.trailing,
+                                   height: viewport.size.height + viewport.safeAreaInsets.top + viewport.safeAreaInsets.bottom)
                             .ignoresSafeArea(.container)
                             .background(Theme.background.ignoresSafeArea())
                             .modifier(PlayerTranslationEffect(translation: translation,

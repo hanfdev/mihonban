@@ -33,6 +33,10 @@ final class PlayerTransitionTests: XCTestCase {
         let heading = try XCTUnwrap(frames.heading.last)
         XCTAssertGreaterThan(cover.width, 100)
         XCTAssertGreaterThanOrEqual(heading.height, 44)
+        if window.bounds.width < 600 && window.bounds.height > 800 {
+            XCTAssertGreaterThanOrEqual(cover.width, window.bounds.width * 0.8,
+                "The safe viewport must not deduct system insets a second time")
+        }
         frames.cover = [cover]
         frames.heading = [heading]
         // Tap uses the same model state as the mini-player button. Sampling

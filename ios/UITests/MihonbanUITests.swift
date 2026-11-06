@@ -457,8 +457,15 @@ final class MihonbanUITests: XCTestCase {
         waitForLabel(app.buttons["player.title"], "After the rain")
         XCTAssertFalse(playerShuffle.isSelected, "Play all respects the disabled shuffle mode")
         app.buttons["player.collapse"].tap()
-        app.buttons["tracks.filters"].tap()
-        app.buttons["filters.decade"].tap()
+        let filtersButton = app.buttons["tracks.filters"]
+        let libraryReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            filtersButton.isHittable && !app.buttons["player.collapse"].isHittable
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [libraryReady], timeout: 5), .completed,
+            "Library input must return after the player finishes collapsing")
+        filtersButton.tap()
+        XCTAssertTrue(decade.waitForExistence(timeout: 5))
+        decade.tap()
         app.buttons["1980s"].tap()
         app.buttons["Done"].firstMatch.tap()
         expand.tap()
@@ -546,6 +553,59 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertEqual(before.minY, after.minY, accuracy: 1, "play/pause must not move the artwork")
         screenshot("29-larger-player-cover")
         app.buttons["player.toggle"].firstMatch.tap()
+    }
+
+    func testArtistLastAlbumClearsMiniPlayerAcrossRotation() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo", "--demo-long-playback", "--demo-artist-grid", "-AppleLanguages", "(en)"]
+        app.launch()
+        let firstAlbum = app.buttons["album.demo-1"]
+        XCTAssertTrue(firstAlbum.waitForExistence(timeout: 15))
+        firstAlbum.tap()
+        let play = app.buttons["album.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        play.tap()
+        let mini = app.buttons["player.expand"]
+        XCTAssertTrue(mini.waitForExistence(timeout: 15))
+        openTab(app, "Artists")
+        let artist = element(app, "artist.見本盤スタジオ")
+        XCTAssertTrue(artist.waitForExistence(timeout: 10))
+        artist.tap()
+        let scroll = app.scrollViews["artist.scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 10))
+        screenshot("60-artist-player-overview")
+
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait, .landscapeLeft] {
+            XCUIDevice.shared.orientation = orientation
+            let footer = element(app, "tile.footer.demo-artist-9")
+            for _ in 0..<10 {
+                if footer.exists && footer.frame.maxY <= mini.frame.minY - 24
+                    && footer.frame.minY > 100 { break }
+                let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+                let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+                start.press(forDuration: 0.05, thenDragTo: end)
+            }
+            for id in ["tile.title.demo-artist-9", "tile.artist.demo-artist-9", "tile.footer.demo-artist-9"] {
+                let caption = element(app, id)
+                XCTAssertTrue(caption.exists)
+                XCTAssertGreaterThan(caption.frame.height, 0)
+                XCTAssertGreaterThan(caption.frame.minY, 100)
+                XCTAssertLessThanOrEqual(caption.frame.maxY, mini.frame.minY - 24,
+                    "The full last caption must clear the floating bar, with breathing room")
+            }
+            XCTAssertTrue(mini.isHittable)
+            XCTAssertEqual(app.buttons["mini.toggle"].label, "Pause")
+            screenshot(orientation == .portrait ? "62-artist-player-portrait" : "61-artist-player-landscape")
+        }
+        let lastAlbum = app.buttons["album.demo-artist-9"]
+        XCTAssertTrue(lastAlbum.isHittable)
+        lastAlbum.tap()
+        XCTAssertTrue(element(app, "album.title").waitForExistence(timeout: 10))
+        XCTAssertEqual(element(app, "album.title").label, "Session 9")
+        XCTAssertTrue(mini.isHittable)
     }
 
     private func assertShortTitleCover(_ app: XCUIApplication) {

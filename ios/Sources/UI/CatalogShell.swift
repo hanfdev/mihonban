@@ -68,14 +68,17 @@ struct CatalogShell: View {
                 case .search: SearchScreen(model: model)
                 }
             }
+            .modifier(LibraryPlayerInset(model: model))
             .navigationDestination(for: CatalogRoute.self) { route in
-                switch route {
-                case .album(let id): AlbumView(model: model, albumID: id)
-                case .artist(let name): ArtistScreen(model: model, name: name)
-                case .genre(let genre): AlbumsScreen(model: model, initialGenre: genre)
-                case .albumSearch(let query): AlbumsScreen(model: model, initialQuery: query)
-                case .trackSearch(let query): TracksScreen(model: model, initialQuery: query)
-                }
+                Group {
+                    switch route {
+                    case .album(let id): AlbumView(model: model, albumID: id)
+                    case .artist(let name): ArtistScreen(model: model, name: name)
+                    case .genre(let genre): AlbumsScreen(model: model, initialGenre: genre)
+                    case .albumSearch(let query): AlbumsScreen(model: model, initialQuery: query)
+                    case .trackSearch(let query): TracksScreen(model: model, initialQuery: query)
+                    }
+                }.modifier(LibraryPlayerInset(model: model))
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -84,7 +87,18 @@ struct CatalogShell: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 8) {
+        .accessibilityHidden(model.player.isExpanded)
+    }
+}
+
+// Apply the reservation to each navigation page. An inset on the outer stack
+// can leave a pushed ScrollView unaware of the floating player's occupied area.
+// SwiftUI measures the actual bar, including Dynamic Type, in every orientation.
+private struct LibraryPlayerInset: ViewModifier {
+    let model: AppModel
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: model.player.current == nil ? 0 : 16) {
             if #available(iOS 26.0, *), model.player.current != nil {
                 NativeMiniPlayer(model: model)
                     .padding(8).frame(maxWidth: 900)
@@ -94,7 +108,6 @@ struct CatalogShell: View {
                 MiniPlayer(model: model)
             }
         }
-        .accessibilityHidden(model.player.isExpanded)
     }
 }
 
