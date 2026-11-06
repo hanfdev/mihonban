@@ -1251,6 +1251,11 @@ final class MihonbanUITests: XCTestCase {
             XCTAssertTrue(app.buttons["player.collapse"].wait(for: \.isHittable, toEqual: true, timeout: 10),
                           "Swiping up must finish opening an interactive player")
             let statusBar = app.statusBars.firstMatch
+            if orientation == .portrait {
+                XCTAssertGreaterThanOrEqual(app.buttons["player.collapse"].frame.minY,
+                    app.windows.firstMatch.frame.minY + (UIDevice.current.userInterfaceIdiom == .pad ? 40 : 60),
+                    "portrait header must stay below the status area even when XCTest omits the status-bar node")
+            }
             if statusBar.exists {
                 XCTAssertGreaterThanOrEqual(app.buttons["player.collapse"].frame.minY,
                     statusBar.frame.maxY + 8, "the stable player surface must retain breathing room below the status bar")

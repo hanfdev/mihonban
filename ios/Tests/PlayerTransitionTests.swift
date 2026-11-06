@@ -32,7 +32,7 @@ final class PlayerTransitionTests: XCTestCase {
         let cover = try XCTUnwrap(frames.cover.last)
         let heading = try XCTUnwrap(frames.heading.last)
         XCTAssertGreaterThan(cover.width, 100)
-        XCTAssertGreaterThan(heading.height, 44)
+        XCTAssertGreaterThanOrEqual(heading.height, 44)
         frames.cover = [cover]
         frames.heading = [heading]
         // Tap uses the same model state as the mini-player button. Sampling

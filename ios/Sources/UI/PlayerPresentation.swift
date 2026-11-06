@@ -168,6 +168,7 @@ struct PlayerPresentation<Library: View>: View {
                             .environment(\.playerTransitionActive, moving || !mounted)
                             // The stationary viewport supplies the final content
                             // size. Moving across a screen edge cannot change it.
+                            .padding(viewport.safeAreaInsets)
                             .frame(width: viewport.size.width, height: viewport.size.height)
                             .ignoresSafeArea(.container)
                             .background(Theme.background.ignoresSafeArea())
