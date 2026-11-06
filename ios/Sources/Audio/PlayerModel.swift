@@ -398,9 +398,11 @@ final class PlayerModel: NSObject {
         playbackIntent = UUID()
         guard current != nil, !isLoading, value.isFinite else { return }
         let position = min(max(0, value), max(0, duration - 0.05))
-        // After EOF the engine no longer owns a seekable decoder. Reopen it at
-        // the requested position, keeping the existing paused/playing intent.
-        if hasEnded || entries.isEmpty { beginCurrent(at: position); return }
+        // Before the first rendering callback, seeking can invalidate the
+        // engine's renderingStarted event while later frames still arrive.
+        // Position a fresh decoder before enqueueing it instead. This also
+        // handles EOF and a track prepared while paused, preserving play intent.
+        if hasEnded || entries.isEmpty || activeID == nil { beginCurrent(at: position); return }
         guard engine.supportsSeeking else { return }
         isSeeking = true
         if engine.seek(time: position) {

@@ -91,6 +91,7 @@ jobs:
             -only-testing:MihonbanTests/TypographyTests \
             -only-testing:MihonbanTests/FavoritesRefreshTests \
             -only-testing:MihonbanTests/PlaybackCompletionTests \
+            -only-testing:MihonbanTests/AlbumPlaybackRequestTests \
             -only-testing:MihonbanTests/PlayerTransitionTests \
             -only-testing:MihonbanTests/TrackListingTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
@@ -103,7 +104,7 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
-            | tee build-presentation.log
+            2>&1 | tee build-presentation.log
           xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
@@ -111,6 +112,7 @@ jobs:
             -skip-testing:MihonbanTests/TypographyTests \
             -skip-testing:MihonbanTests/FavoritesRefreshTests \
             -skip-testing:MihonbanTests/PlaybackCompletionTests \
+            -skip-testing:MihonbanTests/AlbumPlaybackRequestTests \
             -skip-testing:MihonbanTests/PlayerTransitionTests \
             -skip-testing:MihonbanTests/TrackListingTests \
             -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
@@ -123,7 +125,7 @@ jobs:
             -skip-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
             -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
-            | tee build-simulator.log
+            2>&1 | tee build-simulator.log
       - name: Preserve iPhone failure evidence before iPad tests
         if: ${{ !cancelled() && steps.iphone-tests.outcome == 'failure' }}
         run: |
@@ -164,6 +166,7 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
             -only-testing:MihonbanTests/PlaybackCompletionTests \
+            -only-testing:MihonbanTests/AlbumPlaybackRequestTests \
             -only-testing:MihonbanTests/CatalogLayoutTests \
             -only-testing:MihonbanTests/NowPlayingLayoutTests \
             -only-testing:MihonbanTests/TypographyTests \
@@ -192,7 +195,7 @@ jobs:
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
             -only-testing:MihonbanUITests/MihonbanUITests/testChineseQueueUsesTheBundledDisplayFont \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
-            | tee build-ipad.log
+            2>&1 | tee build-ipad.log
       - name: Preserve crash diagnostics and symbols
         if: always()
         run: |

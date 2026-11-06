@@ -38,6 +38,24 @@ final class PlaybackCompletionTests: XCTestCase {
         XCTAssertNil(value.error)
     }
 
+    func testSeekBeforeFirstRenderKeepsPausedPositionAndThenPlaysFromIt() async throws {
+        let value = try player()
+        // Pause synchronously before asynchronous preparation can enqueue any
+        // audio. Repeat with fresh decoders to exercise startup generations.
+        for target in [2.0, 4.0, 1.0] {
+            value.play([tracks[0]])
+            value.pause()
+            try await waitUntil { !value.isLoading && value.duration > 0 }
+            value.seek(to: target)
+            try await waitUntil { !value.isLoading && !value.isSeeking }
+            XCTAssertFalse(value.wantsPlayback)
+            XCTAssertEqual(value.elapsed, target, accuracy: 0.15)
+            value.resume()
+            try await waitUntil { value.elapsed > target + 0.3 && value.elapsed < target + 2 }
+            XCTAssertNil(value.error)
+        }
+    }
+
     func testPreviousAfterEOFReturnsToHistoryAndSingleTrackRestarts() async throws {
         let value = try player()
         value.play(tracks, index: 1)
