@@ -1250,6 +1250,11 @@ final class MihonbanUITests: XCTestCase {
             up.press(forDuration: 0.05, thenDragTo: up.withOffset(CGVector(dx: 0, dy: -220)), withVelocity: .slow, thenHoldForDuration: 0.2)
             XCTAssertTrue(app.buttons["player.collapse"].wait(for: \.isHittable, toEqual: true, timeout: 10),
                           "Swiping up must finish opening an interactive player")
+            let statusBar = app.statusBars.firstMatch
+            if statusBar.exists {
+                XCTAssertGreaterThanOrEqual(app.buttons["player.collapse"].frame.minY,
+                    statusBar.frame.maxY + 8, "the stable player surface must retain breathing room below the status bar")
+            }
             XCTAssertEqual(app.buttons["player.title"].label, title)
             XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
             let seek = app.sliders["player.seek"]

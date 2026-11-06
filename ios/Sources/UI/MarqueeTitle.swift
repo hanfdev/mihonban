@@ -250,8 +250,9 @@ final class MarqueeTitleView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // A transient zero size or presentation frame is not a new text layout.
-        guard bounds.width > 0, bounds.height > 0, !suspended, window != nil || !hasScrollAnimation else { return }
+        // Suspension freezes the animation clock, not layout. Prepare glyphs
+        // at their final size before the player moves into view.
+        guard bounds.width > 0, bounds.height > 0, window != nil || !hasScrollAnimation else { return }
         guard bounds.size != lastSize else { return }
         lastSize = bounds.size
         restart()

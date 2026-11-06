@@ -4,6 +4,36 @@ import AVKit
 @testable import Mihonban
 
 final class MarqueeTests: XCTestCase {
+    @MainActor
+    func testSuspendedTitlePreparesGlyphFramesBeforeResuming() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        let view = MarqueeTitleView()
+        view.setSuspended(true)
+        view.configure(text: String(repeating: "Prepared title ", count: 10), identity: "first",
+                       font: Typography.display(27), animated: true)
+        view.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
+        window.addSubview(view)
+        view.layoutIfNeeded()
+        // A track or Dynamic Type change while collapsed must be completely
+        // measured and drawn before opening, even though scrolling is paused.
+        view.configure(text: String(repeating: "Changed title ", count: 12), identity: "second",
+                       font: Typography.display(40), animated: true)
+        view.frame.size = CGSize(width: 300, height: 75)
+        view.layoutIfNeeded()
+        let strip = try XCTUnwrap(view.subviews.first)
+        let glyphs = try XCTUnwrap(strip.subviews.first)
+        XCTAssertEqual(glyphs.bounds.height, 75)
+        XCTAssertGreaterThan(glyphs.bounds.width, 300)
+        XCTAssertTrue(view.isScrollPaused)
+        let frame = glyphs.frame
+        let generation = view.animationGeneration
+        view.setSuspended(false)
+        view.layoutIfNeeded()
+        XCTAssertEqual(glyphs.frame, frame)
+        XCTAssertEqual(view.animationGeneration, generation, "resuming must not rebuild the glyph layout")
+        XCTAssertTrue(view.isAnimating)
+    }
+
     func testShortTitlesNeverAnimate() {
         XCTAssertNil(MarqueeMotion(textWidth: 100, viewport: 200))
         XCTAssertNil(MarqueeMotion(textWidth: 200, viewport: 200))
