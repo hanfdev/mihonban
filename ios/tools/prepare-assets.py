@@ -2,7 +2,7 @@ import argparse
 import json
 from pathlib import Path
 from PIL import Image
-from fontTools.ttLib import TTFont
+import runpy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("repository", type=Path)
@@ -24,9 +24,5 @@ logo = Image.open(root / "cloud/web/public/icon-512.png").convert("RGBA").resize
 logo.save(logo_set / "logo.png")
 (logo_set / "Contents.json").write_text(json.dumps({"images": [{"filename": "logo.png", "idiom": "universal"}], "info": {"author": "xcode", "version": 1}}, indent=2) + "\n")
 
-# The fallback matches the semibold display face; regular glyphs looked too
-# light inside headings such as the simplified Chinese playback queue label.
-font = TTFont(root / "cloud/web/public/fonts/genryu-mincho-shippori-fallback-bold.woff2")
-font.flavor = None
-font.save(resources / "GenRyuMincho-Fallback.ttf")
+runpy.run_path(str(Path(__file__).with_name("prepare-display-font.py")))["prepare"](root)
 print("Generated iOS icon, logo, and fallback font")

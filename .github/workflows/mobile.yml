@@ -91,6 +91,8 @@ jobs:
             -only-testing:MihonbanTests/TypographyTests \
             -only-testing:MihonbanTests/FavoritesRefreshTests \
             -only-testing:MihonbanTests/PlaybackCompletionTests \
+            -only-testing:MihonbanTests/PlayerTransitionTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
             -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
             -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
             -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
@@ -103,6 +105,8 @@ jobs:
             -skip-testing:MihonbanTests/TypographyTests \
             -skip-testing:MihonbanTests/FavoritesRefreshTests \
             -skip-testing:MihonbanTests/PlaybackCompletionTests \
+            -skip-testing:MihonbanTests/PlayerTransitionTests \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
             -skip-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
             -skip-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
             -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
@@ -142,6 +146,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPAD" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
             -resultBundlePath build/iPadTests.xcresult \
+            -only-testing:MihonbanTests/PlayerTransitionTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
             -only-testing:MihonbanTests/PlaybackCompletionTests \
             -only-testing:MihonbanTests/CatalogLayoutTests \
             -only-testing:MihonbanTests/NowPlayingLayoutTests \

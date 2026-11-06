@@ -1,6 +1,58 @@
 import OSLog
 import SwiftUI
 
+// Only the outer drawing modifier observes per-frame progress. The library,
+// hosting hierarchy, and player layout observe transition boundaries instead.
+@MainActor @Observable
+final class PlayerTranslation {
+    var progress: CGFloat = 0
+}
+
+struct PlayerTranslationEffect: ViewModifier {
+    let translation: PlayerTranslation
+    let height: CGFloat
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: reduceMotion ? 0 : (1 - translation.progress) * height)
+            .opacity(reduceMotion ? translation.progress : 1)
+    }
+}
+
+// Geometry caches are intentionally unobserved: gesture hit testing reads
+// them on touch-down without publishing layout changes back into SwiftUI.
+final class PlayerHitRegions {
+    var origin: CGPoint = .zero
+    var seek: CGRect = .zero
+    var transport: CGRect = .zero
+    var footer: CGRect = .zero
+
+    func accepts(_ point: CGPoint) -> Bool {
+        let local = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+        return ![seek, transport, footer].contains { $0.contains(local) }
+    }
+}
+
+@MainActor enum PlayerRenderWork {
+    static var shell = 0
+    static var content = 0
+    private static var start: (Int, Int)?
+    static func begin() {
+        #if DEBUG
+        if start == nil { start = (shell, content) }
+        #endif
+    }
+    static func end() {
+        #if DEBUG
+        if let start {
+            PlayerMotion.logger.info("Transition render work: shell=\(shell - start.0), content=\(content - start.1)")
+        }
+        start = nil
+        #endif
+    }
+}
+
 enum PlayerMotion {
     static let logger = Logger(subsystem: "org.mihonban.ios", category: "PlayerPresentation")
 
@@ -22,6 +74,7 @@ struct PlayerDragActions {
 extension EnvironmentValues {
     @Entry var expandPlayer: PlayerDragActions?
     @Entry var collapsePlayer: PlayerDragActions?
+    @Entry var playerTransitionActive = false
 }
 
 // One surface for both idioms keeps a finger-driven transition continuous;
@@ -32,18 +85,23 @@ struct PlayerPresentation<Library: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
     @State private var mounted = false
-    @State private var progress: CGFloat = 0
+    @State private var translation = PlayerTranslation()
     @State private var opening = false
+    @State private var moving = false
 
     @State private var travelHeight: CGFloat = 900
 
     var body: some View {
+        #if DEBUG
+        let _ = { PlayerRenderWork.shell += 1 }()
+        #endif
         library()
             .environment(\.expandPlayer, PlayerDragActions(changed: { distance in
                 if !mounted { dismissKeyboard() }
-                opening = true
-                mounted = true
-                progress = PlayerMotion.progress(distance: distance, height: travelHeight)
+                if !opening { opening = true }
+                if !mounted { mounted = true }
+                if !moving { PlayerRenderWork.begin(); moving = true }
+                translation.progress = PlayerMotion.progress(distance: distance, height: travelHeight)
             }, ended: { distance, predicted in
                 opening = false
                 let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
@@ -55,24 +113,26 @@ struct PlayerPresentation<Library: View>: View {
             .accessibilityHidden(mounted && !opening)
             // Keep TabView at the layout root so it owns the library safe areas.
             .overlay {
-                if mounted {
-                    GeometryReader { geometry in
+                // Prepare the player when a track is selected, before the first
+                // drag. Retain artwork and layout between presentations.
+                if model.player.current != nil {
                         NowPlayingView(model: model)
                             .environment(\.collapsePlayer, PlayerDragActions(changed: { distance in
-                                progress = 1 - PlayerMotion.progress(distance: distance, height: travelHeight)
+                                if !moving { PlayerRenderWork.begin(); moving = true }
+                                translation.progress = 1 - PlayerMotion.progress(distance: distance, height: travelHeight)
                             }, ended: { distance, predicted in
                                 let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
                                 PlayerMotion.logger.info("Collapse ended: distance=\(distance), predicted=\(predicted), completed=\(collapse)")
                                 model.player.isExpanded = !collapse
                                 settle(!collapse)
                             }))
+                            .environment(\.playerTransitionActive, moving || !mounted)
                             .background(Theme.background.ignoresSafeArea())
-                            .offset(y: reduceMotion ? 0 : (1 - progress) * travelHeight)
-                            .opacity(reduceMotion ? progress : 1)
+                            .modifier(PlayerTranslationEffect(translation: translation,
+                                height: travelHeight, reduceMotion: reduceMotion))
                             .allowsHitTesting(model.player.isExpanded && !opening)
                             .accessibilityHidden(!model.player.isExpanded || opening)
                             .accessibilityAddTraits(.isModal)
-                    }
                 }
             }
             .onGeometryChange(for: CGFloat.self) {
@@ -86,7 +146,7 @@ struct PlayerPresentation<Library: View>: View {
                 if expanded && !mounted {
                     dismissKeyboard()
                     mounted = true
-                    progress = 0
+                    translation.progress = 0
                     DispatchQueue.main.async { if model.player.isExpanded { settle(true) } }
                 } else { settle(expanded) }
             }
@@ -96,10 +156,14 @@ struct PlayerPresentation<Library: View>: View {
     }
 
     private func settle(_ expanded: Bool) {
+        moving = true
         withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .spring(duration: 0.42, bounce: 0.06)) {
-            progress = expanded ? 1 : 0
+            translation.progress = expanded ? 1 : 0
         } completion: {
-            if !model.player.isExpanded && !opening && progress == 0 { mounted = false }
+            guard !opening, model.player.isExpanded == expanded else { return }
+            if !expanded && translation.progress == 0 { mounted = false }
+            moving = false
+            PlayerRenderWork.end()
         }
     }
 
@@ -111,7 +175,7 @@ struct PlayerPresentation<Library: View>: View {
 struct PlayerSwipe: ViewModifier {
     var expanding = false
     var enabled = true
-    var excluded: [CGRect] = []
+    var acceptsStart: (CGPoint) -> Bool = { _ in true }
     @Environment(\.expandPlayer) private var expand
     @Environment(\.collapsePlayer) private var collapse
     @State private var accepted = false
@@ -129,7 +193,7 @@ struct PlayerSwipe: ViewModifier {
                     let y = value.translation.height * (expanding ? -1 : 1)
                     if !accepted {
                         guard enabled, y > abs(value.translation.width) * 1.3,
-                              !excluded.contains(where: { $0.contains(value.startLocation) }) else {
+                              acceptsStart(value.startLocation) else {
                             rejected = true
                             return
                         }

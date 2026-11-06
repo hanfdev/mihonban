@@ -29,7 +29,7 @@ struct MiniPlayer: View {
 }
 
 struct NowPlayingView: View {
-    private enum Space { case viewport }
+    private enum Space { case viewport, surface }
     let model: AppModel
     @State private var queueVisible = false
     @State private var creditsSheet: CreditsSelection?
@@ -40,13 +40,15 @@ struct NowPlayingView: View {
     @State private var routePickerPresented = false
     @State private var sharing: ShareSelection?
     @State private var scrollTop: CGFloat = 0
-    @State private var seekFrame: CGRect = .zero
-    @State private var transportFrame: CGRect = .zero
-    @State private var footerFrame: CGRect = .zero
+    @State private var hitRegions = PlayerHitRegions()
+    @Environment(\.playerTransitionActive) private var transitioning
 
     private var player: PlayerModel { model.player }
     private var isTablet: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     var body: some View {
+        #if DEBUG
+        let _ = { PlayerRenderWork.content += 1 }()
+        #endif
         NavigationStack {
             VStack(spacing: 0) {
                 header
@@ -79,10 +81,12 @@ struct NowPlayingView: View {
                     }.scrollBounceBehavior(.basedOnSize).background(Theme.background)
                         .coordinateSpace(name: Space.viewport)
                         .modifier(PlayerSwipe(enabled: scrollTop >= -1 && !scrubbing,
-                            excluded: [seekFrame, transportFrame, footerFrame]))
+                            acceptsStart: hitRegions.accepts))
                         .accessibilityIdentifier("player.scroll")
                 }
             }
+            .coordinateSpace(name: Space.surface)
+            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { hitRegions.origin = $0 }
             .background(Theme.background)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $sharing) { ActivitySheet(selection: $0).modifier(AppAppearance()) }
@@ -107,9 +111,16 @@ struct NowPlayingView: View {
             IconButton(symbol: "chevron.down", label: L10n.text("mobile.collapse")) { player.isExpanded = false }
                 .background(Theme.surface, in: Circle()).accessibilityIdentifier("player.collapse")
             Spacer(minLength: 0)
-            Text(isTablet && !(player.current?.albumTitle ?? "").isEmpty
-                 ? player.current?.albumTitle ?? "" : L10n.text("mobile.nowPlaying"))
-                .font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
+            if let title = player.current?.albumTitle, !title.isEmpty, player.current?.albumId != nil {
+                Button(action: openAlbum) {
+                    Text(title).font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
+                        .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("player.album")
+                    .accessibilityHint(L10n.text("player.viewAlbum"))
+            } else {
+                Text(L10n.text("mobile.nowPlaying"))
+                    .font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
+            }
             Spacer(minLength: 0)
             Menu {
                 if let track = player.current {
@@ -134,6 +145,10 @@ struct NowPlayingView: View {
     private struct CreditsSelection: Identifiable {
         let id: String
         let credits: PlaybackCredits
+    }
+
+    private func openAlbum() {
+        if let album = player.current?.albumId { model.pendingRoute = .album(album) }
     }
 
     private func openArtists() {
@@ -168,11 +183,10 @@ struct NowPlayingView: View {
 
     private func controls(style: NowPlayingLayout.ControlStyle, width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: style.spacing) {
-            NowPlayingHeading(track: player.current, openAlbum: {
-                if let album = player.current?.albumId { model.pendingRoute = .album(album) }
-            }, openArtists: openArtists, favorite: favoriteButton,
+            NowPlayingHeading(track: player.current, openAlbum: openAlbum,
+               openArtists: openArtists, favorite: favoriteButton,
                titleSize: style.titleSize, artistSize: style.artistSize)
-                .environment(\.marqueeSuspended, routePickerPresented || queueVisible || creditsSheet != nil || sharing != nil)
+                .environment(\.marqueeSuspended, transitioning || routePickerPresented || queueVisible || creditsSheet != nil || sharing != nil)
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
                                       set: { scrubTime = $0 }),
@@ -182,7 +196,7 @@ struct NowPlayingView: View {
                 }).tint(style == .compact ? Theme.accent : Theme.ink)
                     .disabled(player.isLoading).accessibilityLabel(L10n.text("player.seek"))
                     .accessibilityIdentifier("player.seek")
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global).insetBy(dx: -12, dy: -12) } action: { seekFrame = $0 }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Space.surface)).insetBy(dx: -12, dy: -12) } action: { hitRegions.seek = $0 }
                 HStack {
                     Text(timestamp(scrubbing ? scrubTime : player.elapsed))
                     Spacer()
@@ -206,7 +220,7 @@ struct NowPlayingView: View {
                            selected: player.queue.repeatMode != .off) { player.cycleRepeat() }
             }.padding(.vertical, 4)
                 .frame(width: min(width, style.transportWidth)).frame(maxWidth: .infinity)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { transportFrame = $0 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Space.surface)) } action: { hitRegions.transport = $0 }
             // Icons only, under shuffle and repeat, as in the system music app.
             HStack {
                 RoutePicker { routePickerPresented = $0 }
@@ -217,7 +231,7 @@ struct NowPlayingView: View {
                 IconButton(symbol: "list.bullet", label: L10n.text("mobile.queue")) { queueVisible = true }
                     .accessibilityIdentifier("player.queue")
             }.frame(width: min(width, style.transportWidth)).frame(maxWidth: .infinity)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { footerFrame = $0 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Space.surface)) } action: { hitRegions.footer = $0 }
             if let error = player.error {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(error).font(Theme.body(14)).foregroundStyle(Theme.dim)

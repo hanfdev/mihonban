@@ -48,6 +48,13 @@ def main():
     available |= characters(ROOT / "ios/Resources/GenRyuMincho-Fallback.ttf")
     catalogs = json.loads((ROOT / "ios/Resources/Localizations.json").read_text(encoding="utf-8"))
     failures = []
+    for path in [ROOT / "desktop/assets/ShipporiMincho-SemiBold.ttf", ROOT / "ios/Resources/GenRyuMincho-Fallback.ttf"]:
+        data = path.read_bytes()
+        count = struct.unpack_from(">H", data, 4)[0]
+        tables = {data[12 + i * 16:16 + i * 16]: struct.unpack_from(">I", data, 20 + i * 16)[0] for i in range(count)}
+        weight = struct.unpack_from(">H", data, tables[b"OS/2"] + 4)[0]
+        if weight != 600:
+            failures.append(f"{path.name}: expected semibold 600, got {weight}")
     for language, catalog in catalogs.items():
         required = {ord(c) for text in catalog.values() for c in text if not c.isspace()}
         missing = required - available

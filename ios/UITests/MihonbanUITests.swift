@@ -1282,6 +1282,22 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(app.buttons["player.title"].waitForExistence(timeout: 10))
     }
 
+    func testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback() {
+        let app = launchCreditsPlayer()
+        let track = app.buttons["player.title"].label
+        app.buttons["player.collapse"].tap()
+        openTab(app, "Tracks")
+        app.buttons["player.expand"].tap()
+        let album = app.buttons["player.album"]
+        XCTAssertTrue(album.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        XCTAssertGreaterThanOrEqual(album.frame.height, 44)
+        XCTAssertEqual(album.label, "夜の余白")
+        album.tap()
+        XCTAssertTrue(app.buttons["album.play"].wait(for: \.isHittable, toEqual: true, timeout: 10))
+        XCTAssertEqual(app.staticTexts["mini.title"].label, track)
+        XCTAssertEqual(app.buttons["mini.toggle"].label, "Play")
+    }
+
     func testTabletPlayerUsesWholeWindowAndReturnsFromQueue() {
         let app = launchCreditsPlayer(appearance: "light")
         defer { XCUIDevice.shared.orientation = .portrait }
