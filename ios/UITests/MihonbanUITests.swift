@@ -1284,19 +1284,18 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
         picker.tap()
         app.buttons["Light"].tap()
+        waitForSettingsAppearance(app, picker: picker, dark: false)
         screenshot("42-light-settings")
         app.buttons["Done"].firstMatch.tap()
         screenshot("42-light-library")
         app.buttons["settings.open"].firstMatch.tap()
         picker.tap()
         app.buttons["Follow System"].tap()
-        let appearance = app.descendants(matching: .any)["settings.content"].firstMatch
-        let dark = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Dark"), object: appearance)
-        XCTAssertEqual(XCTWaiter.wait(for: [dark], timeout: 10), .completed,
-                       "The open settings sheet must immediately follow the simulator's dark appearance")
+        waitForSettingsAppearance(app, picker: picker, dark: true)
         screenshot("48-system-dark-open-settings")
         picker.tap()
         app.buttons["Dark"].tap()
+        waitForSettingsAppearance(app, picker: picker, dark: true)
         screenshot("43-dark-settings")
         app.buttons["Done"].firstMatch.tap()
         screenshot("43-dark-library")
@@ -1306,10 +1305,49 @@ final class MihonbanUITests: XCTestCase {
         app.buttons["settings.open"].firstMatch.tap()
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
         XCTAssertTrue(picker.label.contains("Dark") || (picker.value as? String)?.contains("Dark") == true)
+        waitForSettingsAppearance(app, picker: picker, dark: true)
         picker.tap()
         app.buttons["Follow System"].tap()
         screenshot("44-system-appearance")
         app.buttons["Done"].firstMatch.tap()
+    }
+
+    private func waitForSettingsAppearance(_ app: XCUIApplication, picker: XCUIElement, dark: Bool) {
+        // iPad's List container can disappear from the accessibility snapshot even
+        // while its rows remain available. Verify the rendered row, not that container.
+        let updated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard picker.exists, picker.isHittable,
+                  let luminance = self.settingsRowLuminance(app, picker: picker) else { return false }
+            return dark ? luminance < 0.3 : luminance > 0.75
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 10), .completed,
+                       "The open settings sheet must render the selected appearance without reopening")
+    }
+
+    private func settingsRowLuminance(_ app: XCUIApplication, picker: XCUIElement) -> Double? {
+        let frame = picker.frame
+        let window = app.frame
+        guard frame.width > 20, frame.height > 20, window.width > 0, window.height > 0,
+              let image = app.screenshot().image.cgImage else { return nil }
+        let scaleX = CGFloat(image.width) / window.width
+        let scaleY = CGFloat(image.height) / window.height
+        // Sample the surface below the text, away from labels, values and rounded edges.
+        let sample = CGRect(x: (frame.midX - window.minX - 2) * scaleX,
+                            y: (frame.minY + frame.height * 0.8 - window.minY - 2) * scaleY,
+                            width: 4 * scaleX, height: 4 * scaleY)
+        guard let patch = image.cropping(to: sample),
+              let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let rendered = pixel.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: 1, height: 1,
+                                          bitsPerComponent: 8, bytesPerRow: 4, space: colorSpace,
+                                          bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue |
+                                            CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(patch, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        guard rendered else { return nil }
+        return (0.2126 * Double(pixel[0]) + 0.7152 * Double(pixel[1]) + 0.0722 * Double(pixel[2])) / 255
     }
 
     func testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback() {
