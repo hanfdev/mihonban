@@ -4,6 +4,18 @@
 
 使用 SwiftUI 和 SFBAudioEngine，连接现有 Mihonban 服务器。当前预览版本为 0.2.0，需要 iOS / iPadOS 17 或更高版本。听歌界面为原生实现；客户端不负责托管服务器。
 
+## 界面预览
+
+以下为原生 iOS 应用在 iPhone 与 iPad 模拟器中的实际截图，使用虚构演示数据和内置封面占位图。[截图说明](../docs/images/README.md)。
+
+| iPhone 曲库 | iPhone 音盘详情 | iPhone 播放器 |
+|:---:|:---:|:---:|
+| <img src="../docs/images/ios-library.webp" height="420" alt="iPhone 曲库"> | <img src="../docs/images/ios-album.webp" height="420" alt="iPhone 音盘详情"> | <img src="../docs/images/ios-player.webp" height="420" alt="iPhone 播放器"> |
+
+**iPad 横屏音盘详情**
+
+![iPad 横屏音盘详情](../docs/images/ios-ipad-album.webp)
+
 ## 连接与使用
 
 填写服务器根地址，例如 `https://music.example.com`，以及听众或管理员口令。仅在服务器开启访客访问时可留空。“将口令保存在钥匙串”是可选项，用于重新连接。手机访问本地服务器时应填写电脑的局域网 IP；手机的 `localhost` 指向手机自身。本地 HTTP 会话需要服务器设置 `DEV_INSECURE_COOKIE=1`；远程访问应使用 HTTPS。
@@ -44,7 +56,7 @@ python3 -I ios/tools/check-fonts.py
 python3 -I ios/tools/fixture-server.py ios/TestFixtures
 ```
 
-测试服务器监听回环地址的 8766 端口，提供合成音频和 API 测试数据，无需生产账号或真实音乐。CI 运行 iPhone 测试和独立的 iPad 子集，保存报告及截图。上述 Python 检查通过只表示语言键和字体覆盖检查通过，不能代替 Swift 编译、模拟器或真机验证。
+测试服务器监听回环地址的 8766 端口，提供合成音频和 API 测试数据，无需生产账号或真实音乐。CI 运行 iPhone 测试和独立的 iPad 子集，保存报告及截图。精选文档截图提交在 `docs/images/`，完整截图集与测试报告仍作为生成产物，不纳入版本控制。上述 Python 检查通过只表示语言键和字体覆盖检查通过，不能代替 Swift 编译、模拟器或真机验证。
 
 修改共享 Web 翻译或艺人别名后，运行 `node ios/tools/export-locales.mjs`、`node ios/tools/export-search.mjs`，审阅生成文件的差异，再运行语言和字体检查。仅在需要更新图标或字体覆盖时运行 `prepare-assets.py`；所需依赖见英文说明。
 

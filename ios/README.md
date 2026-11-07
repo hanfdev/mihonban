@@ -4,6 +4,18 @@
 
 A native SwiftUI client for an existing Mihonban server, using SFBAudioEngine for playback. The current preview is 0.2.0 and requires iOS/iPadOS 17 or later. It does not host the server or use a WebView for its listening interface.
 
+## A look inside
+
+Actual native iOS screens captured in the iPhone and iPad simulators, using fictional demo data and built-in cover placeholders. [Capture details](../docs/images/README.md).
+
+| iPhone library | iPhone album details | iPhone player |
+|:---:|:---:|:---:|
+| <img src="../docs/images/ios-library.webp" height="420" alt="iPhone library"> | <img src="../docs/images/ios-album.webp" height="420" alt="iPhone album details"> | <img src="../docs/images/ios-player.webp" height="420" alt="iPhone player"> |
+
+**iPad album details in landscape**
+
+![iPad album details in landscape](../docs/images/ios-ipad-album.webp)
+
 ## Connect and listen
 
 Enter the server's root URL, such as `https://music.example.com`, and a listener or administrator passphrase. A blank passphrase works only when guest access is enabled on the server. The optional Save password switch stores the passphrase in Keychain for reconnection. Use the computer's LAN address for a local server; the phone's `localhost` is the phone itself. Local HTTP sessions require `DEV_INSECURE_COOKIE=1` on the server; use HTTPS for remote access.
@@ -50,7 +62,7 @@ Run the fixture server in another terminal before running the Xcode test scheme:
 python3 -I ios/tools/fixture-server.py ios/TestFixtures
 ```
 
-The server listens on loopback port 8766 and supplies synthetic media and API fixtures. Tests cover API contracts, offline launch, catalog refresh, favorites, queue transitions, cache/download handling, decoding/seeking, typography, layout and native navigation. CI runs the iPhone suite and a separate iPad subset, and uploads test reports and screenshots. No production account or music collection is required. An iOS build or simulator run requires macOS; passing the portable Python checks alone does not verify Swift compilation or device behavior.
+The server listens on loopback port 8766 and supplies synthetic media and API fixtures. Tests cover API contracts, offline launch, catalog refresh, favorites, queue transitions, cache/download handling, decoding/seeking, typography, layout and native navigation. CI runs the iPhone suite and a separate iPad subset, and uploads test reports and screenshots. Selected documentation screenshots are committed under `docs/images/`; full screenshot runs and test reports remain generated artifacts outside version control. No production account or music collection is required. An iOS build or simulator run requires macOS; passing the portable Python checks alone does not verify Swift compilation or device behavior.
 
 ## Maintain generated resources
 

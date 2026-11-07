@@ -6,12 +6,12 @@ Mihonban は、レスポンシブな Web プレーヤーを備えた、個人向
 
 ## 画面プレビュー
 
-架空のデモデータとオリジナルのサンプルカバーを使った、実際のアプリ画面です。[撮影について](docs/images/README.md)。
+架空のデモデータと、オリジナルのサンプルカバーまたは内蔵の代替カバー画像を使った、実際のアプリ画面です。[撮影について](docs/images/README.md)。
 
 ![Web ライブラリ](docs/images/web-library.webp)
 
 <details>
-<summary>アルバム詳細とネイティブ Android アプリ</summary>
+<summary>アルバム詳細とネイティブ Android / iOS アプリ</summary>
 
 **Web アルバム詳細**
 
@@ -20,6 +20,16 @@ Mihonban は、レスポンシブな Web プレーヤーを備えた、個人向
 | Android ライブラリ | Android プレーヤー |
 |:---:|:---:|
 | <img src="docs/images/android-library.webp" height="480" alt="Android ライブラリ"> | <img src="docs/images/android-player.webp" height="480" alt="Android プレーヤー"> |
+
+ネイティブ iOS アプリのシミュレーター画面です。架空のデモデータと内蔵の代替カバー画像を使用しています。
+
+| iPhone ライブラリ | iPhone プレーヤー |
+|:---:|:---:|
+| <img src="docs/images/ios-library.webp" height="480" alt="iPhone ライブラリ"> | <img src="docs/images/ios-player.webp" height="480" alt="iPhone プレーヤー"> |
+
+**iPad アルバム詳細**
+
+![iPad アルバム詳細](docs/images/ios-ipad-album.webp)
 
 </details>
 

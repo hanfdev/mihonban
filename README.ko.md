@@ -6,12 +6,12 @@ Mihonban은 반응형 웹 플레이어를 제공하는 개인용 셀프 호스�
 
 ## 화면 미리 보기
 
-가상의 데모 데이터와 직접 제작한 예시 표지를 사용한 실제 앱 화면입니다. [촬영 안내](docs/images/README.md).
+가상의 데모 데이터와 직접 제작한 예시 표지 또는 기본 표지 이미지를 사용한 실제 앱 화면입니다. [촬영 안내](docs/images/README.md).
 
 ![Web 라이브러리](docs/images/web-library.webp)
 
 <details>
-<summary>앨범 상세 및 네이티브 Android 앱</summary>
+<summary>앨범 상세 및 네이티브 Android / iOS 앱</summary>
 
 **Web 앨범 상세**
 
@@ -20,6 +20,16 @@ Mihonban은 반응형 웹 플레이어를 제공하는 개인용 셀프 호스�
 | Android 라이브러리 | Android 플레이어 |
 |:---:|:---:|
 | <img src="docs/images/android-library.webp" height="480" alt="Android 라이브러리"> | <img src="docs/images/android-player.webp" height="480" alt="Android 플레이어"> |
+
+가상의 데모 데이터와 기본 표지 이미지를 사용해 시뮬레이터에서 촬영한 네이티브 iOS 앱 화면입니다.
+
+| iPhone 라이브러리 | iPhone 플레이어 |
+|:---:|:---:|
+| <img src="docs/images/ios-library.webp" height="480" alt="iPhone 라이브러리"> | <img src="docs/images/ios-player.webp" height="480" alt="iPhone 플레이어"> |
+
+**iPad 앨범 상세**
+
+![iPad 앨범 상세](docs/images/ios-ipad-album.webp)
 
 </details>
 

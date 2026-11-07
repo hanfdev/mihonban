@@ -6,12 +6,12 @@ Mihonban 是一套私有、自託管音樂曲庫和響應式網頁播放器。�
 
 ## 介面預覽
 
-以下為實際應用介面，使用虛構示範資料和原創範例封面。[截圖說明](docs/images/README.md)。
+以下為實際應用介面，使用虛構示範資料、原創範例封面或內建封面預設圖。[截圖說明](docs/images/README.md)。
 
 ![Web 音盤庫](docs/images/web-library.webp)
 
 <details>
-<summary>查看音盤詳情與原生 Android 客戶端</summary>
+<summary>查看音盤詳情與原生 Android / iOS 客戶端</summary>
 
 **Web 音盤詳情**
 
@@ -20,6 +20,16 @@ Mihonban 是一套私有、自託管音樂曲庫和響應式網頁播放器。�
 | Android 曲庫 | Android 播放器 |
 |:---:|:---:|
 | <img src="docs/images/android-library.webp" height="480" alt="Android 曲庫"> | <img src="docs/images/android-player.webp" height="480" alt="Android 播放器"> |
+
+原生 iOS 模擬器截圖，使用虛構示範資料和內建封面預設圖。
+
+| iPhone 曲庫 | iPhone 播放器 |
+|:---:|:---:|
+| <img src="docs/images/ios-library.webp" height="480" alt="iPhone 曲庫"> | <img src="docs/images/ios-player.webp" height="480" alt="iPhone 播放器"> |
+
+**iPad 音盤詳情**
+
+![iPad 音盤詳情](docs/images/ios-ipad-album.webp)
 
 </details>
 

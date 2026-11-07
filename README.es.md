@@ -6,12 +6,12 @@ Mihonban es una biblioteca musical privada y autoalojada con un reproductor web 
 
 ## Vista previa
 
-Capturas de la aplicación real con datos ficticios y portadas originales de demostración. [Detalles de las capturas](docs/images/README.md).
+Capturas de la aplicación real con datos ficticios y portadas originales de demostración o imágenes de portada predeterminadas. [Detalles de las capturas](docs/images/README.md).
 
 ![Biblioteca Web](docs/images/web-library.webp)
 
 <details>
-<summary>Detalles del álbum y aplicación Android nativa</summary>
+<summary>Detalles del álbum y aplicaciones Android / iOS nativas</summary>
 
 **Detalles del álbum en la Web**
 
@@ -20,6 +20,16 @@ Capturas de la aplicación real con datos ficticios y portadas originales de dem
 | Biblioteca Android | Reproductor Android |
 |:---:|:---:|
 | <img src="docs/images/android-library.webp" height="480" alt="Biblioteca Android"> | <img src="docs/images/android-player.webp" height="480" alt="Reproductor Android"> |
+
+Aplicación iOS nativa capturada en el simulador, con datos ficticios e imágenes de portada predeterminadas.
+
+| Biblioteca iPhone | Reproductor iPhone |
+|:---:|:---:|
+| <img src="docs/images/ios-library.webp" height="480" alt="Biblioteca iPhone"> | <img src="docs/images/ios-player.webp" height="480" alt="Reproductor iPhone"> |
+
+**Detalles del álbum en iPad**
+
+![Detalles del álbum en iPad](docs/images/ios-ipad-album.webp)
 
 </details>
 

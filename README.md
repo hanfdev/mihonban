@@ -6,12 +6,12 @@ Mihonban is a private, self-hosted music library with a responsive web player. R
 
 ## A look inside
 
-Actual application screenshots with fictional demo data and original example covers. [Capture details](docs/images/README.md).
+Actual application screenshots with fictional demo data, original example covers or built-in cover placeholders. [Capture details](docs/images/README.md).
 
 ![Web library](docs/images/web-library.webp)
 
 <details>
-<summary>Album details and native Android</summary>
+<summary>Album details and native Android / iOS</summary>
 
 **Web album details**
 
@@ -20,6 +20,16 @@ Actual application screenshots with fictional demo data and original example cov
 | Android library | Android player |
 |:---:|:---:|
 | <img src="docs/images/android-library.webp" height="480" alt="Android library"> | <img src="docs/images/android-player.webp" height="480" alt="Android player"> |
+
+Native iOS, captured in the simulator with fictional demo data and built-in cover placeholders.
+
+| iPhone library | iPhone player |
+|:---:|:---:|
+| <img src="docs/images/ios-library.webp" height="480" alt="iPhone library"> | <img src="docs/images/ios-player.webp" height="480" alt="iPhone player"> |
+
+**iPad album details**
+
+![iPad album details](docs/images/ios-ipad-album.webp)
 
 </details>
 
