@@ -11,9 +11,11 @@ Mihonban は、レスポンシブな Web プレーヤーを備えた、個人向
 - リスナー用・管理者用パスワードと、任意で有効にできるパスワード不要の読み取り専用ゲストモード
 - 永続的な再生キュー、モバイルの前の曲／再生・一時停止／次の曲の完全な操作、ユーザー操作内で開始する再生、シャッフル／リピート、Range シーク、Media Session
 - `desktop/` にあるネイティブ Windows デスクトップクライアント（egui + Rodio）。インストール不要のポータブル exe として [Releases ページ](https://github.com/hanfdev/mihonban/releases) で配布
+- [`android/`](android/README.md) のネイティブ Android クライアント（Kotlin + Jetpack Compose + Media3）。バックグラウンド再生、オフライン保存、管理画面に対応
+- [`ios/`](ios/README.md) のネイティブ iPhone／iPad クライアント（SwiftUI + SFBAudioEngine）。バックグラウンド再生、ダウンロード、両端末向けレイアウトに対応
 - OneDrive、WebDAV、Google Drive、Node 専用ローカルフォルダーを名前付きストレージとして管理
 - カバー、ギャラリー、アーティスト画像を配信し、自動復旧できる任意の R2 イメージミラー
-- Discogs API からのインポートと、自動アクセスを行わない手動保存 RYM HTML の解析
+- Discogs API からのインポートと、保存済み HTML または任意の Chrome／Edge 拡張機能による RYM 更新。手動開始の評価一括更新にも対応
 - 受信トレイ、単一／多重圧縮アーカイブ、タグ修復、クラウド同期に対応する任意の Python コンパニオン
 - 英語、簡体字中国語、繁体字中国語、日本語、韓国語、フランス語、スペイン語の UI
 - SQLite／D1 移行ツールと、任意で利用できる署名付き音声プロキシ Worker
@@ -100,6 +102,9 @@ mihonban doctor
 | `cloud/worker/` | Hono API、D1 スキーマ、Node 互換ランタイム |
 | `cloud/proxy-worker/` | 任意の署名付き音声リレー |
 | `desktop/` | ネイティブ Windows デスクトップクライアント（Rust、egui） |
+| `android/` | ネイティブ Android クライアント（Kotlin、Jetpack Compose、Media3） |
+| `ios/` | ネイティブ iPhone／iPad クライアント（SwiftUI、SFBAudioEngine） |
+| `extensions/rym/` | RYM ページ取得と評価更新用の任意の Chrome／Edge 拡張機能 |
 | `pipeline/` | Python の `mihonban` CLI と取り込み／同期パイプライン |
 | `config/` | 安全な設定テンプレート |
 | `tools/` | ローカル開発、デプロイ、監視、移行用の補助ツール |
@@ -128,7 +133,7 @@ python -m pytest -q
 - ローカル HTTP では `DEV_INSECURE_COOKIE=1` が必要です。公開環境では HTTPS を使用し、この変数は設定しないでください。
 - 管理画面で保存したパスワードは、実行環境の初期パスワードより優先され、既存のセッションを無効にします。
 - 外部プロキシを有効にする場合は、`STREAM_PROXY_SECRET` と `PROXY_SECRET` を同一の値にし、非公開で保管してください。
-- RYM 機能は、利用者が手動保存したファイルだけを解析します。このリポジトリに RYM クローラーは含まれません。
+- RYM の一括更新は管理者がブラウザのキューを開始した場合だけ動作し、認証や制限で停止します。サーバーは RYM を巡回しません。[利用ガイド](docs/manual.ja.md)を参照してください。
 - 失うことのできない音声は、必ず少なくとも 1 つ別の場所にも保管してください。
 
 ## ドキュメント

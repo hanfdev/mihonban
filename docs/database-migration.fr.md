@@ -23,6 +23,10 @@ Les crédits ordonnés d’un album sont stockés dans `album_artists`. Les cré
 
 `artist_sort` est facultatif : les valeurs vides sont conservées lors des exports et imports, tandis que la recherche et le tri se replient sur le nom d’origine à l’exécution.
 
+`albums.created_at` conserve la date du premier ajout à la bibliothèque ; `updated_at` sert aux modifications et à l’actualisation du cache. Préservez les deux lors d’une migration. Le tri par ajout utilise `created_at` : le remplacer par la date de migration ou de modification ferait apparaître les anciens albums comme de nouveaux ajouts.
+
+L’état RYM est séparé dans `album_rym_state` : source confirmée, dates d’observation et de réception par champ, provenance, suggestions de classification et révision de concurrence. `rym_dismissed` conserve les termes ignorés ou supprimés manuellement. Les deux tables sont incluses dans les exports logiques et doivent suivre `albums` pour préserver la fraîcheur des données et éviter le retour des suggestions. La mise à niveau crée les tables et déclencheurs de suppression sans réécrire les classifications. Les anciennes observations restent de date inconnue jusqu’à une mise à jour explicite ; la migration ne leur attribue pas une date récente.
+
 ## Avant de déplacer le stockage local Node vers Cloudflare
 
 Cloudflare ne peut pas lire un backend Node `local`. Tant que l’ancienne application Node est toujours disponible :

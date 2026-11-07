@@ -11,9 +11,11 @@ Mihonban 是一套私有、自託管音樂曲庫和響應式網頁播放器。�
 - 聽眾與管理員雙口令，以及可選的免密只讀訪客模式
 - 播放佇列、行動端上一首/播放暫停/下一首完整控制、手勢安全首播、隨機/迴圈、Range 拖動和系統媒體控制
 - `desktop/` 目錄下的原生 Windows 桌面客戶端（egui + Rodio），以免安裝可攜 exe 形式發佈於 [Releases 頁面](https://github.com/hanfdev/mihonban/releases)
+- [`android/`](android/README.md) 目錄下的原生 Android 客戶端（Kotlin + Jetpack Compose + Media3），支援背景播放、離線下載和原生管理介面
+- [`ios/`](ios/README.md) 目錄下的原生 iPhone／iPad 客戶端（SwiftUI + SFBAudioEngine），支援背景播放、下載及手機和平板版面
 - 命名 OneDrive、WebDAV、Google Drive，以及僅 Node 支援的本地資料夾後端
 - 可自動回源修復的 R2 圖片映象，用於封面、內頁和藝人頭像
-- Discogs 官方 API 匯入；手動儲存 RYM HTML 後解析，不自動請求 RYM
+- Discogs 官方 API 匯入；RYM 支援儲存的 HTML 和可選 Chrome／Edge 擴充功能，包含手動啟動的評分批次更新
 - 可選 Python 本機伴侶：處理資料夾及單層/巢狀壓縮包、修復標籤並同步
 - 英語、簡體中文、繁體中文、日語、韓語、法語和西班牙語介面
 - SQLite/D1 遷移工具和可選的簽名音源代理 Worker
@@ -100,6 +102,9 @@ mihonban doctor
 | `cloud/worker/` | Hono API、D1 schema、Node 相容執行時 |
 | `cloud/proxy-worker/` | 可選簽名音源中轉 |
 | `desktop/` | 原生 Windows 桌面客戶端（Rust、egui） |
+| `android/` | 原生 Android 客戶端（Kotlin、Jetpack Compose、Media3） |
+| `ios/` | 原生 iPhone／iPad 客戶端（SwiftUI、SFBAudioEngine） |
+| `extensions/rym/` | 可選 Chrome／Edge RYM 頁面擷取與評分更新擴充功能 |
 | `pipeline/` | Python `mihonban` CLI 與整理/同步管線 |
 | `config/` | 不含金鑰的配置模板 |
 | `tools/` | 本地開發、部署、守望和遷移工具 |
@@ -128,7 +133,7 @@ python -m pytest -q
 - 本地 HTTP 需要 `DEV_INSECURE_COOKIE=1`；公開環境必須使用 HTTPS，並且不能設定它。
 - 在管理後臺儲存的新口令會覆蓋環境變數中的初始口令，並讓舊會話失效。
 - 使用外部代理時，`STREAM_PROXY_SECRET` 與 `PROXY_SECRET` 必須完全相同並保持私密。
-- RYM 功能只解析使用者手動儲存的檔案，本倉庫不包含 RYM 爬蟲。
+- RYM 批次更新僅在管理員啟動瀏覽器佇列後執行，遇到驗證或限流會暫停；伺服器不會擷取 RYM。詳見[使用手冊](docs/manual.zh-Hant.md)。
 - 無法替代的音訊至少保留一份獨立副本。
 
 ## 文件

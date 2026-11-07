@@ -11,9 +11,11 @@ Mihonban est une bibliothèque musicale privée et auto-hébergée dotée d’un
 - Mots de passe distincts pour les auditeurs et les administrateurs, avec un mode invité facultatif, sans mot de passe et en lecture seule
 - File d’attente persistante, commandes mobiles complètes piste précédente／lecture-pause／piste suivante, démarrage lié au geste utilisateur, lecture aléatoire/répétée, navigation Range et contrôles Media Session
 - Client de bureau natif pour Windows dans `desktop/` (egui + Rodio), distribué sous forme d’exe portable sur la [page Releases](https://github.com/hanfdev/mihonban/releases)
+- Client Android natif dans [`android/`](android/README.md) (Kotlin + Jetpack Compose + Media3), avec lecture en arrière-plan, téléchargements hors ligne et administration native
+- Client iPhone/iPad natif dans [`ios/`](ios/README.md) (SwiftUI + SFBAudioEngine), avec lecture en arrière-plan, téléchargements et interfaces adaptées aux deux formats
 - Stockages nommés OneDrive, WebDAV, Google Drive et dossiers locaux réservés au runtime Node
 - Miroir d’images R2 facultatif et auto-réparable pour les pochettes, galeries et portraits d’artistes
-- Importation via l’API Discogs et analyse de pages HTML RYM enregistrées manuellement, sans requêtes RYM automatisées
+- Importation via l’API Discogs et mises à jour RYM depuis du HTML enregistré ou une extension Chrome/Edge facultative, avec actualisation des notes par lots lancée par l’utilisateur
 - Compagnon Python facultatif pour les dossiers d’arrivée, les archives simples ou imbriquées, la réparation des tags et la synchronisation cloud
 - Interfaces en anglais, chinois simplifié, chinois traditionnel, japonais, coréen, français et espagnol
 - Outils de migration SQLite／D1 et Worker proxy audio signé facultatif
@@ -100,6 +102,9 @@ Le fichier JSON des réglages d’administration n’est pas une sauvegarde du c
 | `cloud/worker/` | API Hono, schéma D1 et runtime compatible Node |
 | `cloud/proxy-worker/` | Relais audio signé facultatif |
 | `desktop/` | Client de bureau natif pour Windows (Rust, egui) |
+| `android/` | Client Android natif (Kotlin, Jetpack Compose, Media3) |
+| `ios/` | Client iPhone/iPad natif (SwiftUI, SFBAudioEngine) |
+| `extensions/rym/` | Extension Chrome/Edge facultative pour capturer RYM et actualiser les notes |
 | `pipeline/` | CLI Python `mihonban` et pipeline d’importation／synchronisation |
 | `config/` | Modèles de configuration sans secrets |
 | `tools/` | Outils de développement local, déploiement, surveillance et migration |
@@ -128,7 +133,7 @@ python -m pytest -q
 - Le HTTP local nécessite `DEV_INSECURE_COOKIE=1`. Les déploiements publics doivent utiliser HTTPS et laisser cette variable non définie.
 - Les mots de passe enregistrés dans l’administration remplacent les valeurs d’initialisation de l’environnement et révoquent les sessions existantes.
 - Lorsque le proxy externe est activé, conservez `STREAM_PROXY_SECRET` et `PROXY_SECRET` identiques et confidentiels.
-- La prise en charge de RYM analyse uniquement les fichiers enregistrés manuellement par l’utilisateur. Ce dépôt ne contient aucun robot d’indexation RYM.
+- Les lots RYM s’exécutent uniquement après le démarrage de la file par un administrateur et s’arrêtent en cas de vérification ou de limitation. Le serveur ne parcourt pas RYM. Voir le [guide d’utilisation](docs/manual.fr.md).
 - Conservez au moins une copie indépendante de tout fichier audio irremplaçable.
 
 ## Documentation

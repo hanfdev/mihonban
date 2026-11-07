@@ -11,9 +11,11 @@ Mihonban is a private, self-hosted music library with a responsive web player. R
 - Listener and administrator passwords, plus an optional passwordless read-only guest mode
 - Persistent playback queue, complete mobile previous/play-pause/next controls, gesture-safe playback, shuffle/repeat, Range seeking, and Media Session controls
 - Native Windows desktop client in `desktop/` (egui + Rodio), shipped as a portable exe on the [Releases page](https://github.com/hanfdev/mihonban/releases)
+- Native Android client in [`android/`](android/README.md) (Kotlin + Jetpack Compose + Media3), with background playback, offline downloads and native administration
+- Native iPhone/iPad client in [`ios/`](ios/README.md) (SwiftUI + SFBAudioEngine), with background playback, downloads and layouts for both device sizes
 - Named OneDrive, WebDAV, Google Drive, and Node-only local-folder storage backends
 - Optional self-healing R2 image mirror for covers, galleries, and artist avatars
-- Discogs API imports and manual RYM HTML parsing without automated RYM requests
+- Discogs API imports and RYM updates from saved HTML or an optional Chrome/Edge extension, including user-started rating batches
 - Optional Python companion for inbox folders, single/nested archives, tag repair, and cloud synchronization
 - English, Simplified Chinese, Traditional Chinese, Japanese, Korean, French, and Spanish interfaces
 - SQLite/D1 migration tools and an optional signed audio proxy Worker
@@ -100,6 +102,9 @@ An Admin settings JSON is not a catalog backup, and a database backup is not an 
 | `cloud/worker/` | Hono API, D1 schema, Node compatibility runtime |
 | `cloud/proxy-worker/` | Optional signed audio relay |
 | `desktop/` | Native Windows desktop client (Rust, egui) |
+| `android/` | Native Android client (Kotlin, Jetpack Compose, Media3) |
+| `ios/` | Native iPhone/iPad client (SwiftUI, SFBAudioEngine) |
+| `extensions/rym/` | Optional Chrome/Edge RYM capture and rating-update extension |
 | `pipeline/` | Python `mihonban` CLI and ingest/sync pipeline |
 | `config/` | Safe configuration templates |
 | `tools/` | Local development, deployment, watcher, and migration helpers |
@@ -128,7 +133,7 @@ python -m pytest -q
 - Local HTTP requires `DEV_INSECURE_COOKIE=1`; public deployments require HTTPS and must leave it unset.
 - Password changes saved in Admin override bootstrap environment passwords and revoke existing sessions.
 - Keep `STREAM_PROXY_SECRET` and `PROXY_SECRET` identical and private when the external proxy is enabled.
-- RYM support only parses files saved manually by the user; this repository contains no RYM crawler.
+- RYM batch updates run only after an administrator starts the browser queue; verification and throttling pause it. The server does not crawl RYM. See the [usage guide](docs/manual.md#rym-metadata).
 - Keep at least one independent copy of irreplaceable audio.
 
 ## Documentation

@@ -59,6 +59,10 @@ Les cookies de production nécessitent HTTPS. `DEV_INSECURE_COOKIE=1` n’existe
 - `settings` : hachages de mot de passe, drapeaux de module, configuration R2, paramètres de source et autres états runtime.
 - `source_posts`, `track_imports` et tables de cache-image : métadonnées opérationnelles.
 
+`album_rym_state` conserve les sources confirmées, les dates d’observation par champ et les révisions de concurrence ; `rym_dismissed` mémorise les suggestions ignorées ou supprimées manuellement. Les rescans préservent les classifications choisies et les nouvelles propositions du navigateur nécessitent une adoption explicite. Les lots ne modifient que la note et le nombre de notes.
+
+`albums.created_at` représente le premier import et `updated_at` la modification des données. La bibliothèque Web, la page d’importation et le tri des artistes par ajout récent utilisent le premier ; les éditions et rescans actualisent le second pour invalider le cache. Les sauvegardes logiques conservent les deux dates.
+
 L’autorité du titre d’une piste est explicite. Renommer une piste dans l’administration active son indicateur `tracks.title_override` ; les scans ultérieurs du compagnon, les réenregistrements d’album complet et la synchronisation d’une piste conservent alors ce titre, tandis que les pistes ordinaires continuent de suivre les tags du fichier. Les bases D1 existantes ajoutent automatiquement cette colonne. Une ligne antérieure à la migration est classée lors de son prochain enregistrement : une valeur identique devient un titre synchronisé ordinaire ; en cas de différence, le titre D1 actuel est conservé prudemment comme modification manuelle afin d’éviter toute perte. Les sauvegardes logiques SQLite/D1 conservent cet indicateur.
 
 Le JSON des paramètres d’administrateur exporte un sous-ensemble autorisé de paramètres ainsi que des configurations de stockage nommées, y compris les identifiants. Il exclut les lignes de catalogue, les hachages de mots de passe et les anciennes sessions. Stockez-le chiffré.

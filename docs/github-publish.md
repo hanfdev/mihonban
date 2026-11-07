@@ -63,6 +63,8 @@ cargo test --locked
 cargo build --release --locked
 ```
 
+For native mobile changes, run Android JVM tests, lint and builds with JDK 17 and Android SDK 35. iOS builds and simulator tests require macOS and Xcode; follow the [Android guide](../android/README.md) and [iOS guide](../ios/README.md). The Android and iOS workflows run on matching pushes and pull requests; Windows checks do not replace iOS simulator validation.
+
 Do not add ignored build output, local D1 state, databases, or backups merely to make CI pass.
 
 ## Remotes and forks

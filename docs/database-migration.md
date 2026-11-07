@@ -23,6 +23,10 @@ Ordered album contributor credits are stored in `album_artists`. Optional song-s
 
 `artist_sort` is optional: blank values are preserved in exports and imports, while search and ordering fall back to the original artist name at runtime.
 
+`albums.created_at` is the original library addition time; `updated_at` tracks later edits and cache refreshes. Preserve both values when moving the catalog. Recently-added ordering uses `created_at`, so replacing it with the migration or modification time would make old albums appear newly added.
+
+RYM refresh state is stored separately in `album_rym_state`: confirmed source, per-field observation/receipt times and origin, source classification suggestions, and concurrency revision. `rym_dismissed` remembers ignored or manually removed terms. Both tables are included in logical exports and must move with `albums` to preserve freshness protection and prevent old suggestions from returning. Upgrades create the tables and cleanup/removal triggers automatically without rewriting curated classifications. Legacy records have unknown observation times until an explicit update; migration never fabricates a fresh timestamp.
+
 ## Before moving Node local storage to Cloudflare
 
 Cloudflare cannot read a Node `local` backend. While the old Node app is still available:

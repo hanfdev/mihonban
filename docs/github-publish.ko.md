@@ -63,6 +63,8 @@ cargo test --locked
 cargo build --release --locked
 ```
 
+모바일 변경은 JDK 17과 Android SDK 35로 Android 단위 테스트, lint 및 빌드를 실행하세요. iOS 빌드와 시뮬레이터 테스트에는 macOS와 Xcode가 필요합니다. [Android](../android/README.md) 및 [iOS](../ios/README.md) 안내를 참고하세요. 관련 push와 pull request에서 각 워크플로가 실행되며 Windows 검사는 iOS 시뮬레이터 검증을 대신하지 않습니다.
+
 CI 통과를 위해 무시된 빌드 출력, 로컬 D1 상태, 데이터베이스, 백업을 추가하지 마세요.
 
 ## remote와 fork

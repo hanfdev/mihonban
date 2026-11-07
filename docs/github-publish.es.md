@@ -63,6 +63,8 @@ cargo test --locked
 cargo build --release --locked
 ```
 
+Para cambios móviles nativos, ejecuta las pruebas JVM, lint y compilaciones Android con JDK 17 y Android SDK 35. Las compilaciones y pruebas del simulador iOS requieren macOS y Xcode; consulta las guías de [Android](../android/README.md) e [iOS](../ios/README.md). Los workflows se ejecutan en los push y pull requests correspondientes. Las comprobaciones de Windows no sustituyen las pruebas del simulador iOS.
+
 No añadas la salida de compilación ignorada, el estado local de D1, bases de datos o copias de seguridad solo para que el CI pase.
 
 ## Remotes y forks

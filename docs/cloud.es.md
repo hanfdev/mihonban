@@ -59,6 +59,10 @@ Las cookies de producción requieren HTTPS. `DEV_INSECURE_COOKIE=1` existe solo 
 - `settings`: hashes de contraseñas, flags de módulo, configuración de R2, configuración de código fuente y otros estados runtime.
 - Tablas de `source_posts`, `track_imports` y caché de imágenes: metadatos operativos.
 
+`album_rym_state` guarda fuentes confirmadas, fechas de observación por campo y revisiones de concurrencia; `rym_dismissed` recuerda sugerencias ignoradas o eliminadas manualmente. Los reescaneos conservan las clasificaciones elegidas y las nuevas propuestas del navegador requieren aceptación explícita. Los lotes solo cambian la valoración y su número de votos.
+
+`albums.created_at` es la fecha del primer registro y `updated_at` la de modificación de los datos. La biblioteca Web, la página de importación y el orden de artistas por incorporación reciente usan la primera; las ediciones y reescaneos actualizan la segunda para invalidar la caché. Las copias lógicas conservan ambas fechas.
+
 La autoridad del título de una pista es explícita. Al cambiar el nombre de una pista en Administración se activa su indicador `tracks.title_override`; los escaneos posteriores del compañero, los registros del álbum completo y la sincronización de una sola pista conservan ese título, mientras que las pistas normales siguen las etiquetas del archivo. Las bases D1 existentes añaden la columna automáticamente. Una fila anterior a la migración se clasifica en su siguiente registro: si el valor coincide pasa a ser un título sincronizado normal; si difiere, se conserva de forma preventiva el título D1 actual como cambio manual para evitar pérdidas. Las copias lógicas de SQLite/D1 conservan el indicador.
 
 El JSON de configuración de administrador exporta un subconjunto de configuraciones permitidas más configuraciones de almacenamiento nombradas, incluyendo credenciales. Excluye filas de catálogo, hashes de contraseñas y sesiones antiguas. Guárdalo cifrado.

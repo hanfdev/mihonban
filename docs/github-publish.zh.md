@@ -63,6 +63,8 @@ cargo test --locked
 cargo build --release --locked
 ```
 
+原生移动端改动需使用 JDK 17 和 Android SDK 35 运行 Android 单元测试、lint 与构建。iOS 构建及模拟器测试需要 macOS 和 Xcode，具体步骤见 [Android 指南](../android/README.zh.md)与 [iOS 指南](../ios/README.zh.md)。Android 和 iOS 工作流在相关推送与拉取请求上运行；Windows 检查不能替代 iOS 模拟器验证。
+
 不要为了让 CI 通过而添加被忽略的构建产物、本地 D1、数据库或备份。
 
 ## 远端与 Fork

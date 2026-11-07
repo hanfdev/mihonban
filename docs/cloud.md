@@ -59,6 +59,10 @@ Production cookies require HTTPS. `DEV_INSECURE_COOKIE=1` exists only for truste
 - `settings`: password hashes, module flags, R2 configuration, source settings, and other runtime state.
 - `source_posts`, `track_imports`, and image-cache tables: operational metadata.
 
+`album_rym_state` records confirmed sources, field observation times and concurrency revisions; `rym_dismissed` remembers ignored or manually removed classification suggestions. Existing classifications remain curated: rescans preserve them and browser captures propose new terms for explicit acceptance. Rating batches update rating and vote count only.
+
+`albums.created_at` is the original import time and `updated_at` is the catalog modification time. The Web library, import page and artist recent-addition order use the former; metadata edits and rescans update the latter for cache invalidation. Logical backups preserve both timestamps.
+
 Track-title authority is explicit. Renaming a track in Admin sets its `tracks.title_override` flag; later companion scans, whole-album registrations, and single-track synchronization preserve that title, while ordinary tracks continue to follow file tags. Existing D1 databases add the column automatically. A pre-migration row remains unclassified until its next registration: a matching value becomes an ordinary synchronized title, while a differing value conservatively keeps the current D1 title as a manual override. Logical SQLite/D1 backups preserve the flag.
 
 The Admin settings JSON exports an allowlisted subset of settings plus named storage configurations, including credentials. It excludes catalog rows, password hashes, and old sessions. Store it encrypted.
