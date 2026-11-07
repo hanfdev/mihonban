@@ -1,7 +1,7 @@
 const SIGNED_OUT = Object.freeze({ ok: false, role: null, guest: false })
 
 export const needsAdminElevation = (route, role) =>
-  route?.view === 'admin' && role !== 'admin'
+  ['admin', 'rym'].includes(route?.view) && role !== 'admin'
 
 export async function sessionAfterLogout(client) {
   try {

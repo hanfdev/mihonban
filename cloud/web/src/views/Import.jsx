@@ -7,6 +7,7 @@ import { useI18n } from '../i18n.jsx'
 import { ArtistEditor, albumCreditsFromText, artistCreditText, creditsFromTags,
          sameArtistNames } from '../artist-credit.jsx'
 import { groupTracksByDisc } from '../track-disc.js'
+import { compareRecentlyAdded } from '../album-added-time.js'
 
 const clean = (s) => (s || '').replace(/[<>:"/\\|?*]/g, '').replace(/[. ]+$/, '').trim()
 
@@ -40,7 +41,7 @@ export default function ImportPage({ albums, artistOptions, onDone, onOpen }) {
   }, [cover?.url])
 
   const recent = useMemo(() =>
-    (albums || []).slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6),
+    (albums || []).slice().sort(compareRecentlyAdded).slice(0, 6),
     [albums])
 
   const addFiles = async (fileList) => {

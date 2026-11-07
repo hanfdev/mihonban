@@ -1,3 +1,4 @@
+import rymUpdate from './rym-ja.js'
 // ja locale dictionary — loaded on demand (see i18n.jsx LOADERS).
 // Split out of i18n.jsx so visitors download only the language they use.
 
@@ -7,6 +8,7 @@ import { admin } from './admin-ja.js'
 
 export default {
   ...en,
+  rymUpdate,
   artistPage: {
     ...en.artistPage,
     editName: '名前を編集',
@@ -127,7 +129,7 @@ export default {
     fail: (m) => `取り込み失敗: ${m}`,
     page: 'RYM ページ',
     noData: 'RYM データなし',
-    noDataAdmin: 'RYM データなし — 「RYM」ボタンで保存済みページを取り込んでください',
+    noDataAdmin: "RYM データはまだありません。「RYM」からブラウザのページを送信するか、保存済み HTML を取り込んでください",
     noDataUser: 'RYM データなし',
     votes: (n) => `${n.toLocaleString()} 件の評価`,
     reselect: '別のファイルを選択',

@@ -100,6 +100,8 @@ export function splitArtistCreditText(value, identityCount = 0,
                                       { allowExplicit = true } = {}) {
   const text = String(value || '').trim().normalize('NFC')
   if (!text) return []
+  // Semicolons explicitly separate tag values, even with incomplete identity data.
+  if (text.includes(';')) return text.split(';').map((part) => part.trim()).filter(Boolean)
   const count = Number(identityCount) || 0
   const explicit = allowExplicit && featureSeparator.test(text)
   if (explicit || count > 1) {
@@ -153,8 +155,12 @@ export function creditsFromTags(metadata) {
   } else if (rawNames.length === 1 && !structured) {
     rawNames = splitArtistCreditText(rawNames[0], identityCountOf(metadata?.artistIds))
   }
-  const rawSorts = Array.isArray(metadata?.artistSorts)
-    ? metadata.artistSorts : (metadata?.artistSort ? [metadata.artistSort] : [])
+  // Multi-value ARTISTS tags can still contain semicolon-separated entries.
+  rawNames = rawNames.flatMap((value) => String(value || '').split(';'))
+    .map((name) => name.trim()).filter(Boolean)
+  const rawSorts = (Array.isArray(metadata?.artistSorts)
+    ? metadata.artistSorts : (metadata?.artistSort ? [metadata.artistSort] : []))
+    .flatMap((value) => String(value || '').split(';'))
   const alignedSorts = rawSorts.length === rawNames.length ? rawSorts : []
   const seen = new Set()
   return rawNames.map((value, index) => {

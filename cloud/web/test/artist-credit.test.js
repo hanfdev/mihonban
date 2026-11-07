@@ -113,9 +113,9 @@ test('ordered multi-value tags become an exact track collaboration', () => {
 })
 
 test('ambiguous punctuation is preserved without structured identity evidence', () => {
-  const combined = creditsFromTags({ artist: 'Main, Guest; Another' })
+  const combined = creditsFromTags({ artist: 'Main, Guest' })
   assert.deepEqual(combined, [
-    { name: 'Main, Guest; Another', sort: '' },
+    { name: 'Main, Guest', sort: '' },
   ])
   assert.deepEqual(splitArtistCreditText('Neil & Iraiza', 1), ['Neil & Iraiza'])
   assert.equal(sameArtistNames(
@@ -169,6 +169,65 @@ test('comma lists split only when every part reads as a full name', () => {
     ['Bob Marley, The Wailers'])
   assert.deepEqual(splitArtistCreditText('Kazuo Ohtani, Yoshiaki Furuta', 1),
     ['Kazuo Ohtani, Yoshiaki Furuta'])
+})
+
+const semicolonArtists = ['Elis Regina', 'Luiz Cláudio Ramos', 'Luizão Maia',
+  'Wilson das Neves', 'José Roberto Bertrami', 'Hermes Contesini']
+const semicolonCredit = semicolonArtists.join('; ')
+const semicolonCredits = semicolonArtists.map((name) => ({ name, sort: '' }))
+
+test('semicolon tag credits split without relying on MusicBrainz identities', () => {
+  for (const count of [0, 1, 2, semicolonArtists.length]) {
+    assert.deepEqual(splitArtistCreditText(semicolonCredit, count), semicolonArtists)
+    assert.deepEqual(albumCreditsFromText(semicolonCredit, count), semicolonArtists)
+  }
+  assert.deepEqual(creditsFromTags({ artist: semicolonCredit }), semicolonCredits)
+  assert.deepEqual(creditsFromTags({
+    artist: semicolonCredit, albumArtist: semicolonCredit, albumArtistIds: ['one'],
+  }), semicolonCredits)
+})
+
+test('semicolon lists preserve punctuation within each artist name', () => {
+  const names = ['Earth, Wind & Fire', 'Kool & the Gang', 'ROUND TABLE featuring Nino']
+  assert.deepEqual(splitArtistCreditText(names.join('; ')), names)
+  assert.deepEqual(albumCreditsFromText(names.join('; ')), names)
+})
+
+test('structured and repeated artist tags also split semicolon entries', () => {
+  assert.deepEqual(creditsFromTags({
+    artists: [semicolonCredit], hasStructuredArtists: true,
+  }), semicolonCredits)
+  assert.deepEqual(creditsFromTags({
+    artists: [semicolonArtists.slice(0, 3).join('; '), ...semicolonArtists.slice(3)],
+  }), semicolonCredits)
+  assert.deepEqual(creditsFromTags({
+    artist: semicolonCredit, albumArtist: semicolonCredit,
+    albumArtists: [semicolonArtists.slice(0, 3).join('; '), ...semicolonArtists.slice(3)],
+  }), semicolonCredits)
+})
+
+test('semicolon lists trim whitespace and omit empty and duplicate credits', () => {
+  assert.deepEqual(splitArtistCreditText(' ; Elis Regina;; Luizão Maia ; '),
+    ['Elis Regina', 'Luizão Maia'])
+  assert.deepEqual(splitArtistCreditText(' ; ; '), [])
+  assert.deepEqual(creditsFromTags({
+    artists: [' ; Elis Regina ;; Luizão Maia; ', 'elis regina', ' ; '],
+  }), [{ name: 'Elis Regina', sort: '' }, { name: 'Luizão Maia', sort: '' }])
+})
+
+test('semicolon sort values stay aligned and combined or mismatched sorts are discarded', () => {
+  for (const artistSorts of [['Regina, Elis; Maia, Luizão'], ['Regina, Elis', 'Maia, Luizão']]) {
+    assert.deepEqual(creditsFromTags({
+      artists: ['Elis Regina; Luizão Maia'], hasStructuredArtists: true, artistSorts,
+    }), [{ name: 'Elis Regina', sort: 'Regina, Elis' },
+      { name: 'Luizão Maia', sort: 'Maia, Luizão' }])
+  }
+  assert.deepEqual(creditsFromTags({
+    artist: 'Elis Regina; Luizão Maia', artistSort: 'Regina, Elis',
+  }), [{ name: 'Elis Regina', sort: '' }, { name: 'Luizão Maia', sort: '' }])
+  assert.deepEqual(creditsFromTags({
+    artists: ['Elis Regina'], artistSort: 'Regina, Elis; Maia, Luizão',
+  }), [{ name: 'Elis Regina', sort: '' }])
 })
 
 test('explicit and MusicBrainz-backed collaboration text becomes ordered credits', () => {

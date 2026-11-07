@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, artUrl, imgUrl, uploadFileToOneDrive } from '../api.js'
-import { parseRymHtml } from '../rym.js'
 import { parseDiscogsHtml } from '../discogs.js'
 import { readTags, recognizedAudioFiles } from '../tags.js'
 import { I, CropDialog, Dialog, Heart, Md, NoteText, Rating, Reader,
@@ -243,95 +242,6 @@ function EditDialog({ album, artistOptions, onClose, onSaved }) {
         <CropDialog file={cropFile} out={1200} title={t('crop.coverTitle')}
                     onClose={() => setCropFile(null)}
                     onDone={(blob) => { setCropFile(null); setCover(blob) }} />
-      )}
-    </Dialog>
-  )
-}
-
-function RymDialog({ album, onClose, onSaved }) {
-  const { t } = useI18n()
-  const [parsed, setParsed] = useState(null)
-  const [err, setErr] = useState('')
-  const [busy, setBusy] = useState(false)
-  const fileReadSeq = useRef(0)
-  const applyInFlight = useRef(false)
-  const toast = useToast()
-
-  useEffect(() => () => { fileReadSeq.current++ }, [])
-
-  const handleFile = async (file) => {
-    if (!file) return
-    const seq = ++fileReadSeq.current
-    setErr('')
-    try {
-      const next = parseRymHtml(await file.text())
-      if (seq === fileReadSeq.current) setParsed(next)
-    } catch (e) {
-      if (seq === fileReadSeq.current) setErr(e.message)
-    }
-  }
-
-  const apply = async () => {
-    if (applyInFlight.current || !parsed) return
-    applyInFlight.current = true
-    setBusy(true)
-    try {
-      await api.postRym(album.id, parsed)
-      toast(t('rym.imported'), 'ok')
-      onSaved()
-    } catch (e) { toast(t('rym.fail', e.message), 'err') }
-    finally { applyInFlight.current = false; setBusy(false) }
-  }
-
-  return (
-    <Dialog title={t('rym.title')} onClose={onClose}>
-      {!parsed && (
-        <>
-          <div className="hint" style={{ color: 'var(--ink-faint)', marginBottom: 14 }}>
-            {t('rym.dropHint')}
-          </div>
-          <label className="dropzone" style={{ display: 'block' }}
-                 onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('over') }}
-                 onDragLeave={(e) => e.currentTarget.classList.remove('over')}
-                 onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]) }}>
-            <I.html size={28} />
-            <div>{t('rym.drop')}</div>
-            <input type="file" accept=".html,.htm" hidden
-                   onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])} />
-          </label>
-          {err && <div style={{ color: '#ff8b7a', marginTop: 12, fontSize: 13 }}>{err}</div>}
-        </>
-      )}
-      {parsed && (
-        <>
-          <div style={{ display: 'grid', gap: 8, fontSize: 14 }}>
-            <div><b style={{ color: 'var(--gold)', fontSize: 24 }}>★ {parsed.rating?.toFixed(2) ?? '—'}</b>
-              <span style={{ color: 'var(--ink-faint)', marginLeft: 8 }}>
-                {t('rym.votes', parsed.votes || 0)} {parsed.rank && `· ${parsed.rank}`}</span></div>
-            <div>{parsed.title} — {parsed.artist} {parsed.year && `(${parsed.year})`}</div>
-            <div className="genre-row">
-              {parsed.genres.map((g) => <span key={g} className="gtag">{g}</span>)}
-              {parsed.secondaryGenres.map((g) => <span key={g} className="gtag sec">{g}</span>)}
-            </div>
-            <div className="descriptors">{parsed.descriptors.join(' · ')}</div>
-            {parsed.title && album.title &&
-              parsed.title.toLowerCase().replace(/\W/g, '') !==
-              album.title.toLowerCase().replace(/\W/g, '') && (
-              <div style={{ color: 'var(--gold)', fontSize: 12.5 }}>
-                {t('rym.titleMismatch', parsed.title, album.title)}
-              </div>
-            )}
-          </div>
-          <div className="actions">
-            <button className="btn" onClick={() => {
-              fileReadSeq.current++
-              setParsed(null)
-            }}>{t('rym.reselect')}</button>
-            <button className="btn primary" disabled={busy} onClick={apply}>
-              {busy ? <I.spin /> : t('rym.confirm')}
-            </button>
-          </div>
-        </>
       )}
     </Dialog>
   )
@@ -1585,7 +1495,7 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
                   <I.edit size={14} /> {t('common.edit')}</button>
                 <button className="btn" onClick={() => setDlg('tracks')}>
                   <I.list size={14} /> {t('albumPage.tracks')}</button>
-                <button className="btn" onClick={() => setDlg('rym')}>
+                <button className="btn" onClick={() => navigate(`/rym/${al.id}`)}>
                   <I.html size={14} /> RYM</button>
                 <button className="btn" onClick={() => setDlg('discogs')}>
                   <I.disc size={14} /> Discogs</button>
@@ -1736,9 +1646,6 @@ export default function AlbumPage({ id, onPlay, playingId, currentId,
         <TracksDialog album={al} artistOptions={artistOptions}
                       onClose={() => { setDlg(''); load() }}
                       onChanged={(result) => { load(); onChanged(result) }} />}
-      {dlg === 'rym' &&
-        <RymDialog album={al} onClose={() => setDlg('')}
-                   onSaved={() => { setDlg(''); load(); onChanged() }} />}
       {dlg === 'discogs' &&
         <DiscogsDialog album={al} onClose={() => setDlg('')}
                        onSaved={() => { setDlg(''); load(); onChanged() }} />}

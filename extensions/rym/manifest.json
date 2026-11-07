@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Mihonban · RYM",
+  "version": "1.1.0",
+  "description": "Send the RYM release page you are viewing to your Mihonban library.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "optional_host_permissions": ["https://rateyourmusic.com/*", "https://www.rateyourmusic.com/*"],
+  "action": { "default_popup": "popup.html" }
+}

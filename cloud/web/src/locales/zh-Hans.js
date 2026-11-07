@@ -1,3 +1,4 @@
+import rymUpdate from './rym-zh-Hans.js'
 // zh-Hans locale dictionary — loaded on demand (see i18n.jsx LOADERS).
 // Split out of i18n.jsx so visitors download only the language they use.
 
@@ -7,12 +8,13 @@ import { admin } from './admin-zh-Hans.js'
 
 export default {
   ...en,
+  rymUpdate,
   nav: {
-    library: '音盤', tracks: '歌曲', artists: '艺人',
+    library: '音盘', tracks: '歌曲', artists: '艺人',
     favs: '精选', import: '导入', admin: '管理',
   },
-  search: { placeholder: '搜索音盤、艺人、歌曲、风格…' },
-  count: { albums: (n) => `${n} 音盤`, albumsOf: (n) => `${n} 音盤`, tracks: (n) => `${n} 曲` },
+  search: { placeholder: '搜索音盘、艺人、歌曲、风格…' },
+  count: { albums: (n) => `${n} 音盘`, albumsOf: (n) => `${n} 音盘`, tracks: (n) => `${n} 曲` },
   login: {
     password: '口令', adminPassword: '管理员口令',
     enter: '进入曲库', signIn: '登录',
@@ -219,7 +221,7 @@ export default {
     title: '导入 RYM 页面',
     page: 'RYM 页面',
     noData: '尚无 RYM 数据',
-    noDataAdmin: '尚无 RYM 数据 — 用「RYM」按钮导入保存的页面',
+    noDataAdmin: "尚无 RYM 数据 — 用「RYM」按钮送入浏览器页面或导入已保存 HTML",
     noDataUser: '尚无 RYM 数据',
     votes: (n) => `${n.toLocaleString()} 人评分`,
     drop: '拖入已保存的 RYM 专辑页 HTML，或点击选择',

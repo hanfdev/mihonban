@@ -204,7 +204,7 @@ test("genre mirror triggers follow direct album updates and deletes", async () =
   }
 });
 
-test("rym re-import merges curated taxonomy instead of replacing it", async () => {
+test("rym re-import preserves curated taxonomy and stores suggestions", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
   db.prepare(`INSERT INTO albums
@@ -232,12 +232,12 @@ test("rym re-import merges curated taxonomy instead of replacing it", async () =
     const merged = db.prepare(`SELECT genres, sec_genres, descriptors,
       rym_rating FROM albums WHERE id = 'rym-merge'`).get();
     assert.deepEqual(JSON.parse(merged.genres),
-      ["Shibuya-kei", "My Custom Tag", "Indie Pop"]);
-    assert.deepEqual(JSON.parse(merged.sec_genres), ["City Pop", "J-Pop"]);
-    assert.deepEqual(JSON.parse(merged.descriptors), ["warm", "summer"]);
+      ["Shibuya-kei", "My Custom Tag"]);
+    assert.deepEqual(JSON.parse(merged.sec_genres), ["City Pop"]);
+    assert.deepEqual(JSON.parse(merged.descriptors), ["warm"]);
     assert.equal(merged.rym_rating, 3.9);
 
-    // A periodic refresh with the same page still updates the rating while
+    // An old companion file cannot refresh an established rating, while
     // leaving the curated taxonomy untouched.
     const again = await companionRequest(env, "/api/album/rym-merge/rym", {
       method: "POST", ...jsonBody({ ...payload, rating: 4.05, votes: 150 }),
@@ -246,17 +246,17 @@ test("rym re-import merges curated taxonomy instead of replacing it", async () =
     const stable = db.prepare(`SELECT genres, sec_genres, descriptors,
       rym_rating, rym_votes FROM albums WHERE id = 'rym-merge'`).get();
     assert.deepEqual(JSON.parse(stable.genres),
-      ["Shibuya-kei", "My Custom Tag", "Indie Pop"]);
-    assert.deepEqual(JSON.parse(stable.sec_genres), ["City Pop", "J-Pop"]);
-    assert.deepEqual(JSON.parse(stable.descriptors), ["warm", "summer"]);
-    assert.equal(stable.rym_rating, 4.05);
-    assert.equal(stable.rym_votes, 150);
+      ["Shibuya-kei", "My Custom Tag"]);
+    assert.deepEqual(JSON.parse(stable.sec_genres), ["City Pop"]);
+    assert.deepEqual(JSON.parse(stable.descriptors), ["warm"]);
+    assert.equal(stable.rym_rating, 3.9);
+    assert.equal(stable.rym_votes, 120);
   } finally {
     db.close();
   }
 });
 
-test("album rescans merge curated taxonomy instead of replacing it", async () => {
+test("album rescans preserve curated taxonomy without adding tags", async () => {
   const db = new Database(":memory:");
   db.exec(schema);
   db.prepare(`INSERT INTO storages (id, name, kind, config, is_write, created_at)
@@ -292,9 +292,9 @@ test("album rescans merge curated taxonomy instead of replacing it", async () =>
     const merged = db.prepare(`SELECT genres, sec_genres, descriptors
       FROM albums WHERE id = ?`).get(albumId);
     assert.deepEqual(JSON.parse(merged.genres),
-      ["Shibuya-kei", "Manual Tag", "Indie Pop"]);
-    assert.deepEqual(JSON.parse(merged.sec_genres), ["City Pop", "J-Pop"]);
-    assert.deepEqual(JSON.parse(merged.descriptors), ["warm", "summer"]);
+      ["Shibuya-kei", "Manual Tag"]);
+    assert.deepEqual(JSON.parse(merged.sec_genres), ["City Pop"]);
+    assert.deepEqual(JSON.parse(merged.descriptors), ["warm"]);
 
     const emptyRescan = await register({
       genres: [], secondaryGenres: [], descriptors: [],
@@ -303,18 +303,18 @@ test("album rescans merge curated taxonomy instead of replacing it", async () =>
     const afterEmpty = db.prepare(`SELECT genres, sec_genres, descriptors
       FROM albums WHERE id = ?`).get(albumId);
     assert.deepEqual(JSON.parse(afterEmpty.genres),
-      ["Shibuya-kei", "Manual Tag", "Indie Pop"]);
-    assert.deepEqual(JSON.parse(afterEmpty.sec_genres), ["City Pop", "J-Pop"]);
-    assert.deepEqual(JSON.parse(afterEmpty.descriptors), ["warm", "summer"]);
+      ["Shibuya-kei", "Manual Tag"]);
+    assert.deepEqual(JSON.parse(afterEmpty.sec_genres), ["City Pop"]);
+    assert.deepEqual(JSON.parse(afterEmpty.descriptors), ["warm"]);
 
     const repeated = await register(secondPayload);
     assert.equal(repeated.status, 200, (await repeated.json()).error);
     const stable = db.prepare(`SELECT genres, sec_genres, descriptors
       FROM albums WHERE id = ?`).get(albumId);
     assert.deepEqual(JSON.parse(stable.genres),
-      ["Shibuya-kei", "Manual Tag", "Indie Pop"]);
-    assert.deepEqual(JSON.parse(stable.sec_genres), ["City Pop", "J-Pop"]);
-    assert.deepEqual(JSON.parse(stable.descriptors), ["warm", "summer"]);
+      ["Shibuya-kei", "Manual Tag"]);
+    assert.deepEqual(JSON.parse(stable.sec_genres), ["City Pop"]);
+    assert.deepEqual(JSON.parse(stable.descriptors), ["warm"]);
   } finally {
     db.close();
   }

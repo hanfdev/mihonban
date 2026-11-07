@@ -1,3 +1,4 @@
+import rymUpdate from './rym-en.js'
 // English base dictionary. Statically imported by i18n.jsx (always in the
 // main bundle: it is the universal fallback) and by the lazy locale chunks
 // that spread `...en.section` for partial coverage.
@@ -5,6 +6,7 @@
 import { adminEn } from '../i18n-admin-en.js'
 
 export const en = {
+  rymUpdate,
   brand: '見本盤',
   brandSub: '非売品・MIHONBAN',
   nav: {
@@ -208,7 +210,7 @@ export const en = {
     fail: (m) => `Import failed: ${m}`,
     page: 'RYM page',
     noData: 'No RYM data',
-    noDataAdmin: 'No RYM data — use the RYM button to import a saved page',
+    noDataAdmin: "No RYM data yet — open “RYM” to send a browser page or import saved HTML",
     noDataUser: 'No RYM data',
     votes: (n) => `${n.toLocaleString()} ratings`,
     reselect: 'Choose another file',

@@ -26,6 +26,8 @@ test("SQLite export restores library data without leaking config by default", ()
       (id, artist, title, folder, storage_id, created_at, updated_at)
       VALUES ('album-1', 'Artist', 'Album', 'Music/Library/Artist/Album',
         'catalog-store', 1, 1)`).run();
+    source.prepare("INSERT INTO album_rym_state VALUES ('album-1', 3, ?)").run(JSON.stringify({ observedAt: 1234, confirmed: true }));
+    source.prepare("INSERT INTO rym_dismissed VALUES ('album-1', 'genre', 'ignored')").run();
     source.prepare(`INSERT INTO tracks
       (id, album_id, title, title_override, path)
       VALUES ('track-1', 'album-1', 'Track', 1,
@@ -61,6 +63,10 @@ test("SQLite export restores library data without leaking config by default", ()
       target.exec(sql);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM albums").get().n, 1);
       assert.equal(target.prepare("SELECT COUNT(*) AS n FROM tracks").get().n, 1);
+      assert.deepEqual(target.prepare("SELECT * FROM album_rym_state").all(),
+        [{ album_id: 'album-1', revision: 3, data: JSON.stringify({ observedAt: 1234, confirmed: true }) }]);
+      assert.deepEqual(target.prepare("SELECT * FROM rym_dismissed").all(),
+        [{ album_id: 'album-1', kind: 'genre', value: 'ignored' }]);
       assert.equal(target.prepare(
         "SELECT title_override FROM tracks WHERE id = 'track-1'").get()
         .title_override, 1);

@@ -1,3 +1,4 @@
+import rymUpdate from './rym-es.js'
 // es locale dictionary — loaded on demand (see i18n.jsx LOADERS).
 // Split out of i18n.jsx so visitors download only the language they use.
 
@@ -7,6 +8,7 @@ import { admin } from './admin-es.js'
 
 export default {
   ...en,
+  rymUpdate,
   artistPage: {
     ...en.artistPage,
     editName: 'Editar nombre',
@@ -127,7 +129,7 @@ export default {
     fail: (m) => `Error al importar: ${m}`,
     page: 'Página RYM',
     noData: 'Sin datos RYM',
-    noDataAdmin: 'Sin datos RYM — usa el botón RYM para importar una página guardada',
+    noDataAdmin: "Sin datos RYM — abre « RYM » para enviar una página del navegador o importar HTML guardado",
     noDataUser: 'Sin datos RYM',
     votes: (n) => `${n.toLocaleString()} valoraciones`,
     reselect: 'Elegir otro archivo',

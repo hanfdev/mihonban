@@ -1,5 +1,53 @@
 /* Mihonban design system */
 
+.rym-updates { max-width: 1200px; margin: 0 auto; padding: 28px; }
+.rym-updates .panel { background: var(--bg1); box-shadow: none; }
+.dialog.rym-dialog { background: var(--bg1); }
+.rym-dialog .hint { font-size: 12px; color: var(--ink-dim); line-height: 1.7; }
+.rym-heading, .rym-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.rym-heading { align-items: flex-start; margin-bottom: 26px; }
+.rym-heading h1 { font-family: var(--serif); font-size: 28px; margin: 18px 0 7px; font-weight: 600; }
+.rym-heading p { color: var(--ink-dim); margin: 0; }
+.rym-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.rym-toolbar input { flex: 1 1 220px; min-width: 0; }
+.rym-toolbar select { width: auto; max-width: 100%; }
+.rym-list { border-top: 1px solid var(--line); }
+.rym-record { display: grid; grid-template-columns: minmax(180px, 1fr) 120px minmax(140px, .6fr) auto; gap: 18px; align-items: center; padding: 18px 0; border-bottom: 1px solid var(--line-soft); }
+.rym-record-name { display: grid; gap: 5px; text-align: left; background: none; border: 0; color: var(--ink); cursor: pointer; padding: 0; min-width: 0; overflow-wrap: anywhere; }
+.rym-record-name b { font-family: var(--serif); font-size: 16px; font-weight: 600; }
+.rym-record-name span, .rym-record-score span, .rym-record-time small { color: var(--ink-faint); font-size: 12px; }
+.rym-record-score, .rym-record-time { display: grid; gap: 5px; }
+.rym-record-score b { color: var(--gold); font-size: 20px; font-variant-numeric: tabular-nums; }
+.rym-record-time { font-size: 12px; color: var(--ink-dim); }
+.rym-record-actions, .rym-inline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rym-inbox { border-color: var(--accent-line); margin-bottom: 24px; }
+.rym-incoming-score { font-size: 30px; color: var(--gold); margin-top: 12px; font-variant-numeric: tabular-nums; }
+.rym-incoming-score span { font-size: 13px; color: var(--ink-dim); }
+.rym-targets { max-height: 220px; overflow: auto; border-block: 1px solid var(--line); margin-bottom: 12px; }
+.rym-targets label { display: flex; gap: 12px; padding: 10px 0; cursor: pointer; }
+.rym-targets input { flex-shrink: 0; accent-color: var(--accent); }
+.rym-targets span { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.rym-targets small, .rym-suggestion small { display: block; color: var(--ink-faint); font-size: 12px; }
+.rym-source-label { display: grid; gap: 8px; margin-top: 18px; }
+.rym-field-times { display: grid; gap: 8px; padding-block: 12px; border-block: 1px solid var(--line-soft); font-size: 12px; }
+.rym-field-times > div { display: flex; justify-content: space-between; gap: 16px; }
+.rym-field-times dt { color: var(--ink-dim); }
+.rym-field-times dd { margin: 0; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.rym-field-times small { display: block; color: var(--ink-faint); }
+.rym-suggestion { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.rym-suggestion span { min-width: 0; overflow-wrap: anywhere; }
+.rym-suggestion select { width: auto; max-width: 55%; }
+@media (max-width: 720px) {
+  .rym-updates { padding: 18px 16px; }
+  .rym-heading { flex-wrap: wrap; }
+  .rym-heading h1 { font-size: 24px; }
+  .rym-record { grid-template-columns: minmax(0, 1fr) 110px; gap: 14px; }
+  .rym-record-actions { justify-content: flex-end; }
+  .rym-record-time { min-width: 0; }
+  .rym-updates .panel { padding: 18px; }
+  .rym-section-heading { flex-wrap: wrap; }
+}
+
 @font-face {
   font-family: "GenRyu Mincho Fallback";
   src: url("/fonts/genryu-mincho-shippori-fallback.woff2") format("woff2");

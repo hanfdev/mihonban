@@ -61,6 +61,8 @@ export const api = {
   me: () => req("GET", "/api/me"),
   library: (opts = {}) =>
     req("GET", `/api/library${opts.hidden ? "?hidden=1" : ""}`),
+  rymUpdates: () => req("GET", "/api/admin/rym"),
+  updateRym: (id, body) => req("POST", `/api/admin/rym/${id}`, body),
   album: (id) => req("GET", `/api/album/${id}`),
   tracks: (opts = {}) =>
     req("GET", `/api/tracks${opts.hidden ? "?hidden=1" : ""}`),

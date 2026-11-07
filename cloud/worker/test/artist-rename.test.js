@@ -265,7 +265,7 @@ test("existing databases receive the alias table before handling artist requests
   await register("Legacy", [{ name: "Old" }]);
   await rename("Old", "New");
   assert.equal(db.prepare("SELECT v FROM settings WHERE k = 'schema_version'").get().v,
-    "2026-09-14-1");
+    "2026-11-04-rym-1");
   assert.deepEqual(db.prepare("SELECT alias, artist FROM artist_aliases WHERE alias != artist").all(),
     [{ alias: "Old", artist: "New" }]);
 });

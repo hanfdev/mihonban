@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mihonban · RYM</title><link rel="stylesheet" href="batch.css"></head>
+<body><main>
+  <header><div><span class="wordmark">見本盤 <small>RYM</small></span><h1 data-i18n="title"></h1><p id="origin"></p></div><button id="library" data-i18n="openLibrary"></button></header>
+  <p class="intro" data-i18n="intro"></p>
+  <p class="hint" data-i18n="limits"></p>
+  <p id="notice" role="status" aria-live="polite"></p>
+  <section id="prepare" hidden>
+    <div class="toolbar"><input id="query" type="search"><select id="scope"><option value="old" data-i18n="old"></option><option value="all" data-i18n="all"></option></select><label><input id="select-all" type="checkbox"><span data-i18n="selectAll"></span></label></div>
+    <div id="choices" class="records"></div>
+    <p id="workload" class="hint"></p>
+    <label class="consent"><input id="consent" type="checkbox"><span data-i18n="consent"></span></label>
+    <button id="start" class="primary" data-i18n="start" disabled></button>
+  </section>
+  <section id="progress-panel" hidden>
+    <div class="status-line"><strong id="summary"></strong><span id="phase"></span></div><progress id="progress" max="1" value="0"></progress>
+    <div class="toolbar"><button id="pause" data-i18n="pause"></button><button id="resume" class="primary" data-i18n="resume"></button><button id="retry" data-i18n="retry"></button><button id="source" data-i18n="source"></button><button id="new" data-i18n="new"></button></div>
+    <div id="results" class="records"></div>
+  </section>
+</main><script type="module" src="batch.js"></script></body></html>

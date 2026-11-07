@@ -215,3 +215,16 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (kind, id)
 );
+
+-- Source snapshots and dismissed suggestions are separate from curated genres.
+CREATE TABLE IF NOT EXISTS album_rym_state (
+  album_id TEXT PRIMARY KEY REFERENCES albums(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL DEFAULT 0,
+  data TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS rym_dismissed (
+  album_id TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (album_id, kind, value)
+);

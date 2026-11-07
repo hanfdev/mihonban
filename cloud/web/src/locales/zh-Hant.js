@@ -1,3 +1,4 @@
+import rymUpdate from './rym-zh-Hant.js'
 // zh-Hant locale dictionary — loaded on demand (see i18n.jsx LOADERS).
 // Split out of i18n.jsx so visitors download only the language they use.
 
@@ -7,6 +8,7 @@ import { admin } from './admin-zh-Hant.js'
 
 export default {
   ...zhHans,
+  rymUpdate,
   nav: {
     library: '音盤', tracks: '歌曲', artists: '藝人',
     favs: '精選', import: '匯入', admin: '管理',
@@ -126,7 +128,8 @@ export default {
     title: '匯入 RYM 頁面', drop: '拖入已儲存的 RYM 專輯頁 HTML，或點擊選擇',
     dropHint: '在瀏覽器開啟這張音盤的 RateYourMusic 頁面 → Ctrl+S 儲存 HTML → 拖到下方。所有解析都在本機完成，不會請求 RYM。',
     imported: 'RYM 資料已匯入', fail: (m) => `匯入失敗：${m}`, page: 'RYM 頁面', noData: '尚無 RYM 資料',
-    noDataAdmin: '尚無 RYM 資料 — 使用「RYM」按鈕匯入已儲存的頁面', noDataUser: '尚無 RYM 資料',
+    noDataAdmin: "尚無 RYM 資料 — 用「RYM」按鈕送入瀏覽器頁面或匯入已儲存 HTML",
+    noDataUser: '尚無 RYM 資料',
     votes: (n) => `${n.toLocaleString()} 人評分`, reselect: '重新選擇檔案', confirm: '確認匯入',
     titleMismatch: (page, album) => `⚠ 頁面標題「${page}」和本盤「${album}」不完全一致，確認是同一張再匯入。`,
   },

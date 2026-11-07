@@ -1,3 +1,4 @@
+import rymUpdate from './rym-ko.js'
 // ko locale dictionary — loaded on demand (see i18n.jsx LOADERS).
 // Split out of i18n.jsx so visitors download only the language they use.
 
@@ -7,6 +8,7 @@ import { admin } from './admin-ko.js'
 
 export default {
   ...en,
+  rymUpdate,
   artistPage: {
     ...en.artistPage,
     editName: '이름 편집',
@@ -127,7 +129,7 @@ export default {
     fail: (m) => `가져오기 실패: ${m}`,
     page: 'RYM 페이지',
     noData: 'RYM 데이터 없음',
-    noDataAdmin: 'RYM 데이터 없음 — 「RYM」 버튼으로 저장된 페이지를 가져오세요',
+    noDataAdmin: "RYM 데이터가 없습니다. “RYM”에서 브라우저 페이지를 보내거나 저장된 HTML을 가져오세요",
     noDataUser: 'RYM 데이터 없음',
     votes: (n) => `${n.toLocaleString()} 평가`,
     reselect: '다른 파일 선택',

@@ -1097,6 +1097,7 @@ export default function AdminPage({ onOpen }) {
           {modSource ? t('admin.statusHintSource') : t('admin.statusHint')}
         </div>
       </div>
+      <div className="panel"><h2>{t('rymUpdate.title')}</h2><p className="hint">{t('rymUpdate.protected')}</p><a className="btn" href="#/rym">{t('rymUpdate.title')}</a></div>
       <PasswordCard />
       <AccessCard />
       <ConfigBackupCard />

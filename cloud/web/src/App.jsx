@@ -1,3 +1,5 @@
+import RymUpdates from './views/RymUpdates.jsx'
+import { receiveCapture } from './rym-capture.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, streamUrl, artUrl } from './api.js'
 import { I, Logo, navigate, useToast } from './ui.jsx'
@@ -25,6 +27,7 @@ import { addFavoriteToFront } from './favorites.js'
 import { artistIdentityKey, renameArtistCredits, renameArtistRecord } from './artist-credit.js'
 
 const parseHash = () => {
+  receiveCapture()
   const h = location.hash.replace(/^#\/?/, '')
   const [view, ...rest] = h.split('/')
   const encoded = rest.join('/')
@@ -756,7 +759,7 @@ export default function App() {
     { key: 'import', hash: '/import', label: t('nav.import'), icon: I.upload,
       on: route.view === 'import' },
     { key: 'admin', hash: '/admin', label: t('nav.admin'), icon: I.gear,
-      on: route.view === 'admin' },
+      on: ['admin', 'rym'].includes(route.view) },
   ] : []
   // Keep the mobile bottom bar as one group.
   const NAV = [...NAV_MAIN, ...NAV_ADMIN]
@@ -939,6 +942,7 @@ export default function App() {
           <ImportPage albums={albums} artistOptions={artists}
                       onDone={refreshCatalog} onOpen={openAlbum} />
         )}
+        {route.view === 'rym' && isAdmin && <RymUpdates initialId={route.arg} onOpen={openAlbum} onChanged={refreshCatalog} />}
         {route.view === 'admin' && isAdmin && (
           <AdminPage onOpen={openAlbum} />
         )}

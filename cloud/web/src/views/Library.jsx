@@ -5,6 +5,7 @@ import { useI18n } from '../i18n.jsx'
 import { zhNorm } from '../zh.js'
 import { romajiOf } from '../aliases.js'
 import { albumPlaybackState } from '../album-playback.js'
+import { compareRecentlyAdded } from '../album-added-time.js'
 import { defaultCollator, jaCollator } from '../format.js'
 import { currentCoverLoadingProfile } from '../cover-loading.js'
 import { ArtistCredit, artistCreditText, artistSearchText, creditsOf,
@@ -218,7 +219,7 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
     yearOld: { label: t('library.sortYearOld'),
       fn: (a, b) => (a.year ?? 9999) - (b.year ?? 9999) },
     added: { label: t('library.sortAdded'),
-      fn: (a, b) => b.updatedAt - a.updatedAt },
+      fn: compareRecentlyAdded },
   }), [t])
 
   // Filter choices must describe the collection the user can currently see.
@@ -280,10 +281,9 @@ export default function Library({ albums, q, onOpen, onOpenArtist, onPlay,
   const order = useMemo(() => {
     if (!albums) return null
     const fn = SORTS[sort].fn
-    // Preserve filter-then-sort for added and malformed numeric keys; their
+    // Preserve filter-then-sort for malformed numeric keys; their
     // comparator ties need not be transitive across the unfiltered collection.
-    const deferred = sort === 'added'
-      || (['artist', 'yearNew', 'yearOld'].includes(sort)
+    const deferred = (['artist', 'yearNew', 'yearOld'].includes(sort)
         && albums.some((a) => a.year != null && !Number.isFinite(a.year)))
       || (['rating', 'ratingRaw'].includes(sort) && albums.some((a) =>
         [a.rym?.rating, a.rym?.votes].some((value) => value != null

@@ -1,3 +1,4 @@
+import { installRymSchema, registerRymRoutes, legacyRymImport } from "./rym.js";
 // mihonban cloud — API Worker
 // Browsing and metadata: D1. Audio: direct OneDrive Graph redirects, with bytes
 // bypassing the Worker. Authentication: password login to an HMAC cookie; the
@@ -758,7 +759,7 @@ app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
 // errors when a column already exists, so ignore that case. Production uses a
 // stable configuration key plus a persisted marker; without that, Cloudflare
 // may provide a fresh binding object on each request and repeat the whole check.
-const RUNTIME_SCHEMA_VERSION = "2026-09-14-1";
+const RUNTIME_SCHEMA_VERSION = "2026-11-04-rym-1";
 const migratedDbs = new WeakSet();
 const migrationPromises = new WeakMap();
 const configuredMigrated = new Set();
@@ -1185,6 +1186,7 @@ async function ensureMigrations(env) {
         FROM albums, json_each(CASE WHEN json_valid(albums.sec_genres)
           THEN albums.sec_genres ELSE '[]' END) j`).run();
     }
+    await installRymSchema(env.DB);
     if (configuredKey) {
       await env.DB.prepare(`
         INSERT INTO settings (k, v) VALUES ('schema_version', ?)
@@ -1238,6 +1240,8 @@ app.use("/api/favorites/*", (c, next) =>
   c.req.method === "GET" ? next() : adminGate(c, next));
 app.use("/api/artists", (c, next) =>
   c.req.method === "GET" ? next() : adminGate(c, next));
+
+registerRymRoutes(app);
 
 /* ---------- library ---------- */
 
@@ -2990,23 +2994,9 @@ app.post("/api/albums", async (c) => {
       FROM albums WHERE id = ?`)
       .bind(id).first(),
   ]);
-  // Existing curated metadata stays authoritative; companion metadata only
-  // appends new values and never changes an established list placement.
-  const currentPrimary = stringList(J(existingAlbum?.genres));
-  const currentSecondary = stringList(J(existingAlbum?.sec_genres));
-  const existingGenreKeys = new Set([
-    ...currentPrimary, ...currentSecondary,
-  ].map((value) => value.toLocaleLowerCase()));
-  const genres = genreLists(
-    [...currentPrimary,
-      ...primaryGenres.filter((value) => !existingGenreKeys.has(
-        value.toLocaleLowerCase()))],
-    [...currentSecondary,
-      ...secondaryGenres.filter((value) => !existingGenreKeys.has(
-        value.toLocaleLowerCase()))],
-  );
-  const descriptorsToStore = mergeStringLists(
-    J(existingAlbum?.descriptors), descriptors);
+  // Existing classifications are curated. Only a new album initializes them.
+  const genres = genreLists(primaryGenres, secondaryGenres);
+  const descriptorsToStore = descriptors;
   // A legacy companion only knows the singular artist field. Once an album
   // has been explicitly edited to multiple credits, later rescans must not
   // collapse it back to one combined string.
@@ -3044,18 +3034,14 @@ app.post("/api/albums", async (c) => {
         title=excluded.title, year=excluded.year,
         cover_path=CASE WHEN excluded.cover_path != ''
                         THEN excluded.cover_path ELSE albums.cover_path END,
-        rym_rating=COALESCE(excluded.rym_rating, albums.rym_rating),
-        rym_votes=COALESCE(excluded.rym_votes, albums.rym_votes),
-        rym_rank=CASE WHEN excluded.rym_rank != ''
-                      THEN excluded.rym_rank ELSE albums.rym_rank END,
-        rym_url=CASE WHEN excluded.rym_url != ''
-                     THEN excluded.rym_url ELSE albums.rym_url END,
-        genres=CASE WHEN excluded.genres != '[]'
-                    THEN excluded.genres ELSE albums.genres END,
-        sec_genres=CASE WHEN excluded.sec_genres != '[]'
-                        THEN excluded.sec_genres ELSE albums.sec_genres END,
-        descriptors=CASE WHEN excluded.descriptors != '[]'
-                         THEN excluded.descriptors ELSE albums.descriptors END,
+        rym_rating=CASE WHEN EXISTS (SELECT 1 FROM album_rym_state WHERE album_id=albums.id)
+          THEN albums.rym_rating ELSE COALESCE(albums.rym_rating, excluded.rym_rating) END,
+        rym_votes=CASE WHEN EXISTS (SELECT 1 FROM album_rym_state WHERE album_id=albums.id)
+          THEN albums.rym_votes ELSE COALESCE(albums.rym_votes, excluded.rym_votes) END,
+        rym_rank=CASE WHEN albums.rym_rank != '' OR EXISTS (SELECT 1 FROM album_rym_state WHERE album_id=albums.id)
+          THEN albums.rym_rank ELSE excluded.rym_rank END,
+        rym_url=CASE WHEN albums.rym_url != '' THEN albums.rym_url ELSE excluded.rym_url END,
+        genres=albums.genres, sec_genres=albums.sec_genres, descriptors=albums.descriptors,
         updated_at=excluded.updated_at`)
       .bind(id, artist, artistSort, title, year, folder, coverPath,
         rymRating, rymVotes, rymRank, rymUrl, JSON.stringify(genres.primary),
@@ -3251,13 +3237,28 @@ app.patch("/api/album/:id", async (c) => {
   if (!b) return c.json({ error: "请求 JSON 无效" }, 400);
   const [current, currentArtists] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT artist, artist_sort, folder, genres, sec_genres FROM albums WHERE id = ?")
+      "SELECT * FROM albums WHERE id = ?")
       .bind(id).first(),
     artistsForAlbum(c.env.DB, id),
   ]);
   if (!current) return c.json({ error: "not found" }, 404);
-  const sets = [], vals = [];
-  const put = (column, value) => { sets.push(`${column} = ?`); vals.push(value); };
+  // Companion tags cannot replace a curated classification or an existing score.
+  if (c.get("role") === "companion") {
+    const protectedRym = await c.env.DB.prepare("SELECT 1 FROM album_rym_state WHERE album_id = ?").bind(id).first();
+    for (const field of ["genres", "secondaryGenres", "descriptors"]) delete b[field];
+    for (const [field, column] of [["rymRating", "rym_rating"], ["rymVotes", "rym_votes"], ["rymRank", "rym_rank"], ["rymUrl", "rym_url"]]) {
+      if (protectedRym || (current[column] != null && current[column] !== "")) delete b[field];
+    }
+    if (!Object.keys(b).length) return c.json({ ok: true });
+  }
+  const sets = [], vals = [], normalized = new Map();
+  const put = (column, value) => {
+    // Recheck fill-only companion writes inside the update, after any concurrent capture.
+    const protectedField = c.get("role") === "companion" && ["rym_rating", "rym_votes", "rym_rank", "rym_url"].includes(column);
+    sets.push(protectedField ? `${column} = CASE WHEN (${column} IS NULL OR ${column} = '')
+      AND NOT EXISTS (SELECT 1 FROM album_rym_state WHERE album_id = albums.id) THEN ? ELSE ${column} END` : `${column} = ?`);
+    vals.push(value); normalized.set(column, value);
+  };
   let nextArtists = null;
   let artistRenames = [];
   if ("artists" in b) {
@@ -3397,6 +3398,21 @@ app.patch("/api/album/:id", async (c) => {
     statements.push(...ensureArtistRows(c.env.DB, nextArtists));
     statements.push(...artistRowsForAlbum(c.env.DB, id, nextArtists));
     statements.push(removeInheritedTrackArtists(c.env.DB, id, nextArtists));
+  }
+  // Explicit administrator score edits also participate in freshness protection.
+  if (c.get("role") === "admin") {
+    const fields = {};
+    for (const [input, name, column] of [["rymRating", "rating", "rym_rating"], ["rymVotes", "votes", "rym_votes"], ["rymRank", "rank", "rym_rank"]]) {
+      if (input in b) fields[name] = { value: normalized.get(column), source: "manual", observedAt: Date.now(), receivedAt: Date.now() };
+    }
+    if (Object.keys(fields).length) statements.push(c.env.DB.prepare(`
+      INSERT INTO album_rym_state(album_id, revision, data) VALUES (?, 1, ?)
+      ON CONFLICT(album_id) DO UPDATE SET revision = revision + 1,
+        data = json_set(album_rym_state.data, ${Object.keys(fields).map(name =>
+          `'$.fields.${name}', json_extract(excluded.data, '$.fields.${name}')`).join(', ')})`)
+      .bind(id, JSON.stringify({ fields })));
+    if ("rymUrl" in b && b.rymUrl !== current.rym_url) statements.push(c.env.DB.prepare(`
+      UPDATE album_rym_state SET revision = revision + 1, data = '{}' WHERE album_id = ?`).bind(id));
   }
   if (statements.length) await c.env.DB.batch(statements);
   if (sets.length && "coverPath" in b) {
@@ -3942,53 +3958,7 @@ app.put("/api/album/:id/tracks/order", async (c) => {
 
 /* ---------- RYM import: the browser parses HTML before submission ---------- */
 
-app.post("/api/album/:id/rym", async (c) => {
-  const b = await requestObject(c);
-  if (!b) return c.json({ error: "请求 JSON 无效" }, 400);
-  const album = await c.env.DB.prepare(`
-    SELECT genres, sec_genres, descriptors FROM albums WHERE id = ?`)
-    .bind(c.req.param("id")).first();
-  if (!album) return c.json({ error: "not found" }, 404);
-  const rating = finiteInput(b.rating, { min: 0, max: 5 });
-  const votes = finiteInput(b.votes, {
-    integer: true, min: 0, max: Number.MAX_SAFE_INTEGER,
-  });
-  const rank = boundedText(b.rank, 500);
-  const rymUrl = validHttpUrl(b.rymUrl);
-  const primary = strictTextList(b.genres);
-  const secondary = strictTextList(b.secondaryGenres);
-  const descriptors = strictTextList(b.descriptors, {
-    maxItems: 500, maxItemLength: 500,
-  });
-  if ([rating, votes, rank, rymUrl, primary, secondary, descriptors]
-    .includes(INVALID_INPUT)) {
-    return c.json({ error: "RYM 数据格式无效" }, 400);
-  }
-  // Ratings are refreshed by re-importing a newer RYM page, but the stored
-  // taxonomy usually mixes RYM, Discogs, and manual edits by then. Merge like
-  // the Discogs importer instead of replacing: existing placement wins (a tag
-  // curated as secondary is not re-added as primary), only new values append,
-  // so repeating an import never changes the curated lists.
-  const lower = (value) => String(value).toLocaleLowerCase();
-  const currentPrimary = stringList(J(album.genres));
-  const currentSecondary = stringList(J(album.sec_genres));
-  const currentDescriptors = stringList(J(album.descriptors));
-  const taken = new Set([...currentPrimary, ...currentSecondary].map(lower));
-  const genres = genreLists(
-    [...currentPrimary, ...primary.filter((g) => !taken.has(lower(g)))],
-    [...currentSecondary, ...secondary.filter((g) => !taken.has(lower(g)))]);
-  const seenDescriptors = new Set(currentDescriptors.map(lower));
-  const mergedDescriptors = [...currentDescriptors,
-    ...descriptors.filter((d) => !seenDescriptors.has(lower(d)))];
-  await c.env.DB.prepare(`
-    UPDATE albums SET rym_rating=?, rym_votes=?, rym_rank=?, rym_url=?,
-      genres=?, sec_genres=?, descriptors=?, updated_at=? WHERE id=?`)
-    .bind(rating, votes, rank, rymUrl,
-      JSON.stringify(genres.primary), JSON.stringify(genres.secondary),
-      JSON.stringify(mergedDescriptors),
-      Date.now(), c.req.param("id")).run();
-  return c.json({ ok: true });
-});
+app.post("/api/album/:id/rym", legacyRymImport);
 
 /* ---------- Uploads: browser-to-OneDrive direct transfer; WebDAV targets use a
    Worker proxy endpoint ---------- */

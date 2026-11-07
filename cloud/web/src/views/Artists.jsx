@@ -7,6 +7,7 @@ import { romajiOf } from '../aliases.js'
 import { jaCollator } from '../format.js'
 import { creditsOf, effectiveArtistSort } from '../artist-credit.jsx'
 import { compareArtistActivity } from '../artist-ranking.js'
+import { albumAddedAt } from '../album-added-time.js'
 import { contentLanguage } from '../content-language.js'
 
 export default function ArtistsPage({ albums, artists, q, avatarVer,
@@ -50,7 +51,7 @@ export default function ArtistsPage({ albums, artists, q, avatarVer,
         e.count++
         if (a.hidden) e.hiddenCount++
         ;(a.genres || []).forEach((g) => e.genres.add(g))
-        e.latest = Math.max(e.latest, a.updatedAt || 0)
+        e.latest = Math.max(e.latest, albumAddedAt(a))
         if (a.year) e.years.push(a.year)
         m.set(credit.name, e)
       }

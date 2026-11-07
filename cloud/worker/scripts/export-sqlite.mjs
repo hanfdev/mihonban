@@ -16,7 +16,7 @@ const repoDir = resolve(workerDir, "..", "..");
 const durableTables = [
   "albums", "album_artists", "tracks", "track_artists", "artists", "artist_aliases",
   "album_images", "favorites", "notes",
-  "source_posts",
+  "source_posts", "album_rym_state", "rym_dismissed",
 ];
 
 function usage(message = "") {
