@@ -27,6 +27,7 @@ use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore},
 };
 
+mod artist_cache;
 mod grid_viewport;
 mod image_retries;
 mod images;
@@ -37,6 +38,7 @@ mod settings_ui;
 mod texture_cache;
 mod tracks;
 mod views;
+use artist_cache::{ArtistCache, ArtistFilters};
 use grid_viewport::visible_grid_rows;
 use image_retries::ImageRetries;
 use images::{prepare_artwork, prepare_gallery, PreparedArtwork};
@@ -149,14 +151,6 @@ impl AlbumGridSource<'_> {
     }
 }
 
-struct ArtistEntry {
-    artist: Artist,
-    count: usize,
-    years: Vec<i32>,
-    latest: i64,
-    genres: Vec<String>,
-}
-
 #[derive(Clone)]
 struct ProfileDeletion {
     index: usize,
@@ -187,6 +181,7 @@ pub struct MihonbanApp {
     selected: Option<AlbumDetail>,
     selected_artist: Option<String>,
     artists: Vec<Artist>,
+    artist_cache: ArtistCache,
     favorites: Favorites,
     favorites_loaded: bool,
     favorite_revision: u64,
@@ -337,6 +332,7 @@ impl MihonbanApp {
             selected: None,
             selected_artist: None,
             artists: Vec::new(),
+            artist_cache: ArtistCache::default(),
             favorites: Favorites::default(),
             favorites_loaded: false,
             favorite_revision: 0,
@@ -872,6 +868,7 @@ impl MihonbanApp {
         self.selected = None;
         self.selected_artist = None;
         self.artists.clear();
+        self.artist_cache.invalidate();
         self.favorites = Favorites::default();
         self.artist_bios.clear();
         self.image_generation = self.image_generation.wrapping_add(1);
@@ -956,6 +953,7 @@ impl MihonbanApp {
                         self.role = role.or_else(|| Some("user".into()));
                         self.albums = albums;
                         self.library_cache.replace_albums(&self.albums);
+                        self.artist_cache.invalidate();
                         self.tracks = tracks.into();
                         self.track_cache.replace(&self.tracks);
                         self.status = self.t("desktop.connected").into();
@@ -990,6 +988,7 @@ impl MihonbanApp {
                 },
                 Message::ExtrasLoaded(artists, favorites, revision) => {
                     self.artists = artists;
+                    self.artist_cache.invalidate();
                     if self.favorite_revision == revision {
                         self.favorites = favorites;
                         self.favorites_loaded = true;

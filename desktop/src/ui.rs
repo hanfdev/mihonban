@@ -219,15 +219,7 @@ pub fn artist_credit_links<'a>(
     color: Color32,
     id: egui::Id,
 ) -> Option<&'a str> {
-    let names: Vec<&str> = if artists.is_empty() {
-        vec![fallback]
-    } else {
-        artists
-            .iter()
-            .map(|artist| artist.name.as_str())
-            .filter(|name| !name.trim().is_empty())
-            .collect()
-    };
+    let names = credit_names(artists, fallback);
     let separator = if names.len() == 2 { " × " } else { ", " };
     let separator_galley = ui
         .painter()
@@ -274,6 +266,23 @@ pub fn artist_credit_links<'a>(
         left += width;
     }
     clicked
+}
+
+/// The names a credit line displays, in order: structured credits when
+/// present, otherwise the plain artist string.
+pub fn credit_names<'a>(
+    artists: &'a [crate::api::ArtistCredit],
+    fallback: &'a str,
+) -> Vec<&'a str> {
+    if artists.is_empty() {
+        vec![fallback]
+    } else {
+        artists
+            .iter()
+            .map(|artist| artist.name.as_str())
+            .filter(|name| !name.trim().is_empty())
+            .collect()
+    }
 }
 
 #[derive(Clone, Copy)]

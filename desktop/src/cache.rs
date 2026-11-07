@@ -39,6 +39,46 @@ pub struct CacheStore {
     active_temps: Arc<Mutex<std::collections::HashSet<PathBuf>>>,
 }
 
+/// Own the original download path until it is handed to the cache or player.
+/// The file must close before cleanup, including when an async task is dropped.
+pub(crate) struct TemporaryAudio<'a> {
+    cache: &'a CacheStore,
+    path: PathBuf,
+    file: Option<fs::File>,
+    armed: bool,
+}
+
+impl TemporaryAudio<'_> {
+    pub(crate) fn file_mut(&mut self) -> &mut fs::File {
+        self.file.as_mut().expect("temporary audio file is open")
+    }
+
+    pub(crate) fn finish(
+        mut self,
+        key: &str,
+        extension: &str,
+        generation: u64,
+    ) -> Result<PathBuf> {
+        drop(self.file.take());
+        let path = self
+            .cache
+            .commit_temp_at_generation(key, extension, &self.path, generation)?;
+        self.armed = false;
+        Ok(path)
+    }
+}
+
+impl Drop for TemporaryAudio<'_> {
+    fn drop(&mut self) {
+        drop(self.file.take());
+        if self.armed {
+            // Commit may have renamed the file before an index write failed.
+            // Only the original temporary path belongs to this guard.
+            let _ = self.cache.discard_temp(&self.path);
+        }
+    }
+}
+
 impl CacheStore {
     pub fn new(
         root: impl Into<PathBuf>,
@@ -245,6 +285,31 @@ impl CacheStore {
         Ok(path)
     }
 
+    pub(crate) fn temporary_audio_at_generation(
+        &self,
+        key: &str,
+        extension: &str,
+        generation: u64,
+    ) -> Result<TemporaryAudio<'_>> {
+        let path = self.temporary_path_at_generation(key, extension, generation)?;
+        let mut temp = TemporaryAudio {
+            cache: self,
+            path,
+            file: None,
+            armed: true,
+        };
+        if let Some(parent) = temp.path.parent() {
+            fs::create_dir_all(parent).context("cannot create cache directory")?;
+        }
+        temp.file = Some(fs::File::create(&temp.path).context("cannot create cache audio file")?);
+        Ok(temp)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn active_temp_paths(&self) -> Vec<PathBuf> {
+        self.active_temps.lock().unwrap().iter().cloned().collect()
+    }
+
     pub fn discard_temp(&self, temp: &Path) -> Result<()> {
         if let Ok(mut active) = self.active_temps.lock() {
             active.remove(temp);
@@ -348,7 +413,8 @@ impl CacheStore {
     }
 
     fn evict_locked(&self, index: &mut Index) -> Result<()> {
-        while index.entries.values().map(|entry| entry.bytes).sum::<u64>() > self.max_bytes {
+        let mut total: u64 = index.entries.values().map(|entry| entry.bytes).sum();
+        while total > self.max_bytes {
             let Some((key, entry)) = index
                 .entries
                 .iter()
@@ -359,6 +425,7 @@ impl CacheStore {
             };
             let _ = fs::remove_file(self.root.join(entry.file));
             index.entries.remove(&key);
+            total -= entry.bytes;
         }
         Ok(())
     }
@@ -431,6 +498,211 @@ mod tests {
     fn store(max: u64) -> (CacheStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         (CacheStore::new(dir.path(), max, true, "profile"), dir)
+    }
+
+    #[test]
+    fn temporary_audio_drop_closes_file_and_unregisters_it() {
+        use std::io::Write;
+        let (cache, _dir) = store(100);
+        let mut temp = cache.temporary_audio_at_generation("audio:a", "flac", 0).unwrap();
+        let path = temp.path.clone();
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            // Deny deletion while this owned handle is open, so this test checks
+            // close-before-discard rather than relying on Rust's delete sharing.
+            temp.file = Some(fs::OpenOptions::new().write(true).share_mode(3).open(&path).unwrap());
+        }
+        temp.file_mut().write_all(b"partial").unwrap();
+        assert_eq!(cache.active_temp_paths(), vec![path.clone()]);
+        drop(temp);
+        assert!(!path.exists());
+        assert!(cache.active_temp_paths().is_empty());
+    }
+
+    #[test]
+    fn temporary_audio_directory_failure_does_not_leave_a_registration() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("not-a-directory");
+        fs::write(&root, b"block directory creation").unwrap();
+        let cache = CacheStore::new(&root, 100, true, "failure");
+        assert!(cache.temporary_audio_at_generation("audio:a", "flac", 0).is_err());
+        assert!(cache.active_temp_paths().is_empty());
+        assert_eq!(fs::read(root).unwrap(), b"block directory creation");
+    }
+
+    #[test]
+    fn temporary_audio_rejects_clear_before_creation_and_before_commit() {
+        use std::io::Write;
+        let (cache, _dir) = store(100);
+        let generation = cache.generation();
+        let mut temp = cache.temporary_audio_at_generation("audio:a", "flac", generation).unwrap();
+        let path = temp.path.clone();
+        temp.file_mut().write_all(b"partial").unwrap();
+        cache.clear().unwrap();
+        assert!(path.exists(), "clear must leave an actively owned file alone");
+        assert!(cache.temporary_audio_at_generation("audio:b", "flac", generation).is_err());
+        assert!(temp.finish("audio:a", "flac", generation).is_err());
+        assert!(!path.exists());
+        assert!(cache.active_temp_paths().is_empty());
+        assert_eq!(cache.size_bytes(), 0);
+    }
+
+    #[test]
+    fn failed_index_persistence_does_not_delete_the_committed_audio() {
+        use std::io::Write;
+        let (cache, _dir) = store(100);
+        let mut temp = cache.temporary_audio_at_generation("audio:a", "flac", 0).unwrap();
+        let original = temp.path.clone();
+        temp.file_mut().write_all(b"complete audio").unwrap();
+        fs::create_dir(cache.root().join("index.json.tmp")).unwrap();
+        assert!(temp.finish("audio:a", "flac", 0).is_err());
+        assert!(!original.exists());
+        assert!(cache.active_temp_paths().is_empty());
+        assert_eq!(fs::read(cache.get("audio:a").unwrap()).unwrap(), b"complete audio");
+        assert_eq!(cache.size_bytes(), 14);
+    }
+
+    #[test]
+    fn failed_commit_before_rename_discards_the_original_audio() {
+        use std::io::Write;
+        let (cache, _dir) = store(100);
+        let mut temp = cache.temporary_audio_at_generation("audio:a", "flac", 0).unwrap();
+        let original = temp.path.clone();
+        temp.file_mut().write_all(b"complete audio").unwrap();
+        let destination = cache.entry_path("audio:a", "flac");
+        fs::create_dir(&destination).unwrap();
+        assert!(temp.finish("audio:a", "flac", 0).is_err());
+        assert!(!original.exists());
+        assert!(destination.is_dir());
+        assert!(cache.active_temp_paths().is_empty());
+        assert_eq!(cache.size_bytes(), 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn locked_temp_is_unregistered_and_can_be_swept_after_the_lock_closes() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (cache, _dir) = store(100);
+        let temp = cache.temporary_audio_at_generation("audio:a", "flac", 0).unwrap();
+        let path = temp.path.clone();
+        // Allow reads/writes but not deletion, unlike Rust's default sharing mode.
+        let lock = fs::OpenOptions::new().read(true).share_mode(3).open(&path).unwrap();
+        drop(temp);
+        assert!(path.exists());
+        assert!(cache.active_temp_paths().is_empty());
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        drop(lock);
+        fs::File::options().write(true).open(&path).unwrap()
+            .set_times(fs::FileTimes::new().set_modified(old)).unwrap();
+        cache.sweep_stale_partials(std::time::Duration::from_secs(600));
+        assert!(!path.exists());
+    }
+
+    fn old_evict(cache: &CacheStore, index: &mut super::Index) {
+        while index.entries.values().map(|entry| entry.bytes).sum::<u64>() > cache.max_bytes {
+            let Some((key, entry)) = index.entries.iter()
+                .min_by_key(|(_, entry)| entry.accessed)
+                .map(|(key, entry)| (key.clone(), entry.clone())) else { break };
+            let _ = fs::remove_file(cache.root.join(entry.file));
+            index.entries.remove(&key);
+        }
+    }
+
+    #[test]
+    fn eviction_matches_old_algorithm_at_every_victim_boundary_with_ties_and_file_errors() {
+        use super::{Entry, Index};
+        let original = Index { entries: (0..16).map(|i| (format!("key-{i}"), Entry {
+            file: format!("{i}.flac"), bytes: i + 1, accessed: i / 4,
+        })).collect() };
+        let total: u64 = original.entries.values().map(|entry| entry.bytes).sum();
+        // Cloning this exact map preserves the hash seed, iteration order and ties.
+        // Every budget checks each cumulative victim prefix, not only final survivors.
+        for max in 1..=total {
+            let (old_cache, _old_dir) = store(max);
+            let (new_cache, _new_dir) = store(max);
+            for cache in [&old_cache, &new_cache] {
+                for i in 0..16 {
+                    let path = cache.root.join(format!("{i}.flac"));
+                    match i % 3 {
+                        0 => fs::write(path, b"audio").unwrap(),
+                        1 => fs::create_dir(path).unwrap(),
+                        _ => {}, // Missing files and failed deletions still remove index entries.
+                    }
+                }
+            }
+            let mut old = Index { entries: original.entries.clone() };
+            let mut new = Index { entries: original.entries.clone() };
+            old_evict(&old_cache, &mut old);
+            new_cache.evict_locked(&mut new).unwrap();
+            assert_eq!(serde_json::to_value(&old).unwrap(), serde_json::to_value(&new).unwrap(),
+                "victim prefix differs at budget {max}");
+            for entry in original.entries.values() {
+                assert_eq!(old_cache.root.join(&entry.file).exists(), new_cache.root.join(&entry.file).exists());
+            }
+        }
+    }
+
+    #[test]
+    fn multi_eviction_replacement_and_clear_persist_the_same_survivors_on_reload() {
+        let (cache, dir) = store(12);
+        for (i, key) in ["a", "b", "c"].into_iter().enumerate() {
+            cache.put_bytes(key, "bin", b"1234").unwrap();
+            cache.state.lock().unwrap().entries.get_mut(&cache.key(key)).unwrap().accessed = i as u64;
+        }
+        cache.put_bytes("d", "bin", b"123456789").unwrap();
+        assert_eq!(cache.size_bytes(), 9);
+        assert_eq!(cache.state.lock().unwrap().entries.len(), 1);
+        let previous = cache.entry_path("d", "bin");
+        let replacement = cache.put_bytes("d", "flac", b"replace").unwrap();
+        assert!(!previous.exists());
+        assert_eq!(cache.size_bytes(), 7);
+        let reloaded = CacheStore::new(dir.path(), 12, true, "profile");
+        assert_eq!(reloaded.size_bytes(), 7);
+        assert_eq!(reloaded.get("d"), Some(replacement));
+        let mut smaller = reloaded.clone();
+        smaller.max_bytes = 3;
+        smaller.enforce_limit().unwrap();
+        assert_eq!(CacheStore::new(dir.path(), 3, true, "profile").size_bytes(), 0);
+        cache.clear().unwrap();
+        let cleared = CacheStore::new(dir.path(), 12, true, "profile");
+        assert_eq!(cleared.size_bytes(), 0);
+        assert!(cleared.get("d").is_none());
+    }
+
+    #[test]
+    #[ignore = "synthetic release benchmark; not an application FPS or memory measurement"]
+    fn benchmark_eviction_single_sum_against_old_loop() {
+        use super::{Entry, Index};
+        use std::time::Instant;
+        let (cache, _dir) = store(512);
+        let original = Index { entries: (0..2048).map(|i| (format!("key-{i}"), Entry {
+            file: format!("missing-{i}.flac"), bytes: 1, accessed: i / 4,
+        })).collect() };
+        let mut old_times = Vec::new();
+        let mut new_times = Vec::new();
+        for sample in 0..23 {
+            let mut old = Index { entries: original.entries.clone() };
+            let mut new = Index { entries: original.entries.clone() };
+            // Alternate order to reduce systematic filesystem/CPU warm-up bias.
+            let mut measure_old = || {
+                let start = Instant::now();
+                old_evict(&cache, &mut old);
+                if sample >= 3 { old_times.push(start.elapsed()); }
+            };
+            let mut measure_new = || {
+                let start = Instant::now();
+                cache.evict_locked(&mut new).unwrap();
+                if sample >= 3 { new_times.push(start.elapsed()); }
+            };
+            if sample % 2 == 0 { measure_old(); measure_new(); }
+            else { measure_new(); measure_old(); }
+            assert_eq!(serde_json::to_value(old).unwrap(), serde_json::to_value(new).unwrap());
+        }
+        old_times.sort();
+        new_times.sort();
+        eprintln!("synthetic eviction, 2048 -> 512 entries (missing files), 20 samples: old median={:?} p95={:?}; new median={:?} p95={:?}",
+            old_times[10], old_times[18], new_times[10], new_times[18]);
     }
 
     #[test]

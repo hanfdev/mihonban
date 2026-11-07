@@ -142,7 +142,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[test]
     fn shrinking_the_budget_applies_to_later_inserts() {
         let mut cache = TextureCache::new(30);
         assert!(cache.insert("a".into(), 1, 10));
@@ -155,6 +154,7 @@ mod tests {
         assert!(!cache.contains_key("a"));
     }
 
+    #[test]
     fn evicting_and_clearing_drop_real_egui_texture_handles() {
         use eframe::egui::{Color32, ColorImage, Context, TextureOptions};
 

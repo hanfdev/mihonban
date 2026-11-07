@@ -422,7 +422,7 @@ impl MihonbanApp {
             let content = content.shrink2(Vec2::new(inset, 0.0));
             ui.allocate_ui_at_rect(content, |ui| {
                 ui.add_space(LIST_TOP);
-                self.track_rows_from(ui, ctx, TrackSource::Indexed(&tracks, &shown), true);
+                self.track_rows_from(ui, ctx, TrackSource::Indexed(&tracks, &shown), true, None);
                 ui.add_space(LIST_BOTTOM);
             });
         });

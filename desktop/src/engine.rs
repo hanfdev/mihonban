@@ -419,13 +419,14 @@ impl Engine {
         {
             return;
         }
-        if self.prefetch_inflight.as_deref() == Some(track.id.as_str()) {
         // Supersede any in-flight playback download: nobody waits for its
         // result anymore, and the leftover transfer would only compete for
-        // bandwidth with the track the user actually picked.
+        // bandwidth with the track the user actually picked. Dropping the
+        // abort handle alone would not cancel the task.
         if let Some(abort) = self.load_abort.take() {
             abort.abort();
         }
+        if self.prefetch_inflight.as_deref() == Some(track.id.as_str()) {
             // The background prefetch for this track is already running; play
             // its result when it lands instead of downloading it twice.
             self.loading = Some(track);
@@ -433,7 +434,10 @@ impl Engine {
             return;
         }
         let Some(api) = self.api.clone() else {
+            // The previous load was cancelled above, so nothing is loading.
+            self.loading = None;
             self.set_error("请先连接 Mihonban 服务".into());
+            self.publish();
             return;
         };
         let id = track.id.clone();
@@ -675,5 +679,226 @@ mod intent_tests {
         );
         // No live sink: the pending intent is preserved untouched.
         assert_eq!(reconcile_intent(true, false, false, None), (true, None));
+    }
+}
+
+#[cfg(test)]
+mod load_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use crate::api::download_tests::{runtime, wait_partial, wait_until, Reply, Server};
+
+    type ServerEvent = (usize, &'static str);
+
+    /// Answer every audio request with a few bytes and then stall, reporting
+    /// when each connection opens and when the client drops it.
+    fn stalling_server(requests: usize) -> (String, Receiver<ServerEvent>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let (events, received) = mpsc::channel();
+        thread::spawn(move || {
+            for (index, stream) in listener.incoming().take(requests).enumerate() {
+                let Ok(mut stream) = stream else { continue };
+                stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+                let events = events.clone();
+                thread::spawn(move || {
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: audio/flac\r\n\
+                          Content-Length: 50000000\r\n\r\nfLaC",
+                    );
+                    let _ = events.send((index, "open"));
+                    let mut buffer = [0u8; 4096];
+                    while matches!(stream.read(&mut buffer), Ok(read) if read > 0) {}
+                    let _ = events.send((index, "closed"));
+                });
+            }
+        });
+        (address, received)
+    }
+
+    fn engine(runtime: RuntimeHandle, address: &str, cache_root: &std::path::Path) -> Engine {
+        let (tx, rx) = mpsc::channel();
+        let handle: PlaybackHandle = Arc::new(Mutex::new(None));
+        Engine {
+            rx,
+            tx,
+            state: Arc::new(Mutex::new(EngineState::default())),
+            ctx: egui::Context::default(),
+            runtime,
+            api: Some(ApiClient::new(address).unwrap()),
+            cache: CacheStore::new(cache_root, 1 << 30, true, "test"),
+            preload_next_track: false,
+            volume: 1.0,
+            player: AudioPlayer::with_handle(Arc::clone(&handle)),
+            handle,
+            order: PlaybackOrder::default(),
+            queue: Vec::new(),
+            current: None,
+            loading: None,
+            desired_playing: true,
+            last_seen_playing: None,
+            generation: 0,
+            prefetch_inflight: None,
+            load_abort: None,
+            prefetch_abort: None,
+            watcher: PlaybackCompletionWatcher::default(),
+            last_fingerprint: None,
+        }
+    }
+
+    fn track(id: &str) -> Track {
+        serde_json::from_value(serde_json::json!({ "id": id, "title": id, "format": "flac" }))
+            .unwrap()
+    }
+
+    fn next_event(events: &Receiver<ServerEvent>) -> Option<ServerEvent> {
+        events.recv_timeout(Duration::from_secs(5)).ok()
+    }
+
+    #[test]
+    fn stop_cancels_a_written_load_and_releases_its_file_and_registration() {
+        let runtime = runtime();
+        let server = Server::start();
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine(runtime.handle().clone(), &server.address, dir.path());
+        engine.start_load(track("stop"));
+        let partial = wait_partial(&engine.cache, "stop");
+        let abort = engine.load_abort.as_ref().unwrap().clone();
+        server.reply.send(Reply::WaitForClose).unwrap();
+        engine.stop();
+        wait_until(|| abort.is_finished());
+        assert!(!partial.exists());
+        assert!(engine.cache.active_temp_paths().is_empty());
+        assert!(engine.loading.is_none());
+        assert!(server.join());
+    }
+
+    #[test]
+    fn abort_prefetch_releases_a_written_download_and_registration() {
+        let runtime = runtime();
+        let server = Server::start();
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine(runtime.handle().clone(), &server.address, dir.path());
+        engine.queue = vec![track("current"), track("next")];
+        engine.order.reset(2, 0);
+        engine.current = Some(track("current"));
+        engine.preload_next_track = true;
+        engine.maybe_prefetch();
+        let partial = wait_partial(&engine.cache, "next");
+        let abort = engine.prefetch_abort.as_ref().unwrap().clone();
+        server.reply.send(Reply::WaitForClose).unwrap();
+        engine.abort_prefetch();
+        wait_until(|| abort.is_finished());
+        assert!(!partial.exists());
+        assert!(engine.cache.active_temp_paths().is_empty());
+        assert!(engine.prefetch_inflight.is_none());
+        assert!(server.join());
+    }
+
+    #[test]
+    fn completed_prefetch_hands_off_a_readable_cached_file_without_loading_it() {
+        let runtime = runtime();
+        let server = Server::start();
+        let dir = tempfile::tempdir().unwrap();
+        let mut engine = engine(runtime.handle().clone(), &server.address, dir.path());
+        engine.queue = vec![track("current"), track("next")];
+        engine.order.reset(2, 0);
+        engine.current = Some(track("current"));
+        engine.preload_next_track = true;
+        engine.maybe_prefetch();
+        let partial = wait_partial(&engine.cache, "next");
+        server.reply.send(Reply::Finish).unwrap();
+        let command = engine.rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let EngineCommand::LoadFinished { generation, track, result } = command else {
+            panic!("expected prefetch completion");
+        };
+        let (path, temporary) = result.as_ref().unwrap();
+        let path = path.clone();
+        assert!(!temporary);
+        assert_eq!(std::fs::read(&path).unwrap(), b"fLaCdone");
+        assert!(!partial.exists());
+        assert!(engine.cache.active_temp_paths().is_empty());
+        engine.handle_load_finished(generation, track, result);
+        assert!(path.is_file());
+        assert!(engine.prefetch_inflight.is_none());
+        assert_eq!(engine.current.as_ref().unwrap().id, "current");
+        assert!(!server.join());
+    }
+
+    #[test]
+    fn picking_another_track_cancels_the_superseded_download() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (address, events) = stalling_server(2);
+        let cache_root = tempfile::tempdir().unwrap();
+        let mut engine = engine(runtime.handle().clone(), &address, cache_root.path());
+
+        engine.start_load(track("first"));
+        assert_eq!(next_event(&events), Some((0, "open")));
+
+        let first_partial = wait_partial(&engine.cache, "first");
+        let first_abort = engine.load_abort.as_ref().unwrap().clone();
+
+        // The new track is neither cached nor prefetched; the download it
+        // replaces must still be aborted so its connection closes.
+        engine.start_load(track("second"));
+        let mut seen = Vec::new();
+        while let Some(event) = next_event(&events) {
+            seen.push(event);
+            if seen.contains(&(0, "closed")) && seen.contains(&(1, "open")) {
+                break;
+            }
+        }
+        assert!(
+            seen.contains(&(0, "closed")),
+            "the superseded download kept running: {seen:?}"
+        );
+        assert!(seen.contains(&(1, "open")), "the new download never started: {seen:?}");
+        assert_eq!(
+            engine.loading.as_ref().map(|track| track.id.as_str()),
+            Some("second")
+        );
+        wait_until(|| first_abort.is_finished());
+        assert!(!first_partial.exists());
+        assert!(!engine.cache.active_temp_paths().contains(&first_partial));
+        let second_partial = wait_partial(&engine.cache, "second");
+        let second_abort = engine.load_abort.as_ref().unwrap().clone();
+        engine.stop();
+        wait_until(|| second_abort.is_finished());
+        assert!(!second_partial.exists());
+        assert!(engine.cache.active_temp_paths().is_empty());
+    }
+
+    #[test]
+    fn a_disconnected_service_does_not_leave_a_load_spinning() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (address, events) = stalling_server(1);
+        let cache_root = tempfile::tempdir().unwrap();
+        let mut engine = engine(runtime.handle().clone(), &address, cache_root.path());
+
+        engine.start_load(track("first"));
+        assert_eq!(next_event(&events), Some((0, "open")));
+
+        let partial = wait_partial(&engine.cache, "first");
+        let abort = engine.load_abort.as_ref().unwrap().clone();
+
+        // Losing the connection and then picking another track cancels the
+        // first load; the engine must not keep reporting it as loading.
+        engine.api = None;
+        engine.start_load(track("second"));
+        assert!(engine.loading.is_none());
+        assert!(engine.state.lock().unwrap().error.is_some());
+        wait_until(|| abort.is_finished());
+        assert!(!partial.exists());
+        assert!(engine.cache.active_temp_paths().is_empty());
+        assert_eq!(next_event(&events), Some((0, "closed")));
     }
 }

@@ -364,57 +364,35 @@ impl ApiClient {
             "cache was cleared during the download"
         );
         let extension = extension.trim_start_matches('.');
-        let temp = cache.temporary_path_at_generation(&key, extension, generation)?;
-        if let Some(parent) = temp.parent() {
-            if let Err(error) =
-                std::fs::create_dir_all(parent).context("cannot create cache directory")
-            {
-                let _ = cache.discard_temp(&temp);
-                return Err(error);
-            }
-        }
-        let download = async {
-            let mut file =
-                std::fs::File::create(&temp).context("cannot create cache audio file")?;
-            let mut response = response;
-            loop {
-                let chunk = if cache.enabled() {
-                    tokio::select! {
-                        result = response.chunk() => result.context("audio download interrupted")?,
-                        changed = clear_events.changed() => {
-                            let _ = changed;
-                            anyhow::bail!("cache was cleared during the download");
-                        }
+        let mut temp = cache.temporary_audio_at_generation(&key, extension, generation)?;
+        let mut response = response;
+        loop {
+            let chunk = if cache.enabled() {
+                tokio::select! {
+                    result = response.chunk() => result.context("audio download interrupted")?,
+                    changed = clear_events.changed() => {
+                        let _ = changed;
+                        anyhow::bail!("cache was cleared during the download");
                     }
-                } else {
-                    response
-                        .chunk()
-                        .await
-                        .context("audio download interrupted")?
-                };
-                let Some(chunk) = chunk else {
-                    break;
-                };
-                std::io::Write::write_all(&mut file, &chunk)
-                    .context("cannot write cache audio file")?;
-            }
-            std::io::Write::flush(&mut file).context("cannot flush cache audio file")?;
-            anyhow::ensure!(
-                !cache.enabled() || cache.generation_is_current(generation),
-                "cache was cleared during the download"
-            );
-            Ok::<_, anyhow::Error>(())
+                }
+            } else {
+                response
+                    .chunk()
+                    .await
+                    .context("audio download interrupted")?
+            };
+            let Some(chunk) = chunk else {
+                break;
+            };
+            std::io::Write::write_all(temp.file_mut(), &chunk)
+                .context("cannot write cache audio file")?;
         }
-        .await;
-        if let Err(error) = download {
-            let _ = cache.discard_temp(&temp);
-            return Err(error);
-        }
-        if cache.enabled() {
-            cache.commit_temp_at_generation(&key, extension, &temp, generation)
-        } else {
-            Ok(temp)
-        }
+        std::io::Write::flush(temp.file_mut()).context("cannot flush cache audio file")?;
+        anyhow::ensure!(
+            !cache.enabled() || cache.generation_is_current(generation),
+            "cache was cleared during the download"
+        );
+        temp.finish(&key, extension, generation)
     }
 
     pub async fn cover_cached(&self, id: &str, cache: &CacheStore) -> Result<Vec<u8>> {
@@ -516,6 +494,222 @@ fn read_cached_image(path: &Path) -> Result<Vec<u8>> {
 
 fn urlencoding(value: &str) -> String {
     percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC).to_string()
+}
+
+#[cfg(test)]
+pub(crate) mod download_tests {
+    use super::*;
+    use std::fs;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    pub(crate) enum Reply {
+        Finish,
+        Truncate,
+        WaitForClose,
+    }
+
+    pub(crate) struct Server {
+        pub(crate) address: String,
+        pub(crate) reply: mpsc::Sender<Reply>,
+        worker: thread::JoinHandle<bool>,
+    }
+
+    impl Server {
+        pub(crate) fn start() -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = format!("http://{}", listener.local_addr().unwrap());
+            listener.set_nonblocking(true).unwrap();
+            let (reply, commands) = mpsc::channel();
+            let worker = thread::spawn(move || {
+                let deadline = Instant::now() + Duration::from_secs(10);
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(Instant::now() < deadline, "no audio request arrived");
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("accept failed: {error}"),
+                    }
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+                stream.set_write_timeout(Some(Duration::from_secs(10))).unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                    assert!(request.len() < 16 * 1024);
+                }
+                stream.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nfLaC",
+                ).unwrap();
+                match commands.recv_timeout(Duration::from_secs(10)).unwrap() {
+                    Reply::Finish => {
+                        stream.write_all(b"done").unwrap();
+                        false
+                    }
+                    Reply::Truncate => false,
+                    Reply::WaitForClose => {
+                        let mut byte = [0];
+                        match stream.read(&mut byte) {
+                            Ok(0) => true,
+                            Err(error) if matches!(error.kind(),
+                                std::io::ErrorKind::ConnectionReset |
+                                std::io::ErrorKind::ConnectionAborted) => true,
+                            result => panic!("download connection remained open: {result:?}"),
+                        }
+                    }
+                }
+            });
+            Self { address, reply, worker }
+        }
+
+        pub(crate) fn join(self) -> bool {
+            self.worker.join().unwrap()
+        }
+    }
+
+    pub(crate) fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    pub(crate) fn wait_until(mut condition: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !condition() {
+            assert!(Instant::now() < deadline, "download state did not converge");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    pub(crate) fn wait_partial(cache: &CacheStore, id: &str) -> PathBuf {
+        let base = if cache.enabled() { cache.root().to_path_buf() } else { std::env::temp_dir() };
+        let name = cache.entry_path(&format!("audio:{id}"), "bin");
+        let prefix = format!("{}.", name.file_name().unwrap().to_string_lossy());
+        let mut found = None;
+        wait_until(|| {
+            found = fs::read_dir(&base).ok().into_iter().flatten().flatten()
+                .map(|entry| entry.path())
+                .find(|path| {
+                    path.file_name().unwrap().to_string_lossy().starts_with(&prefix)
+                        && fs::metadata(path).is_ok_and(|metadata| metadata.len() >= 4)
+                });
+            found.is_some()
+        });
+        found.unwrap()
+    }
+
+    #[test]
+    fn abort_after_written_chunk_closes_connection_and_removes_temp_in_both_cache_modes() {
+        let runtime = runtime();
+        for enabled in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let cache = CacheStore::new(dir.path(), 100, enabled, dir.path().to_string_lossy());
+            let server = Server::start();
+            let api = ApiClient::new(&server.address).unwrap();
+            let task_cache = cache.clone();
+            let task = runtime.spawn(async move {
+                api.stream_to_cache("cancel", "flac", &task_cache).await
+            });
+            let partial = wait_partial(&cache, "cancel");
+            assert_eq!(cache.active_temp_paths(), if enabled { vec![partial.clone()] } else { vec![] });
+            server.reply.send(Reply::WaitForClose).unwrap();
+            task.abort();
+            assert!(runtime.block_on(task).unwrap_err().is_cancelled());
+            assert!(!partial.exists());
+            assert!(cache.active_temp_paths().is_empty());
+            assert_eq!(cache.size_bytes(), 0);
+            assert!(server.join());
+        }
+    }
+
+    #[test]
+    fn clear_during_written_download_cleans_up_and_closes_connection() {
+        let runtime = runtime();
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CacheStore::new(dir.path(), 100, true, "clear");
+        let server = Server::start();
+        let api = ApiClient::new(&server.address).unwrap();
+        let task_cache = cache.clone();
+        let task = runtime.spawn(async move {
+            api.stream_to_cache("clear", "flac", &task_cache).await
+        });
+        let partial = wait_partial(&cache, "clear");
+        server.reply.send(Reply::WaitForClose).unwrap();
+        cache.clear().unwrap();
+        let error = runtime.block_on(task).unwrap().unwrap_err();
+        assert!(error.to_string().contains("cleared"));
+        assert!(!partial.exists());
+        assert!(cache.active_temp_paths().is_empty());
+        assert_eq!(cache.size_bytes(), 0);
+        assert!(server.join());
+    }
+
+    #[test]
+    fn truncated_response_cleans_written_file_and_registration() {
+        let runtime = runtime();
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CacheStore::new(dir.path(), 100, true, "truncated");
+        let server = Server::start();
+        let api = ApiClient::new(&server.address).unwrap();
+        let task_cache = cache.clone();
+        let task = runtime.spawn(async move {
+            api.stream_to_cache("truncated", "flac", &task_cache).await
+        });
+        let partial = wait_partial(&cache, "truncated");
+        server.reply.send(Reply::Truncate).unwrap();
+        assert!(runtime.block_on(task).unwrap().is_err());
+        assert!(!partial.exists());
+        assert!(cache.active_temp_paths().is_empty());
+        assert_eq!(cache.size_bytes(), 0);
+        assert!(!server.join());
+    }
+
+    #[test]
+    fn successful_handoffs_survive_guard_drop_for_cached_disabled_and_oversized_audio() {
+        let runtime = runtime();
+        for (enabled, max) in [(true, 100), (false, 100), (true, 4)] {
+            let dir = tempfile::tempdir().unwrap();
+            let cache = CacheStore::new(dir.path(), max, enabled, dir.path().to_string_lossy());
+            let server = Server::start();
+            let api = ApiClient::new(&server.address).unwrap();
+            let task_cache = cache.clone();
+            let task_api = api.clone();
+            let task = runtime.spawn(async move {
+                task_api.stream_to_cache("success", ".flac", &task_cache).await
+            });
+            let partial = wait_partial(&cache, "success");
+            if !enabled {
+                // A disabled cache does not cancel its temporary playback download.
+                cache.clear().unwrap();
+            }
+            server.reply.send(Reply::Finish).unwrap();
+            let path = runtime.block_on(task).unwrap().unwrap();
+            assert_eq!(fs::read(&path).unwrap(), b"fLaCdone");
+            assert!(cache.active_temp_paths().is_empty());
+            assert!(!server.join());
+            if enabled && max >= 8 {
+                assert!(!partial.exists());
+                assert_eq!(cache.size_bytes(), 8);
+                assert_eq!(runtime.block_on(api.stream_to_cache("success", "flac", &cache)).unwrap(), path);
+                let reloaded = CacheStore::new(dir.path(), max, true, dir.path().to_string_lossy());
+                assert_eq!(reloaded.get("audio:success"), Some(path.clone()));
+            } else {
+                assert_eq!(path.parent(), Some(std::env::temp_dir().as_path()));
+                assert_eq!(cache.size_bytes(), 0);
+                fs::remove_file(path).unwrap();
+            }
+        }
+    }
 }
 
 #[cfg(test)]

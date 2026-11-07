@@ -11,6 +11,8 @@ The connection card sizes itself to its content and stays centered in the area b
 
 The interface follows Mihonban's dark archival/vinyl design: a fixed header, centered search, cover wall, album hero and track list, plus a persistent native player. Covers and audio use a persistent per-profile cache. Settings expose the cache folder, a 1-200 GB limit, current usage, cache clearing, and an Explorer shortcut. Cache entries use atomic writes and least-recently-used eviction; a file larger than the configured limit is played once without being retained.
 
+Choosing a different track cancels the audio download it replaces. Stopping playback and cancelling prefetch also release their connections and unfinished files, including when the disk cache is disabled. Clearing an enabled cache cancels its active downloads so they cannot repopulate it afterward. Finished files remain available for playback; incomplete downloads are cleaned up when their tasks finish or are cancelled. If another process temporarily locks an unfinished file, a later startup removes abandoned cache partials older than ten minutes.
+
 Artist avatars use a centered, aspect-preserving crop in both the artist grid and detail page, matching the Web client's `object-fit: cover` behavior for landscape and portrait photos.
 
 On Windows, minimizing hides the client to its native system tray icon by default; playback and queue progression continue in the background. Double-click the original Mihonban icon or choose Show main window from its right-click menu to restore the window. The menu also provides Play/Pause and Exit. Settings → Window behavior saves independent options for minimizing and closing to the tray. Closing still exits by default, and the tray's Exit command always quits. If tray initialization fails, normal window behavior remains available.
@@ -29,6 +31,10 @@ To inspect the texture budget for an existing local media cache without network 
 
 The album wall virtualizes rows: only the viewport and one adjacent row on each side create card widgets, while equal-height spacers preserve the complete scroll range. Filtering and sorting reuse a shared index list until a filter or the library changes; decade, artist, and genre options are rebuilt only when library data changes. Card interaction IDs follow album identity so hover and click state remain stable when rows enter the viewport. Native smooth wheel input, card animation timings, and the existing right-edge scrollbar styling stay in place.
 
+The artist page reuses its album totals, genre choices, and search data between frames. Artist metadata refreshes and service-profile changes invalidate that snapshot, including updates that leave the number of albums or artists unchanged. Genre spellings that differ only in ASCII capitalization share one filter option; the most common spelling is displayed. Only the current filtered result is retained, so typing new searches does not accumulate a search-history cache.
+
+Album track lists omit an artist line when it exactly repeats the album's ordered artist credits. Tracks with different credits retain their individual artist links. Albums without any differing credits use compact rows; when one track needs a second line, every row keeps the same taller height. The gallery and similar-album strips use scrollbars that span the full available row width.
+
 Disk-cache hits update LRU access times in memory and save them with the next cache mutation instead of rewriting the full index for each image. Failed images wait 30 seconds before retrying, avoiding continuous requests for missing artwork. Run `cargo run --release --locked --example scroll_layout_probe` for a headless comparison of full-grid and virtualized egui layout. This synthetic CPU benchmark checks visible-card and scroll-height equivalence; it does not measure application FPS, GPU rendering, image decoding, or wheel input latency.
 
 The player follows the Web layout: the compact bar places artwork, track details, transport controls, seek bar, and volume on one row. Selecting the artwork opens Now Playing with a blurred cover backdrop, centered two-column composition, and an orange play control during playback. Track titles open the album, artist names open the artist, and Escape collapses Now Playing. Space toggles playback in either player view.
@@ -42,6 +48,8 @@ Build and run the optimized Windows client:
 ```powershell
 cargo run --release
 ```
+
+From the repository root, run `cargo test --locked --manifest-path desktop/Cargo.toml` before publishing client changes. The suite includes local HTTP download interruption, track switching, cache clearing, cache eviction, artist-cache invalidation, and track-row layout regressions. The two synthetic performance benchmarks are excluded from normal tests; run `cargo test --release --locked --manifest-path desktop/Cargo.toml -- --ignored --nocapture` when comparing artist aggregation or eviction costs. Their timings are algorithm measurements, not application FPS or process-memory measurements.
 
 The release profile favors a smaller executable. Bundled fonts are compressed into the release executable and decompressed when the client starts, preserving the client's typography across supported interface languages and music metadata. Debug executables are larger because they include unoptimized code for development. Release executables use the Windows GUI subsystem and open without a terminal window.
 

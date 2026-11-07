@@ -3,7 +3,7 @@ use super::*;
 
 impl MihonbanApp {
     fn track_rows(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, tracks: &[Track], flat: bool) {
-        self.track_rows_from(ui, ctx, TrackSource::Direct(tracks), flat);
+        self.track_rows_from(ui, ctx, TrackSource::Direct(tracks), flat, None);
     }
 
     pub(super) fn track_rows_from(
@@ -12,11 +12,20 @@ impl MihonbanApp {
         ctx: &egui::Context,
         tracks: TrackSource<'_>,
         flat: bool,
+        album: Option<&Album>,
     ) {
         if tracks.len() == 0 {
             empty_state(ui, self.t("desktop.noTracks"));
             return;
         }
+        // On an album page a track credit that repeats the album credit is
+        // noise, so only tracks credited differently get a second line.
+        let shows_credit =
+            |track: &Track| album.map_or(true, |album| !repeats_album_credit(track, album));
+        let row_height = album_row_height(
+            flat,
+            (0..tracks.len()).any(|index| shows_credit(tracks.get(index))),
+        );
         let mut previous_disc = 0;
         let multiple_discs = !flat && (0..tracks.len()).any(|index| tracks.get(index).disc > 1);
         let original_gap = ui.spacing().item_spacing.y;
@@ -53,7 +62,7 @@ impl MihonbanApp {
                 previous_disc = track.disc;
             }
             let (rect, _) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), if flat { TRACK_HEIGHT } else { 60.0 }),
+                Vec2::new(ui.available_width(), row_height),
                 egui::Sense::hover(),
             );
             if !ui.is_rect_visible(rect) {
@@ -151,8 +160,15 @@ impl MihonbanApp {
             } else {
                 rect.right() - 270.0
             };
+            let with_credit = shows_credit(track);
+            // A title without a credit line sits on the row's optical center.
+            let title_top = if with_credit {
+                rect.top() + if flat { 8.0 } else { 10.0 }
+            } else {
+                rect.center().y - 10.0
+            };
             let title_rect = egui::Rect::from_min_size(
-                egui::pos2(main_left, rect.top() + if flat { 8.0 } else { 10.0 }),
+                egui::pos2(main_left, title_top),
                 Vec2::new((title_right - main_left).max(80.0), 20.0),
             );
             paint_text(
@@ -169,19 +185,21 @@ impl MihonbanApp {
                 },
                 false,
             );
-            let artist_rect = title_rect.translate(Vec2::new(0.0, 21.0));
-            let clicked_artist = artist_credit_links(
-                ui,
-                &track.artists,
-                &track.artist,
-                artist_rect,
-                FontId::proportional(11.5),
-                FAINT,
-                response.id.with("artist"),
-            );
-            if let Some(name) = clicked_artist {
-                self.open_artist(name.to_owned());
-                child_clicked = true;
+            if with_credit {
+                let artist_rect = title_rect.translate(Vec2::new(0.0, 21.0));
+                let clicked_artist = artist_credit_links(
+                    ui,
+                    &track.artists,
+                    &track.artist,
+                    artist_rect,
+                    FontId::proportional(11.5),
+                    FAINT,
+                    response.id.with("artist"),
+                );
+                if let Some(name) = clicked_artist {
+                    self.open_artist(name.to_owned());
+                    child_clicked = true;
+                }
             }
             if show_album {
                 let album_rect = egui::Rect::from_min_max(
@@ -263,8 +281,8 @@ impl MihonbanApp {
                 .iter()
                 .any(|favorite| favorite.id == track.id);
             // Mirror the Web: unfavorited hearts appear on row hover; favorited
-                // hearts stay visible. The reserved column never shifts.
-                if heart_column && (is_favorite || (can_edit_favorites && hovered)) {
+            // hearts stay visible. The reserved column never shifts.
+            if heart_column && (is_favorite || (can_edit_favorites && hovered)) {
                 let heart_rect = egui::Rect::from_center_size(
                     egui::pos2(rect.right() - 40.0, rect.center().y),
                     Vec2::splat(32.0),
@@ -404,7 +422,13 @@ impl MihonbanApp {
             );
         });
         ui.add_space(34.0);
-        self.track_rows(ui, ctx, &detail.tracks, false);
+        self.track_rows_from(
+            ui,
+            ctx,
+            TrackSource::Direct(&detail.tracks),
+            false,
+            Some(&detail.album),
+        );
         self.album_gallery(ui, ctx, &detail);
         self.album_similar(ui, ctx, &detail);
     }
@@ -432,7 +456,6 @@ impl MihonbanApp {
             ui.scope(|ui| {
                 ui.spacing_mut().scroll.floating = false;
                 ui.spacing_mut().scroll.bar_width = bar_height;
-                let bar_width = strip_rect.width().min(560.0);
                 egui::ScrollArea::horizontal()
                     .id_salt(("album-gallery", &detail.album.id))
                     .auto_shrink([false, true])
@@ -441,10 +464,7 @@ impl MihonbanApp {
                     } else {
                         egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden
                     })
-                    .scroll_bar_rect(egui::Rect::from_min_size(
-                        strip_rect.min,
-                        Vec2::new(bar_width, strip_rect.height()),
-                    ))
+                    .scroll_bar_rect(strip_scroll_bar(strip_rect))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 12.0;
@@ -513,7 +533,6 @@ impl MihonbanApp {
             ui.scope(|ui| {
                 ui.spacing_mut().scroll.floating = false;
                 ui.spacing_mut().scroll.bar_width = bar_height;
-                let bar_width = strip_rect.width().min(560.0);
                 egui::ScrollArea::horizontal()
                     .id_salt(("album-similar", &detail.album.id))
                     .auto_shrink([false, true])
@@ -522,10 +541,7 @@ impl MihonbanApp {
                     } else {
                         egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden
                     })
-                    .scroll_bar_rect(egui::Rect::from_min_size(
-                        strip_rect.min,
-                        Vec2::new(bar_width, strip_rect.height()),
-                    ))
+                    .scroll_bar_rect(strip_scroll_bar(strip_rect))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 16.0;
@@ -1034,116 +1050,32 @@ impl MihonbanApp {
         ui.painter().add(egui::Shape::mesh(mesh));
     }
 
-    fn artist_entries(&self) -> Vec<ArtistEntry> {
-        let mut entries = HashMap::<String, ArtistEntry>::new();
-        for album in &self.albums {
-            for name in credits(album) {
-                let entry = entries.entry(name.clone()).or_insert_with(|| ArtistEntry {
-                    artist: self
-                        .artists
-                        .iter()
-                        .find(|artist| artist.name == name)
-                        .cloned()
-                        .unwrap_or_else(|| Artist {
-                            name,
-                            ..Default::default()
-                        }),
-                    count: 0,
-                    years: Vec::new(),
-                    latest: 0,
-                    genres: Vec::new(),
-                });
-                entry.count += 1;
-                entry.latest = entry.latest.max(album.updated_at);
-                if let Some(year) = album.year {
-                    entry.years.push(year);
-                }
-                for genre in &album.genres {
-                    if !entry.genres.contains(genre) {
-                        entry.genres.push(genre.clone());
-                    }
-                }
-            }
-        }
-        for artist in &self.artists {
-            if artist.featured_track_count > 0 {
-                entries
-                    .entry(artist.name.clone())
-                    .or_insert_with(|| ArtistEntry {
-                        artist: artist.clone(),
-                        count: 0,
-                        years: Vec::new(),
-                        latest: 0,
-                        genres: Vec::new(),
-                    });
-            }
-        }
-        let query = self.query.trim().to_lowercase();
-        let mut entries: Vec<_> = entries
-            .into_values()
-            .filter(|entry| {
-                (query.is_empty()
-                    || format!(
-                        "{} {} {}",
-                        entry.artist.name,
-                        entry.artist.sort,
-                        entry.artist.aliases.join(" ")
-                    )
-                    .to_lowercase()
-                    .contains(&query))
-                    && (self.artist_genre.is_empty()
-                        || entry
-                            .genres
-                            .iter()
-                            .any(|genre| genre.eq_ignore_ascii_case(&self.artist_genre)))
-            })
-            .collect();
-        entries.sort_by(|left, right| {
-            let name = || {
-                let left_name = if left.artist.sort.is_empty() {
-                    &left.artist.name
-                } else {
-                    &left.artist.sort
-                };
-                let right_name = if right.artist.sort.is_empty() {
-                    &right.artist.name
-                } else {
-                    &right.artist.sort
-                };
-                left_name.to_lowercase().cmp(&right_name.to_lowercase())
-            };
-            match self.artist_sort {
-                1 => name(),
-                2 => right.latest.cmp(&left.latest).then_with(name),
-                _ => right
-                    .count
-                    .cmp(&left.count)
-                    .then_with(|| {
-                        right
-                            .artist
-                            .featured_track_count
-                            .cmp(&left.artist.featured_track_count)
-                    })
-                    .then_with(name),
-            }
-        });
-        entries
+    fn artist_entries(&mut self) -> Arc<[usize]> {
+        self.artist_cache.entries(
+            &self.albums,
+            &self.artists,
+            ArtistFilters {
+                query: self.query.clone(),
+                genre: self.artist_genre.clone(),
+                sort: self.artist_sort,
+            },
+        )
     }
 
     pub(super) fn artists_page(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let mut genres: Vec<_> = self
-            .albums
-            .iter()
-            .flat_map(|album| album.genres.iter().cloned())
-            .collect();
-        genres.sort();
-        genres.dedup();
+        let snapshot = self.artist_cache.snapshot(&self.albums, &self.artists);
         let language = self.config.language.clone();
         ui.horizontal(|ui| {
             let title = if self.artist_genre.is_empty() {
                 self.t("artists.filterGenre").to_owned()
             } else {
-                self.artist_genre.clone()
+                // Show the merged option's label for any spelling of it.
+                snapshot
+                    .genres
+                    .iter()
+                    .find(|genre| genre.eq_ignore_ascii_case(&self.artist_genre))
+                    .unwrap_or(&self.artist_genre)
+                    .clone()
             };
             filter_combo(
                 ui,
@@ -1160,9 +1092,9 @@ impl MihonbanApp {
                     {
                         self.artist_genre.clear();
                     }
-                    for genre in &genres {
+                    for genre in &snapshot.genres {
                         if ui
-                            .selectable_label(self.artist_genre == *genre, genre)
+                            .selectable_label(self.artist_genre.eq_ignore_ascii_case(genre), genre)
                             .clicked()
                         {
                             self.artist_genre = genre.clone();
@@ -1201,7 +1133,8 @@ impl MihonbanApp {
             ui.spacing_mut().item_spacing = Vec2::new(gap, 0.0);
             for row in entries.chunks(columns) {
                 ui.horizontal_top(|ui| {
-                    for entry in row {
+                    for &index in row {
+                        let entry = &snapshot.entries[index];
                         let (rect, response) =
                             ui.allocate_exact_size(Vec2::new(width, 196.0), egui::Sense::click());
                         if !ui.is_rect_visible(rect) {
@@ -1517,6 +1450,34 @@ fn artist_art_key(artist: &Artist) -> String {
     )
 }
 
+/// Whether a track's credit line would only repeat its album's credit.
+fn repeats_album_credit(track: &Track, album: &Album) -> bool {
+    let own = credit_names(&track.artists, &track.artist);
+    let album = credit_names(&album.artists, &album.artist);
+    own.len() == album.len()
+        && own
+            .iter()
+            .zip(&album)
+            .all(|(left, right)| left.trim() == right.trim())
+}
+
+/// A strip's scroll bar spans the whole strip, matching the native
+/// scrollbars of the Web rows; a shorter bar reads as a progress indicator
+/// that stops before the row does.
+fn strip_scroll_bar(strip_rect: egui::Rect) -> egui::Rect {
+    egui::Rect::from_min_size(strip_rect.min, strip_rect.size())
+}
+
+/// Album rows keep one height so the list reads as an even column: the
+/// two-line height when any track shows a credit, a compact one otherwise.
+fn album_row_height(flat: bool, any_credit: bool) -> f32 {
+    if flat || any_credit {
+        TRACK_HEIGHT
+    } else {
+        48.0
+    }
+}
+
 pub(super) fn credits(album: &Album) -> Vec<String> {
     if album.artists.is_empty() {
         vec![album.artist.clone()]
@@ -1562,7 +1523,68 @@ fn compact_votes(language: &str, votes: u64) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::format_bitrate;
+    use super::{album_row_height, format_bitrate, repeats_album_credit, strip_scroll_bar};
+    use crate::api::{Album, Track};
+    use eframe::egui;
+
+    fn album(artist: &str, artists: &[&str]) -> Album {
+        serde_json::from_value(serde_json::json!({
+            "id": "a", "artist": artist, "title": "Seychelles", "year": 1976,
+            "artists": artists.iter().map(|name| serde_json::json!({"name": name})).collect::<Vec<_>>()
+        }))
+        .unwrap()
+    }
+
+    fn track(artist: &str, artists: &[&str]) -> Track {
+        serde_json::from_value(serde_json::json!({
+            "id": "t", "title": "Oh! Tengo Suerte", "artist": artist,
+            "artists": artists.iter().map(|name| serde_json::json!({"name": name})).collect::<Vec<_>>()
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn album_tracks_hide_a_credit_that_repeats_the_album() {
+        let solo = album("高中正義", &["高中正義"]);
+        assert!(repeats_album_credit(
+            &track("高中正義", &["高中正義"]),
+            &solo
+        ));
+        assert!(repeats_album_credit(&track("高中正義", &[]), &solo));
+        assert!(repeats_album_credit(&track(" 高中正義 ", &[]), &solo));
+        assert!(!repeats_album_credit(
+            &track("高中正義 × 山下達郎", &["高中正義", "山下達郎"]),
+            &solo
+        ));
+        assert!(!repeats_album_credit(
+            &track("山下達郎", &["山下達郎"]),
+            &solo
+        ));
+
+        let duo = album("A × B", &["A", "B"]);
+        assert!(repeats_album_credit(&track("A × B", &["A", "B"]), &duo));
+        assert!(!repeats_album_credit(&track("B × A", &["B", "A"]), &duo));
+        assert!(!repeats_album_credit(&track("A", &["A"]), &duo));
+    }
+
+    #[test]
+    fn album_rows_stay_even_and_compact_only_without_credits() {
+        assert_eq!(album_row_height(true, false), super::TRACK_HEIGHT);
+        assert_eq!(album_row_height(false, true), super::TRACK_HEIGHT);
+        assert_eq!(album_row_height(false, false), 48.0);
+    }
+
+    #[test]
+    fn strip_scroll_bars_span_the_whole_strip() {
+        for width in [412.0, 937.0, 1372.0, 2480.0] {
+            let strip =
+                egui::Rect::from_min_size(egui::pos2(28.0, 120.0), egui::vec2(width, 154.0));
+            let bar = strip_scroll_bar(strip);
+            assert_eq!(bar.left(), strip.left());
+            assert_eq!(bar.right(), strip.right());
+            assert_eq!(bar.bottom(), strip.bottom());
+        }
+    }
 
     #[test]
     fn api_bitrates_match_the_web_clients_compact_units() {
