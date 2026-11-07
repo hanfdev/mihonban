@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Mihonban
 
 // Fails every request as if the device had no connection.
@@ -21,6 +22,39 @@ final class RejectingProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+}
+
+// Authorize immediately but hold catalog requests until the test releases them.
+private final class StartupRefreshProtocol: URLProtocol {
+    final class State: @unchecked Sendable {
+        private let lock = NSLock()
+        private var pending: [StartupRefreshProtocol] = []
+        var count: Int { lock.withLock { pending.count } }
+        func add(_ request: StartupRefreshProtocol) { lock.withLock { pending.append(request) } }
+        func remove(_ request: StartupRefreshProtocol) { lock.withLock { pending.removeAll { $0 === request } } }
+        func finish() {
+            let requests = lock.withLock { let copy = pending; pending = []; return copy }
+            for request in requests {
+                request.respond(request.request.url?.lastPathComponent == "favorites"
+                    ? #"{"albums":[],"tracks":[]}"# : "[]")
+            }
+        }
+    }
+    static let state = State()
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        if request.url?.lastPathComponent == "me" { respond(#"{"ok":true,"role":"user","guest":true}"#) }
+        else { Self.state.add(self) }
+    }
+    override func stopLoading() { Self.state.remove(self) }
+    private func respond(_ body: String) {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
 }
 
 // Runs the app model against tools/fixture-server.py first, then relaunches it
@@ -66,6 +100,71 @@ final class OfflineLaunchTests: XCTestCase {
         XCTAssertFalse(model.isBootstrapping)
         XCTAssertFalse(model.signedIn)
         XCTAssertNil(model.error, "a fresh install needs input, not a network request")
+    }
+
+    func testAuthorizedCachedHomeAppearsBeforeStartupRefreshCompletes() async throws {
+        let (defaults, name) = try suite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let session = transport(StartupRefreshProtocol.self)
+        let api = try APIClient(address: "https://startup-\(UUID().uuidString.lowercased()).invalid", session: session)
+        defaults.set(api.baseURL.absoluteString, forKey: "serviceAddress")
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Mihonban/" + digest(api.baseURL.absoluteString) + "/catalog", isDirectory: true)
+        let disk = SnapshotStore(root: directory)
+        let snapshot = CatalogSnapshot(albums: [Album(id: "saved", title: "Saved album", artist: "Band")],
+            artists: [], favorites: .empty)
+        try await disk.save("v1-user-visible", value: snapshot)
+        let model = AppModel(defaults: defaults, transport: session)
+        let startup = Task { await model.bootstrap() }
+        defer {
+            startup.cancel()
+            StartupRefreshProtocol.state.finish()
+            session.invalidateAndCancel()
+            leave(model)
+            model.player.setForeground(false)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        XCTAssertTrue(RootView(model: model).showsStartupBrand, "Saved data is not exposed before authorization")
+        for _ in 0..<250 {
+            if StartupRefreshProtocol.state.count == 3 && model.catalog.index.albums.first?.id == "saved" { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(StartupRefreshProtocol.state.count, 3)
+        XCTAssertTrue(model.signedIn)
+        XCTAssertTrue(model.isBootstrapping, "The remote refresh is deliberately still pending")
+        XCTAssertEqual(model.catalog.index.albums.map(\.id), ["saved"])
+        XCTAssertFalse(RootView(model: model).showsStartupBrand, "A ready cached home must not wait behind the logo")
+        StartupRefreshProtocol.state.finish()
+        await startup.value
+        XCTAssertFalse(model.isBootstrapping)
+        XCTAssertFalse(RootView(model: model).showsStartupBrand)
+        XCTAssertNil(model.error)
+    }
+
+    func testStartupBrandUsesBundledLogoWithoutMotionOrNewAssets() throws {
+        XCTAssertNotNil(UIImage(named: "Logo"))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: StartupBrandView().environment(\.accessibilityReduceMotion, true))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKey()
+        }
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            host.overrideUserInterfaceStyle = style
+            host.view.layoutIfNeeded()
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = style == .dark ? "71-startup-brand-dark" : "71-startup-brand-light"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
     }
 
     func testUnreachableServiceReopensTheSavedLibrary() async throws {

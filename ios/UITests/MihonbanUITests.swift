@@ -1287,19 +1287,16 @@ final class MihonbanUITests: XCTestCase {
         app.buttons["settings.open"].firstMatch.tap()
         let picker = app.buttons["settings.appearance"]
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
-        picker.tap()
-        app.buttons["Light"].tap()
+        selectAppearance("Light", in: app, picker: picker)
         waitForSettingsAppearance(app, picker: picker, dark: false)
         screenshot("42-light-settings")
         app.buttons["Done"].firstMatch.tap()
         screenshot("42-light-library")
         app.buttons["settings.open"].firstMatch.tap()
-        picker.tap()
-        app.buttons["Follow System"].tap()
+        selectAppearance("Follow System", in: app, picker: picker)
         waitForSettingsAppearance(app, picker: picker, dark: true)
         screenshot("48-system-dark-open-settings")
-        picker.tap()
-        app.buttons["Dark"].tap()
+        selectAppearance("Dark", in: app, picker: picker)
         waitForSettingsAppearance(app, picker: picker, dark: true)
         screenshot("43-dark-settings")
         app.buttons["Done"].firstMatch.tap()
@@ -1311,10 +1308,19 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
         XCTAssertTrue(picker.label.contains("Dark") || (picker.value as? String)?.contains("Dark") == true)
         waitForSettingsAppearance(app, picker: picker, dark: true)
-        picker.tap()
-        app.buttons["Follow System"].tap()
+        selectAppearance("Follow System", in: app, picker: picker)
         screenshot("44-system-appearance")
         app.buttons["Done"].firstMatch.tap()
+    }
+
+    private func selectAppearance(_ name: String, in app: XCUIApplication, picker: XCUIElement) {
+        XCTAssertTrue(picker.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        // UIKit exposes the whole form row as the popup button, while its
+        // interactive menu label occupies the trailing side of that row.
+        picker.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+        let option = app.buttons[name]
+        XCTAssertTrue(option.wait(for: \.isHittable, toEqual: true, timeout: 10))
+        option.tap()
     }
 
     private func waitForSettingsAppearance(_ app: XCUIApplication, picker: XCUIElement, dark: Bool) {

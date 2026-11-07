@@ -165,6 +165,7 @@ jobs:
             -resultBundlePath build/iPadTests.xcresult \
             -only-testing:MihonbanTests/FavoritesRefreshTests \
             -only-testing:MihonbanTests/NowPlayingTests \
+            -only-testing:MihonbanTests/OfflineLaunchTests \
             -only-testing:MihonbanTests/PlayerTransitionTests \
             -only-testing:MihonbanTests/TrackListingTests \
             -only-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \

@@ -24,15 +24,33 @@ struct MihonbanApp: App {
 struct RootView: View {
     @Bindable var model: AppModel
 
+    // An authorized snapshot is ready to browse while its refresh continues.
+    // Authentication and an empty first load still use the startup surface.
+    var showsStartupBrand: Bool {
+        model.isBootstrapping && !(model.signedIn && !model.catalog.index.albums.isEmpty)
+    }
+
     var body: some View {
         Group {
-            if model.isBootstrapping {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityIdentifier("connection.restoring")
-            } else if model.signedIn { CatalogShell(model: model) }
+            if showsStartupBrand { StartupBrandView() }
+            else if model.signedIn { CatalogShell(model: model) }
             else { ConnectionView(model: model) }
         }
         .background(Theme.background)
+    }
+}
+
+struct StartupBrandView: View {
+    var body: some View {
+        Image("Logo").resizable().scaledToFit()
+            .frame(width: 104, height: 104)
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.background.ignoresSafeArea())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: "見本盤"))
+            .accessibilityValue(Text(L10n.text("common.loading")))
+            .accessibilityIdentifier("connection.restoring")
     }
 }
 
