@@ -1356,11 +1356,11 @@ final class MihonbanUITests: XCTestCase {
     }
 
     func testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback() {
-        let app = launchCreditsPlayer()
+        let app = launchCreditsPlayer(appearance: "dark")
         defer { XCUIDevice.shared.orientation = .portrait }
         let title = app.buttons["player.title"].label
         let orientations: [UIDeviceOrientation] = UIDevice.current.userInterfaceIdiom == .pad
-            ? [.portrait, .landscapeLeft] : [.portrait]
+            ? [.portrait, .landscapeLeft] : [.portrait, .landscapeLeft, .landscapeRight, .portrait]
         for orientation in orientations {
             XCUIDevice.shared.orientation = orientation
             let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -1405,7 +1405,38 @@ final class MihonbanUITests: XCTestCase {
             // does not mean they can receive input through the player overlay.
             XCTAssertFalse(app.buttons["player.expand"].isHittable, "The covered mini player cannot receive input")
             XCTAssertFalse(app.buttons["mini.toggle"].isHittable, "The covered playback control cannot receive input")
-            screenshot(orientation == .portrait ? "48-player-swipe-portrait" : "48-player-swipe-landscape")
+            assertPlayerCoversWindowEdges(app)
+            screenshot(orientation == .portrait ? "48-player-swipe-portrait"
+                : orientation == .landscapeRight ? "48-player-swipe-landscape-right" : "48-player-swipe-landscape")
+        }
+    }
+
+    private func assertPlayerCoversWindowEdges(_ app: XCUIApplication,
+                                             file: StaticString = #filePath, line: UInt = #line) {
+        let size = app.windows.firstMatch.frame.size
+        let source = XCUIScreen.main.screenshot().image
+        let normalized = UIGraphicsImageRenderer(size: size).image { _ in
+            source.draw(in: CGRect(origin: .zero, size: size))
+        }
+        guard let image = normalized.cgImage else { XCTFail("Missing screenshot", file: file, line: line); return }
+        for x in [CGFloat(2), size.width - 4] {
+            for y in [size.height * 0.3, size.height * 0.6] {
+                let rect = CGRect(x: x * normalized.scale, y: y * normalized.scale,
+                                  width: 2 * normalized.scale, height: 2 * normalized.scale)
+                guard let patch = image.cropping(to: rect) else { XCTFail("Missing edge", file: file, line: line); continue }
+                var pixel = [UInt8](repeating: 0, count: 4)
+                pixel.withUnsafeMutableBytes { bytes in
+                    let context = CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                        bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                    context?.draw(patch, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+                }
+                // The dark player's canvas is #0d0b09. The underlying list,
+                // tabs and mini-player must never shine through either edge.
+                XCTAssertEqual(Double(pixel[0]), 13, accuracy: 3, file: file, line: line)
+                XCTAssertEqual(Double(pixel[1]), 11, accuracy: 3, file: file, line: line)
+                XCTAssertEqual(Double(pixel[2]), 9, accuracy: 3, file: file, line: line)
+            }
         }
     }
 

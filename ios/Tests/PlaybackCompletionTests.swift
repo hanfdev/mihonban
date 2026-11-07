@@ -38,6 +38,35 @@ final class PlaybackCompletionTests: XCTestCase {
         XCTAssertNil(value.error)
     }
 
+    func testStoppingExpandedPlaybackClosesPresentationAndAllowsNewPlayback() async throws {
+        let value = try player()
+        for stopWhilePreparing in [true, false] {
+            value.play([tracks[0]])
+            value.isExpanded = true
+            if !stopWhilePreparing { try await waitUntil { value.elapsed > 0.1 } }
+            value.stop()
+            XCTAssertFalse(value.isExpanded, "Stopping must release the expanded player's presentation state")
+            XCTAssertNil(value.current)
+            XCTAssertTrue(value.queue.tracks.isEmpty)
+            XCTAssertFalse(value.wantsPlayback)
+            XCTAssertFalse(value.isLoading)
+            XCTAssertFalse(value.isSeeking)
+            // Let cancelled preparation and old engine callbacks finish before
+            // checking that the stopped player cannot reopen itself.
+            try await Task.sleep(for: .milliseconds(200))
+            XCTAssertFalse(value.isExpanded)
+            XCTAssertNil(value.current)
+
+            value.play([tracks[1]])
+            XCTAssertFalse(value.isExpanded, "New playback starts with the mini-player")
+            value.isExpanded = true
+            try await waitUntil { value.current?.id == "last" && value.elapsed > 0.3 && !value.isLoading }
+            XCTAssertTrue(value.isExpanded)
+            XCTAssertTrue(value.wantsPlayback)
+            XCTAssertNil(value.error)
+        }
+    }
+
     func testSeekBeforeFirstRenderKeepsPausedPositionAndThenPlaysFromIt() async throws {
         let value = try player()
         // Pause synchronously before asynchronous preparation can enqueue any

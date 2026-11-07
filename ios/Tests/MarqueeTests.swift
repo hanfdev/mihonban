@@ -187,6 +187,66 @@ final class MarqueeTests: XCTestCase {
     }
 
     @MainActor
+    func testSceneReactivationRestoresDiscardedScrollWithoutResumingSuspendedContent() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
+        let view = MarqueeTitleView()
+        let title = String(repeating: "A title that keeps scrolling ", count: 12)
+        let font = UIFont.systemFont(ofSize: 27)
+        view.configure(text: title, identity: "locked", font: font, animated: true)
+        view.frame = CGRect(x: 28, y: 100, width: 250, height: 44)
+        host.view.addSubview(view)
+        view.layoutIfNeeded()
+        CATransaction.flush()
+        let strip = try XCTUnwrap(view.subviews.first)
+        let glyph = try XCTUnwrap(strip.subviews.first)
+        let glyphFrame = glyph.frame
+        XCTAssertTrue(view.isAnimating)
+
+        for (discardAnimation, overlayPresented) in [(false, false), (true, false), (true, true)] {
+            let generation = view.animationGeneration
+            NotificationCenter.default.post(name: UIScene.willDeactivateNotification, object: scene)
+            XCTAssertTrue(view.isScrollPaused)
+            let pausedTime = view.scrollTime
+            try await Task.sleep(for: .milliseconds(80))
+            XCTAssertEqual(view.scrollTime, pausedTime, accuracy: 0.001)
+            if overlayPresented { view.setSuspended(true) }
+            // Model Core Animation discarding background work while SwiftUI
+            // retains the same view, text, font and measured bounds.
+            if discardAnimation { strip.layer.removeAnimation(forKey: "title.scroll") }
+            view.configure(text: title, identity: "locked", font: font, animated: true)
+            NotificationCenter.default.post(name: UIScene.didActivateNotification, object: scene)
+            if overlayPresented {
+                XCTAssertFalse(view.isAnimating, "An open overlay must remain suspended after unlocking")
+                view.setSuspended(false)
+            }
+            view.layoutIfNeeded()
+            XCTAssertTrue(view.isAnimating)
+            XCTAssertEqual(view.animationGeneration, generation + (discardAnimation ? 1 : 0))
+            XCTAssertEqual(glyph.frame, glyphFrame, "Foreground recovery must not resize or move the title")
+            let resumedTime = view.scrollTime
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertGreaterThan(view.scrollTime, resumedTime + 0.05)
+        }
+
+        view.configure(text: title, identity: "locked", font: font, animated: false)
+        view.layoutIfNeeded()
+        NotificationCenter.default.post(name: UIScene.willDeactivateNotification, object: scene)
+        NotificationCenter.default.post(name: UIScene.didActivateNotification, object: scene)
+        XCTAssertFalse(view.hasScrollAnimation, "Foreground recovery must respect motion preferences")
+    }
+
+    @MainActor
     func testRepeatedInactivityAndTemporaryDetachmentDoNotRestart() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
         let view = MarqueeTitleView()

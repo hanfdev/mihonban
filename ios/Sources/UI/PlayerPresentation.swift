@@ -126,17 +126,37 @@ struct PlayerDragActions {
     var ended: (CGFloat, CGFloat, CGFloat) -> Void
 }
 
+// Recognition has a small dead zone to preserve taps. Begin visual travel at
+// the accepted sample, then follow every additional point without acceleration.
+struct PlayerDragPickup {
+    private var origin: CGFloat?
+
+    mutating func distance(_ translation: CGFloat) -> CGFloat {
+        if origin == nil { origin = translation }
+        return adjusted(translation)
+    }
+
+    func adjusted(_ translation: CGFloat) -> CGFloat {
+        max(0, translation - (origin ?? translation))
+    }
+
+    mutating func reset() { origin = nil }
+}
+
 extension EnvironmentValues {
     @Entry var expandPlayer: PlayerDragActions?
     @Entry var collapsePlayer: PlayerDragActions?
     @Entry var playerTransitionActive = false
     @Entry var playerViewportCenterY: CGFloat? = nil
+    @Entry var playerGestureEnabled = true
 }
 
 #if DEBUG
 @MainActor final class PlayerFrameProbe {
     var cover: [CGRect] = []
     var heading: [CGRect] = []
+    var globalCover: [CGRect] = []
+    var collapse: PlayerDragActions?
     func record(_ frame: CGRect, cover: Bool) {
         if cover { self.cover.append(frame) } else { heading.append(frame) }
     }
@@ -150,10 +170,15 @@ private struct PlayerFrameMeasurement: ViewModifier {
     let cover: Bool
     let space: AnyHashable
     @Environment(\.playerFrameProbe) private var probe
+    @Environment(\.collapsePlayer) private var collapse
     func body(content: Content) -> some View {
         content.onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: {
             probe?.record($0, cover: cover)
         }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+            if cover { probe?.globalCover.append($0) }
+        }
+        .onAppear { if cover { probe?.collapse = collapse } }
     }
 }
 #endif
@@ -191,20 +216,23 @@ struct PlayerPresentation<Library: View>: View {
         #endif
         library()
             .environment(\.expandPlayer, PlayerDragActions(changed: { distance in
+                guard model.player.current != nil, !moving || dragging else { return }
                 if !mounted { dismissKeyboard() }
                 if !opening { opening = true }
                 if !mounted { mounted = true }
                 beginDrag()
                 translation.track(PlayerMotion.progress(distance: distance, height: travelHeight))
             }, ended: { distance, predicted, velocity in
+                guard dragging else { return }
                 opening = false
                 dragging = false
                 let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
                 PlayerMotion.logger.info("Expand ended: distance=\(distance), predicted=\(predicted), completed=\(expand)")
                 finishDrag(expand, velocity: velocity)
             }))
-            .allowsHitTesting(!mounted || opening)
-            .accessibilityHidden(mounted && !opening)
+            .environment(\.playerGestureEnabled, !moving || dragging)
+            .allowsHitTesting(model.player.current == nil || !mounted || opening)
+            .accessibilityHidden(model.player.current != nil && mounted && !opening)
             // Keep TabView at the layout root so it owns the library safe areas.
             .overlay {
                 GeometryReader { viewport in
@@ -213,28 +241,31 @@ struct PlayerPresentation<Library: View>: View {
                     if model.player.current != nil {
                         NowPlayingView(model: model)
                             .environment(\.collapsePlayer, PlayerDragActions(changed: { distance in
+                                guard model.player.current != nil, !moving || dragging else { return }
                                 beginDrag()
                                 translation.track(1 - PlayerMotion.progress(distance: distance, height: travelHeight))
                             }, ended: { distance, predicted, velocity in
+                                guard dragging else { return }
                                 let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
                                 PlayerMotion.logger.info("Collapse ended: distance=\(distance), predicted=\(predicted), completed=\(collapse)")
                                 dragging = false
                                 finishDrag(!collapse, velocity: -velocity)
                             }))
                             .environment(\.playerTransitionActive, moving || !mounted)
+                            .environment(\.playerGestureEnabled, !moving || dragging)
                             .environment(\.playerViewportCenterY,
                                 (viewport.size.height + viewport.safeAreaInsets.bottom - viewport.safeAreaInsets.top) / 2)
-                            // Reconstruct the full canvas before padding it. The
-                            // stationary viewport's size already excludes system
-                            // insets; padding that size would deduct them twice.
+                            // Give the clipped canvas a fixed full-window origin.
+                            // Safe-area expansion during translation can otherwise
+                            // add a top inset or expose the landscape leading edge.
                             .padding(viewport.safeAreaInsets)
                             .frame(width: viewport.size.width + viewport.safeAreaInsets.leading + viewport.safeAreaInsets.trailing,
                                    height: viewport.size.height + viewport.safeAreaInsets.top + viewport.safeAreaInsets.bottom)
-                            .ignoresSafeArea(.container)
-                            .background(Theme.background.ignoresSafeArea())
+                            .background(Theme.background, ignoresSafeAreaEdges: [])
                             .modifier(PlayerTranslationEffect(translation: translation,
                                 height: travelHeight, reduceMotion: reduceMotion))
-                            .allowsHitTesting(model.player.isExpanded && !opening)
+                            .offset(x: -viewport.safeAreaInsets.leading, y: -viewport.safeAreaInsets.top)
+                            .allowsHitTesting(model.player.isExpanded && !opening && (!moving || dragging))
                             .accessibilityHidden(!model.player.isExpanded || opening)
                             .accessibilityAddTraits(.isModal)
                     }
@@ -247,16 +278,33 @@ struct PlayerPresentation<Library: View>: View {
                 if mounted && !dragging { settle(model.player.isExpanded) }
             }
             .onChange(of: model.player.isExpanded) { _, expanded in
+                guard model.player.current != nil else { resetPresentation(); return }
                 PlayerMotion.logger.info("Expanded state: \(expanded)")
                 if expanded && !mounted {
                     dismissKeyboard()
                     mounted = true
                     translation.progress = 0
-                    DispatchQueue.main.async { if model.player.isExpanded { settle(true) } }
+                    DispatchQueue.main.async {
+                        if model.player.current != nil && model.player.isExpanded { settle(true) }
+                    }
                 } else { settle(expanded) }
             }
+            .onChange(of: model.player.current == nil) { _, empty in
+                if empty { resetPresentation() }
+            }
             .onChange(of: phase) { _, next in
-                if next != .active { opening = false; dragging = false; settle(model.player.isExpanded) }
+                if next != .active {
+                    // Backgrounding may remove Core Animation completions. Finish
+                    // synchronously so foreground content never stays suspended.
+                    motionRevision += 1
+                    opening = false
+                    dragging = false
+                    moving = false
+                    settlingTo = nil
+                    mounted = model.player.current != nil && model.player.isExpanded
+                    translation.track(mounted ? 1 : 0)
+                    PlayerRenderWork.end()
+                }
             }
     }
 
@@ -270,10 +318,22 @@ struct PlayerPresentation<Library: View>: View {
     }
 
     private func finishDrag(_ expanded: Bool, velocity: CGFloat) {
+        guard model.player.current != nil else { resetPresentation(); return }
         // Continue in this gesture event, without waiting for another body/onChange
         // cycle. The later onChange sees settlingTo and cannot restart the landing.
         if model.player.isExpanded != expanded { model.player.isExpanded = expanded }
         settle(expanded, velocity: velocity)
+    }
+
+    private func resetPresentation() {
+        motionRevision += 1
+        mounted = false
+        opening = false
+        moving = false
+        dragging = false
+        settlingTo = nil
+        translation.track(0)
+        PlayerRenderWork.end()
     }
 
     private func settle(_ expanded: Bool, velocity: CGFloat? = nil) {
@@ -313,8 +373,10 @@ struct PlayerSwipe: ViewModifier {
     var acceptsStart: (CGPoint) -> Bool = { _ in true }
     @Environment(\.expandPlayer) private var expand
     @Environment(\.collapsePlayer) private var collapse
+    @Environment(\.playerGestureEnabled) private var gestureEnabled
     @State private var accepted = false
     @State private var rejected = false
+    @State private var pickup = PlayerDragPickup()
     @GestureState private var touching = false
 
     private var actions: PlayerDragActions? { expanding ? expand : collapse }
@@ -327,24 +389,25 @@ struct PlayerSwipe: ViewModifier {
                     guard !rejected, actions != nil else { return }
                     let y = value.translation.height * (expanding ? -1 : 1)
                     if !accepted {
-                        guard enabled, y > abs(value.translation.width) * 1.3,
+                        guard enabled, gestureEnabled, y > abs(value.translation.width) * 1.3,
                               acceptsStart(value.startLocation) else {
                             rejected = true
                             return
                         }
                         accepted = true
                     }
-                    actions?.changed(max(0, y))
+                    actions?.changed(pickup.distance(y))
                 }
                 .onEnded { value in
                     if accepted {
                         let direction: CGFloat = expanding ? -1 : 1
-                        actions?.ended(max(0, value.translation.height * direction),
-                                       max(0, value.predictedEndTranslation.height * direction),
+                        actions?.ended(pickup.adjusted(value.translation.height * direction),
+                                       pickup.adjusted(value.predictedEndTranslation.height * direction),
                                        value.velocity.height * direction)
                     }
                     accepted = false
                     rejected = false
+                    pickup.reset()
                 }
         )
         .onChange(of: touching) { _, value in
@@ -359,6 +422,7 @@ struct PlayerSwipe: ViewModifier {
                     }
                     accepted = false
                     rejected = false
+                    pickup.reset()
                 }
             }
         }

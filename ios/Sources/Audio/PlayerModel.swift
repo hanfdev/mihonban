@@ -452,6 +452,7 @@ final class PlayerModel: NSObject {
     }
 
     func stop() {
+        isExpanded = false
         waitingForNext = false
         hasEnded = false
         playbackIntent = UUID()

@@ -209,6 +209,8 @@ final class MarqueeTitleView: UIView {
     private var identity = ""
     private var animated = false
     private var suspended = false
+    private var sceneInactive = false
+    private var scrollExpected = false
     private var lastSize = CGSize.zero
     private(set) var animationGeneration = 0
     var naturalWidth: CGFloat { first.naturalWidth }
@@ -227,8 +229,14 @@ final class MarqueeTitleView: UIView {
         addSubview(strip)
         strip.accessibilityElementsHidden = true
         for drawing in [first, second] { strip.addSubview(drawing) }
+        NotificationCenter.default.addObserver(self, selector: #selector(sceneWillDeactivate(_:)),
+            name: UIScene.willDeactivateNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(sceneDidActivate(_:)),
+            name: UIScene.didActivateNotification, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 
     func configure(text: String, identity: String, font: UIFont, animated: Bool) {
         guard first.text != text || self.identity != identity || first.font != font || self.animated != animated else { return }
@@ -242,10 +250,35 @@ final class MarqueeTitleView: UIView {
     }
 
     func setSuspended(_ value: Bool) {
-        guard suspended != value else { return }
+        guard suspended != value else {
+            if !value { restoreMissingAnimation() }
+            return
+        }
         suspended = value
         updatePlaybackState()
-        if !value { setNeedsLayout() }
+        if !value { restoreMissingAnimation(); setNeedsLayout() }
+    }
+
+    @objc private func sceneWillDeactivate(_ notification: Notification) {
+        guard let scene = notification.object as? UIWindowScene, window?.windowScene === scene else { return }
+        sceneInactive = true
+        updatePlaybackState()
+    }
+
+    @objc private func sceneDidActivate(_ notification: Notification) {
+        guard let scene = notification.object as? UIWindowScene, window?.windowScene === scene else { return }
+        sceneInactive = false
+        updatePlaybackState()
+        restoreMissingAnimation()
+    }
+
+    private func restoreMissingAnimation() {
+        // Backgrounding can discard a layer animation without changing text or
+        // layout. Resume the existing clock when possible, rebuilding only a
+        // missing scroll animation after both the scene and player are active.
+        guard scrollExpected, !hasScrollAnimation, !suspended, !sceneInactive,
+              window != nil, bounds.width > 0, bounds.height > 0 else { return }
+        restart()
     }
 
     override func layoutSubviews() {
@@ -259,6 +292,8 @@ final class MarqueeTitleView: UIView {
     }
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if let scene = window?.windowScene { sceneInactive = scene.activationState != .foregroundActive }
+        else { sceneInactive = false }
         if window != nil {
             setNeedsLayout()
             layoutIfNeeded()
@@ -267,6 +302,7 @@ final class MarqueeTitleView: UIView {
         updatePlaybackState()
     }
     func stop() {
+        scrollExpected = false
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         strip.layer.removeAnimation(forKey: "title.scroll")
@@ -279,7 +315,7 @@ final class MarqueeTitleView: UIView {
 
     private func updatePlaybackState() {
         guard hasScrollAnimation else { return }
-        let pause = suspended || window == nil
+        let pause = suspended || sceneInactive || window == nil
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if pause && strip.layer.speed != 0 {
@@ -300,6 +336,7 @@ final class MarqueeTitleView: UIView {
         stop()
         let width = ceil(naturalWidth)
         let motion = animated && window != nil ? MarqueeMotion(textWidth: width, viewport: bounds.width) : nil
+        scrollExpected = motion != nil
         UIView.performWithoutAnimation {
             strip.bounds = CGRect(x: 0, y: 0, width: max(width, bounds.width) * 2 + 40, height: bounds.height)
             strip.center = CGPoint(x: strip.bounds.width / 2, y: bounds.height / 2)

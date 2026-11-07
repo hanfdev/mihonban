@@ -4,6 +4,118 @@ import SwiftUI
 
 @MainActor
 final class PlayerTransitionTests: XCTestCase {
+    func testSmallPullMovesTheWholeCanvasWithoutAddingSafeAreaInsets() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let model = AppModel()
+        model.demo = true
+        let audio = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "tone", withExtension: "flac"))
+        model.player.connect(try APIClient(address: "https://example.invalid"), demoURL: audio)
+        model.player.play([Track(id: "small-pull", title: "Small pull geometry", duration: 8)])
+        model.player.pause()
+        model.player.setForeground(false)
+        let frames = PlayerFrameProbe()
+        let content = PlayerPresentation(model: model) { Color(red: 1, green: 0, blue: 1) }
+            .environment(\.playerFrameProbe, frames)
+        let host = UIHostingController(rootView: content.environment(\.scenePhase, .active))
+        // Exercise asymmetric horizontal insets even on the portrait test host.
+        // Native UI tests separately rotate the actual phone both ways.
+        host.additionalSafeAreaInsets = UIEdgeInsets(top: 17, left: 47, bottom: 9, right: 19)
+        host.overrideUserInterfaceStyle = .dark
+        host.view.backgroundColor = .magenta
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            model.player.stop()
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKey()
+        }
+        try await Task.sleep(for: .milliseconds(400))
+        model.player.isExpanded = true
+        try await Task.sleep(for: .milliseconds(700))
+        let before = try XCTUnwrap(frames.globalCover.last)
+        let collapse = try XCTUnwrap(frames.collapse)
+        let settled = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        for x in [CGFloat(2), window.bounds.width - 3] {
+            assertBackground(settled, at: CGPoint(x: x, y: window.bounds.height * 0.4))
+        }
+        for pull: CGFloat in [0, 1, 4, 12, 24] {
+            collapse.changed(pull)
+            try await Task.sleep(for: .milliseconds(60))
+            let after = try XCTUnwrap(frames.globalCover.last)
+            XCTAssertEqual(after.minY - before.minY, pull, accuracy: 1,
+                "A tiny pull must never acquire an extra system top inset")
+            XCTAssertEqual(after.minX, before.minX, accuracy: 1)
+            XCTAssertEqual(after.size.width, before.size.width, accuracy: 1)
+            XCTAssertEqual(after.size.height, before.size.height, accuracy: 1)
+        }
+        let held = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: held)
+        attachment.name = "70-player-small-pull"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        collapse.ended(24, 24, 0)
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(try XCTUnwrap(frames.globalCover.last).minY, before.minY, accuracy: 1)
+        collapse.changed(12)
+        host.rootView = content.environment(\.scenePhase, .inactive)
+        try await Task.sleep(for: .milliseconds(100))
+        collapse.ended(200, 240, 600)
+        host.rootView = content.environment(\.scenePhase, .active)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(model.player.isExpanded, "A cancelled touch from before locking cannot dismiss the resumed player")
+        XCTAssertEqual(try XCTUnwrap(frames.globalCover.last).minY, before.minY, accuracy: 1)
+        collapse.changed(4)
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(try XCTUnwrap(frames.globalCover.last).minY - before.minY, 4, accuracy: 1,
+            "Foregrounding must restore interactive movement")
+        // A disappearing surface must not strand the library or revive itself
+        // through a delayed cancellation callback from its removed gesture.
+        model.player.stop()
+        collapse.ended(0, 0, 0)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(model.player.isExpanded)
+    }
+
+    func testGesturePickupStartsAtZeroAndThenTracksOneToOne() {
+        for first: CGFloat in [12, 20, 40] {
+            var pickup = PlayerDragPickup()
+            XCTAssertEqual(pickup.distance(first), 0)
+            XCTAssertEqual(pickup.distance(first + 1), 1)
+            XCTAssertEqual(pickup.distance(first + 5), 5)
+            XCTAssertEqual(pickup.distance(first - 3), 0)
+            XCTAssertEqual(pickup.adjusted(first + 120), 120)
+            pickup.reset()
+            XCTAssertEqual(pickup.distance(18), 0)
+        }
+    }
+
+    private func assertBackground(_ image: UIImage, at point: CGPoint,
+                                  file: StaticString = #filePath, line: UInt = #line) {
+        guard let source = image.cgImage,
+              let patch = source.cropping(to: CGRect(x: point.x * image.scale, y: point.y * image.scale,
+                                                    width: 2 * image.scale, height: 2 * image.scale)) else {
+            XCTFail("Missing rendered surface", file: file, line: line)
+            return
+        }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        pixel.withUnsafeMutableBytes { bytes in
+            let context = CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            context?.draw(patch, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        XCTAssertLessThan(pixel[0], 25, "The clipped player must cover the contrasting library at both edges", file: file, line: line)
+        XCTAssertLessThan(pixel[2], 25, file: file, line: line)
+        XCTAssertEqual(pixel[3], 255, file: file, line: line)
+    }
+
     func testTapAndSwipeKeepArtworkAndHeadingFixedThroughSettlement() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.windows.first(where: \.isKeyWindow)
