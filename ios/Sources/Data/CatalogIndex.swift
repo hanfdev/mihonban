@@ -26,7 +26,7 @@ struct CatalogIndex: Sendable {
                     artist: metadata[credit.name] ?? Artist(name: credit.name, sort: credit.sort),
                     albumCount: 0, featuredCount: 0, latest: 0, genres: [], years: [])
                 summary.albumCount += 1
-                summary.latest = max(summary.latest, album.updatedAt ?? 0)
+                summary.latest = max(summary.latest, album.addedTime)
                 summary.genres.formUnion(album.genres ?? [])
                 if let year = album.year, year > 0 { summary.years.append(year) }
                 summaries[credit.name] = summary
@@ -116,7 +116,9 @@ struct CatalogIndex: Sendable {
         case .yearOld:
             if a.year != b.year { return (a.year ?? 9999) < (b.year ?? 9999) }
         case .added:
-            if a.updatedAt != b.updatedAt { return (a.updatedAt ?? 0) > (b.updatedAt ?? 0) }
+            if a.addedTime != b.addedTime { return a.addedTime > b.addedTime }
+            // Batch imports retain their order when titles or credits change.
+            return a.id < b.id
         case .title: break
         }
         return a.title == b.title ? a.id < b.id : less(a.title, b.title)

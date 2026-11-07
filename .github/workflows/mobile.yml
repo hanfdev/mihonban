@@ -172,6 +172,7 @@ jobs:
             -only-testing:MihonbanTests/PlaybackCompletionTests \
             -only-testing:MihonbanTests/AlbumPlaybackRequestTests \
             -only-testing:MihonbanTests/CatalogLayoutTests \
+            -only-testing:MihonbanTests/CatalogTests \
             -only-testing:MihonbanTests/NowPlayingLayoutTests \
             -only-testing:MihonbanTests/TypographyTests \
             -only-testing:MihonbanTests/AlbumHeaderLayoutTests \

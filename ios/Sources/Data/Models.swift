@@ -27,6 +27,9 @@ struct Album: Codable, Identifiable, Hashable, Sendable {
     var images: [String]?
     var similar: [SimilarAlbum]?
 
+    // Match the web catalog: unknown import dates sort last, never by edit time.
+    var addedTime: Int { max(0, createdAt ?? 0) }
+
     var credits: [ArtistCredit] {
         if let artists, !artists.isEmpty { return artists }
         return [ArtistCredit(name: artist, sort: artistSort)]
