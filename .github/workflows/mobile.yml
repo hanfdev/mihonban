@@ -160,6 +160,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPAD" -parallel-testing-enabled NO \
             -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
             -resultBundlePath build/iPadTests.xcresult \
+            -only-testing:MihonbanTests/FavoritesRefreshTests \
             -only-testing:MihonbanTests/NowPlayingTests \
             -only-testing:MihonbanTests/PlayerTransitionTests \
             -only-testing:MihonbanTests/TrackListingTests \

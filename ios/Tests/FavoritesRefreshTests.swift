@@ -6,8 +6,9 @@ private final class FavoritesRefreshProtocol: URLProtocol {
         let lock = NSLock()
         var version = 1
         var unavailable = false
+        var failure: URLError.Code?
         var trackHeaders: [String?] = []
-        func reset() { lock.withLock { version = 1; unavailable = false; trackHeaders = [] } }
+        func reset() { lock.withLock { version = 1; unavailable = false; failure = nil; trackHeaders = [] } }
     }
     static let state = State()
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -15,9 +16,13 @@ private final class FavoritesRefreshProtocol: URLProtocol {
     override func stopLoading() {}
     override func startLoading() {
         let path = request.url!.path
-        let (version, unavailable) = Self.state.lock.withLock {
+        let (version, unavailable, failure) = Self.state.lock.withLock {
             if path == "/api/tracks" { Self.state.trackHeaders.append(request.value(forHTTPHeaderField: "If-None-Match")) }
-            return (Self.state.version, Self.state.unavailable)
+            return (Self.state.version, Self.state.unavailable, Self.state.failure)
+        }
+        if let failure {
+            client?.urlProtocol(self, didFailWithError: URLError(failure))
+            return
         }
         if unavailable {
             client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
@@ -45,6 +50,40 @@ private final class FavoritesRefreshProtocol: URLProtocol {
 
 @MainActor
 final class FavoritesRefreshTests: XCTestCase {
+    func testCancelledRequestsRemainSilentAndRealFailuresRemainVisible() async throws {
+        FavoritesRefreshProtocol.state.reset()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FavoritesRefreshProtocol.self]
+        let transport = URLSession(configuration: config)
+        defer { transport.invalidateAndCancel(); FavoritesRefreshProtocol.state.reset() }
+        let session = SessionStore()
+        session.connect(try APIClient(address: "https://example.invalid", session: transport),
+                        info: SessionInfo(ok: true, role: "admin", guest: false))
+        let favorites = FavoritesStore(session: session)
+        let catalog = CatalogStore(session: session, favorites: favorites)
+        await catalog.refresh()
+        let previous = catalog.index.tracks.map(\.id)
+        XCTAssertFalse(previous.isEmpty)
+        FavoritesRefreshProtocol.state.lock.withLock { FavoritesRefreshProtocol.state.failure = .cancelled }
+        await catalog.refresh()
+        await catalog.ensureTracks(force: true)
+        XCTAssertNil(catalog.error, "Tab changes and cancelled refreshes must not show a cancellation/retry banner")
+        XCTAssertEqual(catalog.index.tracks.map(\.id), previous)
+        await favorites.toggle(.track, id: "cancelled-write")
+        XCTAssertFalse(favorites.contains(.track, id: "cancelled-write"))
+        XCTAssertFalse(favorites.busy)
+        XCTAssertNil(favorites.error, "Cancelled optimistic writes roll back silently")
+        XCTAssertFalse(session.needsSignIn)
+
+        FavoritesRefreshProtocol.state.lock.withLock { FavoritesRefreshProtocol.state.failure = .timedOut }
+        await catalog.refresh()
+        XCTAssertNotNil(catalog.error, "A real connection failure must still be actionable")
+        XCTAssertEqual(catalog.index.tracks.map(\.id), previous)
+        await favorites.toggle(.track, id: "failed-write")
+        XCTAssertNotNil(favorites.error)
+        XCTAssertFalse(favorites.contains(.track, id: "failed-write"))
+    }
+
     func testUnchangedTrackRefreshKeepsTheIndexAndConcurrentReadersSharePublication() async throws {
         FavoritesRefreshProtocol.state.reset()
         let config = URLSessionConfiguration.ephemeral

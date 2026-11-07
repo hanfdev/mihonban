@@ -39,7 +39,10 @@ final class FavoritesStore {
         do {
             try await session.perform { try await $0.favorite(kind, id: id, enabled: enabled) }
         } catch {
-            if token == revision { value = old; self.error = error.localizedDescription }
+            if token == revision {
+                value = old
+                if !isRequestCancellation(error) { self.error = error.localizedDescription }
+            }
         }
     }
 
@@ -56,7 +59,10 @@ final class FavoritesStore {
         defer { if token == revision { busy = false } }
         do { try await session.perform { try await $0.reorderFavorites(kind, ids: ids) } }
         catch {
-            if token == revision { value = old; self.error = error.localizedDescription }
+            if token == revision {
+                value = old
+                if !isRequestCancellation(error) { self.error = error.localizedDescription }
+            }
         }
     }
 

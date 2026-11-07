@@ -32,10 +32,13 @@ final class SessionStore {
         guard let client else { throw ClientError.sessionExpired }
         let token = revision
         do {
+            try Task.checkCancellation()
             let value = try await operation(client)
+            try Task.checkCancellation()
             guard token == revision else { throw CancellationError() }
             return value
         } catch {
+            if isRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
             let expired = (error as? ServerError)?.status == 401 ||
                 (error as? ClientError)?.key == "mobile.sessionExpired"
             guard expired, token == revision else { throw error }
@@ -44,10 +47,12 @@ final class SessionStore {
                 guard token == revision else { throw CancellationError() }
                 info = renewed
                 let value = try await operation(client)
+                try Task.checkCancellation()
                 guard token == revision else { throw CancellationError() }
                 return value
             } catch {
-                if token == revision && !(error is CancellationError) { needsSignIn = true }
+                if isRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+                if token == revision { needsSignIn = true }
                 throw error
             }
         }

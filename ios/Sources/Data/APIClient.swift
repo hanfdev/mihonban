@@ -1,5 +1,11 @@
 import Foundation
 
+// URLSession cancellation is an NSURLErrorCancelled, not a Swift
+// CancellationError. Both represent an ended request, not a user-facing failure.
+func isRequestCancellation(_ error: Error) -> Bool {
+    error is CancellationError || (error as? URLError)?.code == .cancelled
+}
+
 struct ClientError: LocalizedError, Sendable {
     let key: String
     var errorDescription: String? { L10n.text(key) }

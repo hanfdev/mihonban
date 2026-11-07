@@ -16,6 +16,10 @@ private final class BulkTracksProtocol: URLProtocol {
         func remove(_ request: BulkTracksProtocol) { lock.withLock { pending.removeAll { $0 === request } } }
         var count: Int { lock.withLock { paths.count } }
         func reset() { lock.withLock { pending = []; paths = [] } }
+        func fail(_ error: Error) {
+            let requests = lock.withLock { let copy = pending; pending = []; return copy }
+            for request in requests { request.client?.urlProtocol(request, didFailWithError: error) }
+        }
         func finish(_ tracks: [Track]) throws {
             let data = try JSONEncoder().encode(tracks)
             let requests = lock.withLock { let copy = pending; pending = []; return copy }
@@ -88,6 +92,19 @@ final class AlbumPlaybackRequestTests: XCTestCase {
         await request.value
         XCTAssertEqual(model.player.current?.id, "new")
         XCTAssertNil(model.player.error)
+    }
+
+    func testCancelledAlbumRequestKeepsCurrentPlaybackWithoutAnError() async throws {
+        let model = try model()
+        defer { model.player.stop(); model.player.setForeground(false) }
+        model.player.play([Track(id: "old", title: "Current")])
+        let request = Task { await model.playAlbums(albums) }
+        try await waitForRequest()
+        BulkTracksProtocol.state.fail(URLError(.cancelled))
+        await request.value
+        XCTAssertEqual(model.player.current?.id, "old")
+        XCTAssertTrue(model.player.wantsPlayback)
+        XCTAssertNil(model.player.error, "An abandoned request is not a playback failure")
     }
 
     func testPauseWhilePreparingCancelsThePendingPlaybackIntent() async throws {

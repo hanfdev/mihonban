@@ -111,6 +111,7 @@ final class AppModel {
     // List rows hold album summaries, so the full track list is loaded first.
     func downloadAlbum(_ id: String) async {
         do { await downloads?.download(album: try await catalog.album(id)) }
+        catch where isRequestCancellation(error) { return }
         catch { player.error = error.localizedDescription }
     }
 
@@ -123,6 +124,7 @@ final class AppModel {
     func download(_ track: Track) async {
         guard let albumID = track.albumId, !albumID.isEmpty else { return }
         do { await downloads?.download(album: try await catalog.album(albumID), only: track.id) }
+        catch where isRequestCancellation(error) { return }
         catch { player.error = error.localizedDescription }
     }
 
@@ -180,7 +182,7 @@ final class AppModel {
             RememberedSession.save(RememberedSession(address: address, role: state.role, guest: state.guest), defaults)
             await open(api, info: state, token: token)
         } catch {
-            guard token == generation else { return }
+            guard token == generation, !isRequestCancellation(error), !Task.isCancelled else { return }
             if isRejected(error) { RememberedSession.save(nil, defaults) }
             else if automatic, isUnreachable(error), let saved = RememberedSession.load(defaults),
                     saved.address == api.baseURL.absoluteString {
@@ -241,6 +243,7 @@ final class AppModel {
 
     func enqueueAlbum(_ id: String, next: Bool) async {
         do { player.enqueue(try await catalog.album(id).normalizedTracks, next: next) }
+        catch where isRequestCancellation(error) { return }
         catch { player.error = error.localizedDescription }
     }
 
