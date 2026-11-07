@@ -1392,6 +1392,8 @@ final class MihonbanUITests: XCTestCase {
             XCTAssertEqual(app.buttons["player.toggle"].firstMatch.label, "Play")
             let seek = app.sliders["player.seek"]
             seek.adjust(toNormalizedSliderPosition: 0.35)
+            XCTAssertTrue(app.staticTexts["player.buffering"].waitForNonExistence(timeout: 10),
+                          "A completed seek must clear buffering without closing the player")
             XCTAssertTrue(app.buttons["player.collapse"].wait(for: \.isHittable, toEqual: true, timeout: 10),
                           "Seeking must leave the player visibly open and interactive")
             // XCTest may retain hidden elements in its snapshot. Their presence

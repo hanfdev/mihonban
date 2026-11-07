@@ -56,6 +56,59 @@ final class PlaybackCompletionTests: XCTestCase {
         }
     }
 
+    func testSeekingToThePausedPositionDoesNotWaitForAnAbsentCallback() async throws {
+        let value = try player()
+        value.play([tracks[0]])
+        try await waitUntil { value.elapsed > 0.1 }
+        value.pause()
+        let position = value.elapsed
+        value.seek(to: position)
+        XCTAssertFalse(value.isSeeking, "The engine does not send didSeek for an unchanged frame")
+        XCTAssertFalse(value.wantsPlayback)
+        value.resume()
+        try await waitUntil { value.elapsed > position + 0.4 && !value.isSeeking }
+        XCTAssertNil(value.error)
+    }
+
+    func testPlayingClockRecoversAMissingSeekCallbackAndTrackChangesClearWaiting() async throws {
+        let value = try player()
+        value.play(tracks)
+        try await waitUntil { value.elapsed > 0.1 }
+        value.suppressSeekCompletionForTesting = true
+        value.seek(to: 2)
+        XCTAssertTrue(value.isSeeking)
+        // Merely reporting the requested target cannot complete a seek: the
+        // engine exposes that position while its decoder is still working.
+        try await waitUntil { !value.isSeeking && value.elapsed > 2.3 }
+        XCTAssertTrue(value.wantsPlayback)
+        let position = value.elapsed
+        try await waitUntil { value.elapsed > position + 0.4 }
+        value.seek(to: 1)
+        XCTAssertTrue(value.isSeeking)
+        value.next()
+        XCTAssertFalse(value.isSeeking, "A new decoder must not inherit the previous seek's spinner")
+        try await waitUntil { value.current?.id == "last" && value.elapsed > 0.2 }
+        XCTAssertNil(value.error)
+    }
+
+    func testRepeatedSeeksFinishAtTheLatestTargetWhilePaused() async throws {
+        let value = try player()
+        value.play([tracks[0]])
+        try await waitUntil { value.elapsed > 0.1 }
+        value.pause()
+        value.setForeground(false)
+        value.seek(to: 4)
+        value.seek(to: 1)
+        value.seek(to: 3)
+        try await waitUntil { !value.isSeeking }
+        XCTAssertEqual(value.elapsed, 3, accuracy: 0.15)
+        XCTAssertFalse(value.wantsPlayback)
+        value.resume()
+        value.setForeground(true)
+        try await waitUntil { value.elapsed > 3.3 && !value.isSeeking }
+        XCTAssertNil(value.error)
+    }
+
     func testPreviousAfterEOFReturnsToHistoryAndSingleTrackRestarts() async throws {
         let value = try player()
         value.play(tracks, index: 1)

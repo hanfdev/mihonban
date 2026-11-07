@@ -44,6 +44,10 @@ final class PlayerModel: NSObject {
     @ObservationIgnored private var nextIsPreparing = false
     @ObservationIgnored private var waitingForNext = false
     @ObservationIgnored private var activeID: ObjectIdentifier?
+    @ObservationIgnored private var pendingSeek: PendingSeek?
+    #if DEBUG
+    @ObservationIgnored var suppressSeekCompletionForTesting = false
+    #endif
     @ObservationIgnored private var interrupted = false
     @ObservationIgnored private var initialPosition: Double = 0
     @ObservationIgnored var cache: CacheSettings?
@@ -62,6 +66,19 @@ final class PlayerModel: NSObject {
         let generation: UUID
         // True while the entry holds the predecoded next track, not the current one.
         var isNext: Bool
+    }
+
+    private struct PendingSeek {
+        let decoder: ObjectIdentifier
+        let generation: UUID
+        let target: Double
+        let started: TimeInterval
+        var previousTime: Double?
+    }
+
+    private func clearSeek() {
+        pendingSeek = nil
+        isSeeking = false
     }
 
     override convenience init() { self.init(monitorNetwork: true) }
@@ -129,7 +146,7 @@ final class PlayerModel: NSObject {
         elapsed = position
         duration = current?.duration ?? 0
         buffered = 0
-        isSeeking = false
+        clearSeek()
         isLoading = current != nil
         artwork = nil
         updateNowPlaying()
@@ -403,12 +420,22 @@ final class PlayerModel: NSObject {
         // Position a fresh decoder before enqueueing it instead. This also
         // handles EOF and a track prepared while paused, preserving play intent.
         if hasEnded || entries.isEmpty || activeID == nil { beginCurrent(at: position); return }
-        guard engine.supportsSeeking else { return }
+        guard engine.supportsSeeking, let activeID else { return }
+        if let pendingSeek, abs(pendingSeek.target - position) < 0.001 { return }
+        // The engine accepts a seek to its current frame without sending a
+        // completion event. Do not enter a waiting state for this no-op.
+        if pendingSeek == nil, let time = engine.currentTime, abs(time - position) < 0.001 {
+            tick()
+            updateNowPlaying()
+            return
+        }
+        pendingSeek = PendingSeek(decoder: activeID, generation: generation, target: position,
+            started: ProcessInfo.processInfo.systemUptime)
         isSeeking = true
         if engine.seek(time: position) {
             elapsed = position
             updateNowPlaying()
-        } else { isSeeking = false; error = L10n.text("mobile.seekFailed") }
+        } else { clearSeek(); error = L10n.text("mobile.seekFailed") }
     }
 
     // Changing the order or repeat mode never interrupts the current track.
@@ -437,7 +464,7 @@ final class PlayerModel: NSObject {
         queue = PlaybackQueue()
         wantsPlayback = false
         isLoading = false
-        isSeeking = false
+        clearSeek()
         activeID = nil
         initialPosition = 0
         interrupted = false
@@ -459,7 +486,7 @@ final class PlayerModel: NSObject {
     private func fail() {
         wantsPlayback = false
         isLoading = false
-        isSeeking = false
+        clearSeek()
         error = L10n.text("mobile.playbackFailed")
         cancelTransfers()
         engine.stop()
@@ -486,6 +513,7 @@ final class PlayerModel: NSObject {
 
     private func tick() {
         guard !hasEnded else { return }
+        reconcileSeekWithPlaybackClock()
         if let time = engine.currentTime, time.isFinite, !isSeeking { elapsed = max(0, time) }
         if let total = engine.totalTime, total.isFinite, total > 0 { duration = total }
         if let decoder = engine.nowPlaying, let entry = entries[ObjectIdentifier(decoder as AnyObject)] {
@@ -497,6 +525,42 @@ final class PlayerModel: NSObject {
         }
     }
 
+    private func reconcileSeekWithPlaybackClock() {
+        guard var pending = pendingSeek, pending.generation == generation,
+              pending.decoder == activeID, engine.isPlaying, wantsPlayback,
+              let decoder = engine.nowPlaying, ObjectIdentifier(decoder as AnyObject) == pending.decoder,
+              let time = engine.currentTime, time.isFinite else { return }
+        // A pending engine seek reports its target before audio has reached it.
+        // Require two advancing samples beyond that target, bounded by real
+        // elapsed time, so an old position cannot masquerade as completion.
+        let age = max(0, ProcessInfo.processInfo.systemUptime - pending.started)
+        guard time > pending.target + 0.02, time <= pending.target + age + 0.15 else {
+            pending.previousTime = nil
+            pendingSeek = pending
+            return
+        }
+        if let previous = pending.previousTime, time > previous + 0.01 {
+            clearSeek()
+            updateNowPlaying()
+        } else {
+            pending.previousTime = time
+            pendingSeek = pending
+        }
+    }
+
+    private func completedSeek(_ id: ObjectIdentifier, frame: AVAudioFramePosition) {
+        #if DEBUG
+        guard !suppressSeekCompletionForTesting else { return }
+        #endif
+        guard let pending = pendingSeek, pending.generation == generation,
+              pending.decoder == id, activeID == id, let entry = entries[id] else { return }
+        let rate = entry.audio.decoder.processingFormat.sampleRate
+        guard rate > 0, abs(Double(frame) / rate - pending.target) <= max(0.1, 2048 / rate) else { return }
+        clearSeek()
+        tick()
+        updateNowPlaying()
+    }
+
     private func rendered(_ id: ObjectIdentifier) {
         if discarded.removeValue(forKey: id) != nil {
             // The engine started a next track that a queue edit had removed.
@@ -506,7 +570,7 @@ final class PlayerModel: NSObject {
         guard let entry = entries[id], entry.generation == generation else { return }
         waitingForNext = false
         // Any other track starting means the removed decoders never will.
-        if id != activeID { discarded.removeAll() }
+        if id != activeID { discarded.removeAll(); clearSeek() }
         let changed = current?.id != entry.queue.current?.id
         entry.audio.source?.unmeteredOnly = false
         entries[id]?.isNext = false
@@ -535,7 +599,7 @@ final class PlayerModel: NSObject {
         else {
             hasEnded = true
             wantsPlayback = false
-            isSeeking = false
+            clearSeek()
             cancelTransfers()
             engine.stop()
             entries.removeAll()
@@ -642,10 +706,7 @@ extension PlayerModel: AudioPlayer.Delegate {
     nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, didSeek decoder: any PCMDecoding, toFrame frame: AVAudioFramePosition) {
         let id = ObjectIdentifier(decoder as AnyObject)
         Task { @MainActor [weak self] in
-            guard let self, self.entries[id]?.queue.current?.id == self.current?.id else { return }
-            self.isSeeking = false
-            self.tick()
-            self.updateNowPlaying()
+            self?.completedSeek(id, frame: frame)
         }
     }
 

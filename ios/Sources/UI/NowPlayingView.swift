@@ -231,7 +231,9 @@ private struct PlayerTimeline: View {
             HStack {
                 Text(timestamp(scrubbing ? scrubTime : player.elapsed))
                 Spacer()
-                if player.isLoading || player.isSeeking { Text(L10n.text("mobile.preparing")) }
+                if player.isLoading || player.isSeeking {
+                    Text(L10n.text("mobile.preparing")).accessibilityIdentifier("player.buffering")
+                }
                 Spacer()
                 Text("−" + timestamp(max(0, player.duration - (scrubbing ? scrubTime : player.elapsed))))
             }.font(Theme.body(style.timeSize)).monospacedDigit().foregroundStyle(Theme.faint)
