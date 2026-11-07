@@ -694,13 +694,18 @@ final class MihonbanUITests: XCTestCase {
         let artist = app.staticTexts["mini.artists"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         XCTAssertTrue(artist.exists)
+        XCTAssertTrue(expand.wait(for: \.isHittable, toEqual: true, timeout: 15))
         let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             let window = app.windows.firstMatch.frame.insetBy(dx: -1, dy: -1)
-            let textArea = expand.frame.insetBy(dx: -1, dy: -1)
-            return expand.isHittable && window.contains(expand.frame)
-                && textArea.contains(title.frame) && textArea.contains(artist.frame)
+            let button = expand.frame
+            let textArea = button.insetBy(dx: -1, dy: -1)
+            let titleFrame = title.frame
+            let artistFrame = artist.frame
+            return window.contains(button) && textArea.contains(titleFrame) && textArea.contains(artistFrame)
         }, object: nil)
-        XCTAssertEqual(XCTWaiter().wait(for: [visible], timeout: 5), .completed,
+        // A loaded iPad simulator can take several seconds per AX frame query.
+        // Keep geometry strict while allowing one complete observation to finish.
+        XCTAssertEqual(XCTWaiter().wait(for: [visible], timeout: 20), .completed,
                        "large mini-player text must fit inside its button, not clip above or below the bar")
         XCTAssertGreaterThan(artist.frame.minY, title.frame.minY)
         for control in [app.buttons["mini.toggle"], app.buttons["mini.next"]] {
@@ -1320,15 +1325,15 @@ final class MihonbanUITests: XCTestCase {
                   let luminance = self.settingsRowLuminance(app, picker: picker) else { return false }
             return dark ? luminance < 0.3 : luminance > 0.75
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 10), .completed,
+        XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 20), .completed,
                        "The open settings sheet must render the selected appearance without reopening")
     }
 
     private func settingsRowLuminance(_ app: XCUIApplication, picker: XCUIElement) -> Double? {
         let frame = picker.frame
-        let window = app.frame
+        let window = app.windows.firstMatch.frame
         guard frame.width > 20, frame.height > 20, window.width > 0, window.height > 0,
-              let image = app.screenshot().image.cgImage else { return nil }
+              let image = XCUIScreen.main.screenshot().image.cgImage else { return nil }
         let scaleX = CGFloat(image.width) / window.width
         let scaleY = CGFloat(image.height) / window.height
         // Sample the surface below the text, away from labels, values and rounded edges.

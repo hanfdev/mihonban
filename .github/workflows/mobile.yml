@@ -149,6 +149,9 @@ jobs:
         if: ${{ !cancelled() && steps.device-archive.outcome == 'success' }}
         run: |
           set -o pipefail
+          # Release the completed phone simulator before starting the tablet's
+          # UI automation; both otherwise compete for the runner's resources.
+          if [ -n "${SIM_DEVICE:-}" ]; then xcrun simctl shutdown "$SIM_DEVICE" || true; fi
           python3 -I ios/tools/fixture-server.py ios/TestFixtures > fixture-ipad.log 2>&1 &
           FIXTURE_PID=$!
           trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
