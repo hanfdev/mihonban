@@ -146,7 +146,7 @@ final class OfflineLaunchTests: XCTestCase {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
-        let host = UIHostingController(rootView: StartupBrandView().environment(\.accessibilityReduceMotion, true))
+        let host = UIHostingController(rootView: StartupBrandView())
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer {
