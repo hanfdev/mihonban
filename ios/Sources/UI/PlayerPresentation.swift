@@ -6,6 +6,12 @@ import SwiftUI
 @MainActor @Observable
 final class PlayerTranslation {
     var progress: CGFloat = 0
+
+    func track(_ value: CGFloat) {
+        var transaction = Transaction(animation: nil)
+        transaction.isContinuous = true
+        withTransaction(transaction) { progress = value }
+    }
 }
 
 struct PlayerTranslationEffect: ViewModifier {
@@ -66,15 +72,41 @@ enum PlayerMotion {
     }
 }
 
+// A finite, monotonic landing with a release velocity and zero terminal speed.
+// Unlike a fixed spring, a short remaining distance has no long settling tail.
+struct PlayerSettleAnimation: CustomAnimation {
+    let duration: TimeInterval
+    let initialSlope: Double
+
+    init(distance: CGFloat, height: CGFloat, velocity: CGFloat) {
+        let remaining = max(1, abs(distance))
+        let speed = max(0, velocity * (distance >= 0 ? 1 : -1))
+        let base = 0.16 + 0.18 * min(1, Double(remaining / max(1, height)))
+        duration = speed > 0 ? min(base, max(0.12, Double(2 * remaining / speed))) : base
+        initialSlope = min(3, Double(speed / remaining) * duration)
+    }
+
+    func fraction(at time: TimeInterval) -> Double {
+        let t = min(1, max(0, time / duration))
+        return (initialSlope - 2) * t * t * t + (3 - 2 * initialSlope) * t * t + initialSlope * t
+    }
+
+    func animate<V: VectorArithmetic>(value: V, time: TimeInterval, context: inout AnimationContext<V>) -> V? {
+        guard time < duration else { return nil }
+        return value.scaled(by: fraction(at: time))
+    }
+}
+
 struct PlayerDragActions {
     var changed: (CGFloat) -> Void
-    var ended: (CGFloat, CGFloat) -> Void
+    var ended: (CGFloat, CGFloat, CGFloat) -> Void
 }
 
 extension EnvironmentValues {
     @Entry var expandPlayer: PlayerDragActions?
     @Entry var collapsePlayer: PlayerDragActions?
     @Entry var playerTransitionActive = false
+    @Entry var playerViewportCenterY: CGFloat? = nil
 }
 
 #if DEBUG
@@ -139,13 +171,13 @@ struct PlayerPresentation<Library: View>: View {
                 if !opening { opening = true }
                 if !mounted { mounted = true }
                 beginDrag()
-                translation.progress = PlayerMotion.progress(distance: distance, height: travelHeight)
-            }, ended: { distance, predicted in
+                translation.track(PlayerMotion.progress(distance: distance, height: travelHeight))
+            }, ended: { distance, predicted, velocity in
                 opening = false
                 dragging = false
                 let expand = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
                 PlayerMotion.logger.info("Expand ended: distance=\(distance), predicted=\(predicted), completed=\(expand)")
-                finishDrag(expand)
+                finishDrag(expand, velocity: velocity)
             }))
             .allowsHitTesting(!mounted || opening)
             .accessibilityHidden(mounted && !opening)
@@ -158,14 +190,16 @@ struct PlayerPresentation<Library: View>: View {
                         NowPlayingView(model: model)
                             .environment(\.collapsePlayer, PlayerDragActions(changed: { distance in
                                 beginDrag()
-                                translation.progress = 1 - PlayerMotion.progress(distance: distance, height: travelHeight)
-                            }, ended: { distance, predicted in
+                                translation.track(1 - PlayerMotion.progress(distance: distance, height: travelHeight))
+                            }, ended: { distance, predicted, velocity in
                                 let collapse = PlayerMotion.completes(distance: distance, predicted: predicted, height: travelHeight)
                                 PlayerMotion.logger.info("Collapse ended: distance=\(distance), predicted=\(predicted), completed=\(collapse)")
                                 dragging = false
-                                finishDrag(!collapse)
+                                finishDrag(!collapse, velocity: -velocity)
                             }))
                             .environment(\.playerTransitionActive, moving || !mounted)
+                            .environment(\.playerViewportCenterY,
+                                (viewport.size.height + viewport.safeAreaInsets.bottom - viewport.safeAreaInsets.top) / 2)
                             // Reconstruct the full canvas before padding it. The
                             // stationary viewport's size already excludes system
                             // insets; padding that size would deduct them twice.
@@ -211,14 +245,14 @@ struct PlayerPresentation<Library: View>: View {
         moving = true
     }
 
-    private func finishDrag(_ expanded: Bool) {
-        // A changed state is settled by onChange exactly once. A cancelled drag
-        // keeps the same state, so it needs its own return animation.
+    private func finishDrag(_ expanded: Bool, velocity: CGFloat) {
+        // Continue in this gesture event, without waiting for another body/onChange
+        // cycle. The later onChange sees settlingTo and cannot restart the landing.
         if model.player.isExpanded != expanded { model.player.isExpanded = expanded }
-        else { settle(expanded) }
+        settle(expanded, velocity: velocity)
     }
 
-    private func settle(_ expanded: Bool) {
+    private func settle(_ expanded: Bool, velocity: CGFloat? = nil) {
         guard settlingTo != expanded else { return }
         let target: CGFloat = expanded ? 1 : 0
         guard moving || translation.progress != target else { return }
@@ -226,7 +260,13 @@ struct PlayerPresentation<Library: View>: View {
         motionRevision += 1
         let revision = motionRevision
         moving = true
-        withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .spring(duration: 0.42, bounce: 0),
+        let animation: Animation
+        if reduceMotion { animation = .easeOut(duration: 0.18) }
+        else if let velocity {
+            animation = Animation(PlayerSettleAnimation(distance: (target - translation.progress) * travelHeight,
+                height: travelHeight, velocity: velocity))
+        } else { animation = .timingCurve(0.25, 0.1, 0.25, 1, duration: 0.32) }
+        withAnimation(animation,
                       completionCriteria: .removed) {
             translation.progress = target
         } completion: {
@@ -276,7 +316,8 @@ struct PlayerSwipe: ViewModifier {
                     if accepted {
                         let direction: CGFloat = expanding ? -1 : 1
                         actions?.ended(max(0, value.translation.height * direction),
-                                       max(0, value.predictedEndTranslation.height * direction))
+                                       max(0, value.predictedEndTranslation.height * direction),
+                                       value.velocity.height * direction)
                     }
                     accepted = false
                     rejected = false
@@ -290,7 +331,7 @@ struct PlayerSwipe: ViewModifier {
                     guard !touching else { return }
                     if accepted {
                         PlayerMotion.logger.info("Swipe cancelled: expanding=\(expanding)")
-                        actions?.ended(0, 0)
+                        actions?.ended(0, 0, 0)
                     }
                     accepted = false
                     rejected = false

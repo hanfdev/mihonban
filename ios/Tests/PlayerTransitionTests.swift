@@ -50,7 +50,7 @@ final class PlayerTransitionTests: XCTestCase {
             actions.changed(distance)
             try await Task.sleep(for: .milliseconds(16))
         }
-        actions.ended(220, 280)
+        actions.ended(220, 280, 600)
         try await Task.sleep(for: .milliseconds(900))
         XCTAssertTrue(model.player.isExpanded)
         for (name, values, expected) in [("cover", frames.cover, cover), ("heading", frames.heading, heading)] {
@@ -72,8 +72,7 @@ final class PlayerTransitionTests: XCTestCase {
         let audio = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "tone", withExtension: "flac"))
         model.player.connect(try APIClient(address: "https://example.invalid"), demoURL: audio)
         model.player.play([Track(id: "motion", title: "A long player title for layout", duration: 8)])
-        model.player.pause()
-        model.player.setForeground(false)
+        model.player.setForeground(true)
         let translation = PlayerTranslation()
         let position = Position()
         let content = NowPlayingView(model: model)
@@ -89,17 +88,22 @@ final class PlayerTransitionTests: XCTestCase {
             window.rootViewController = nil
             previous?.makeKey()
         }
-        try await Task.sleep(for: .milliseconds(500))
+        for _ in 0..<100 where model.player.elapsed < 0.1 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertGreaterThan(model.player.elapsed, 0.1, "Measure actual playing audio, including foreground clock updates")
         let start = position.y
+        let elapsed = model.player.elapsed
         let count = PlayerRenderWork.content
         for frame in 1...120 {
-            translation.progress = CGFloat(frame) / 120
+            translation.track(CGFloat(frame) / 120)
             host.view.layoutIfNeeded()
-            try await Task.sleep(for: .milliseconds(3))
+            try await Task.sleep(for: .milliseconds(16))
         }
         try await Task.sleep(for: .milliseconds(100))
         print("Player transition: 120 progress updates, \(PlayerRenderWork.content - count) content evaluations")
         XCTAssertEqual(start - position.y, 800, accuracy: 1, "the visual surface must actually move")
+        XCTAssertGreaterThan(model.player.elapsed, elapsed + 1, "The audio clock must keep updating during the gesture")
         XCTAssertLessThanOrEqual(PlayerRenderWork.content - count, 2,
                                 "120 progress changes must not re-evaluate the player content each frame")
     }

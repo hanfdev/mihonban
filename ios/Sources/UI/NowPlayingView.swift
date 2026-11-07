@@ -35,12 +35,12 @@ struct NowPlayingView: View {
     @State private var creditsSheet: CreditsSelection?
     @State private var pendingArtist: (trackID: String, name: String)?
     @State private var scrubbing = false
-    @State private var scrubTime: Double = 0
     @State private var routePickerPresented = false
     @State private var sharing: ShareSelection?
     @State private var scrollTop: CGFloat = 0
     @State private var hitRegions = PlayerHitRegions()
     @Environment(\.playerTransitionActive) private var transitioning
+    @Environment(\.playerViewportCenterY) private var viewportCenterY
 
     private var player: PlayerModel { model.player }
     private var isTablet: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -56,7 +56,8 @@ struct NowPlayingView: View {
                         let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: 0, isTablet: isTablet)
                         let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side, isTablet: isTablet)
                         let style = NowPlayingLayout.controlStyle(in: geometry.size, isTablet: isTablet)
-                        NowPlayingStage(viewport: geometry.size, isTablet: isTablet) {
+                        let center = viewportCenterY.map { $0 - geometry.frame(in: .named(Space.surface)).minY }
+                        NowPlayingStage(viewport: geometry.size, isTablet: isTablet, centerY: center) {
                             cover.measurePlayerFrame(cover: true, in: Space.surface)
                             controls(style: style, width: width)
                         }
@@ -170,24 +171,8 @@ struct NowPlayingView: View {
                titleSize: style.titleSize, artistSize: style.artistSize)
                 .measurePlayerFrame(cover: false, in: Space.surface)
                 .environment(\.marqueeSuspended, transitioning || routePickerPresented || queueVisible || creditsSheet != nil || sharing != nil)
-            VStack(spacing: 0) {
-                Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
-                                      set: { scrubTime = $0 }),
-                       in: 0...max(player.duration, 1), onEditingChanged: { editing in
-                    if editing { scrubTime = player.elapsed; scrubbing = true }
-                    else { scrubbing = false; player.seek(to: scrubTime) }
-                }).tint(style == .compact ? Theme.accent : Theme.ink)
-                    .disabled(player.isLoading).accessibilityLabel(L10n.text("player.seek"))
-                    .accessibilityIdentifier("player.seek")
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Space.surface)).insetBy(dx: -12, dy: -12) } action: { hitRegions.seek = $0 }
-                HStack {
-                    Text(timestamp(scrubbing ? scrubTime : player.elapsed))
-                    Spacer()
-                    if player.isLoading || player.isSeeking { Text(L10n.text("mobile.preparing")) }
-                    Spacer()
-                    Text("−" + timestamp(max(0, player.duration - (scrubbing ? scrubTime : player.elapsed))))
-                }.font(Theme.body(style.timeSize)).monospacedDigit().foregroundStyle(Theme.faint)
-            }
+            PlayerTimeline(player: player, style: style, scrubbing: $scrubbing)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Space.surface)).insetBy(dx: -12, dy: -12) } action: { hitRegions.seek = $0 }
             HStack(spacing: 0) {
                 ShuffleToggle(player: player, identifier: "player.shuffle")
                 Spacer(minLength: 4)
@@ -221,6 +206,35 @@ struct NowPlayingView: View {
                     Button(L10n.text("common.retry")) { player.resume() }
                 }
             }
+        }
+    }
+}
+
+// Observe the audio clock only here. Its half-second updates must not measure
+// artwork, redraw the heading or rebuild the moving player surface.
+private struct PlayerTimeline: View {
+    let player: PlayerModel
+    let style: NowPlayingLayout.ControlStyle
+    @Binding var scrubbing: Bool
+    @State private var scrubTime: Double = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Slider(value: Binding(get: { scrubbing ? scrubTime : min(player.elapsed, max(player.duration, 1)) },
+                                  set: { scrubTime = $0 }),
+                   in: 0...max(player.duration, 1), onEditingChanged: { editing in
+                if editing { scrubTime = player.elapsed; scrubbing = true }
+                else { scrubbing = false; player.seek(to: scrubTime) }
+            }).tint(style == .compact ? Theme.accent : Theme.ink)
+                .disabled(player.isLoading).accessibilityLabel(L10n.text("player.seek"))
+                .accessibilityIdentifier("player.seek")
+            HStack {
+                Text(timestamp(scrubbing ? scrubTime : player.elapsed))
+                Spacer()
+                if player.isLoading || player.isSeeking { Text(L10n.text("mobile.preparing")) }
+                Spacer()
+                Text("−" + timestamp(max(0, player.duration - (scrubbing ? scrubTime : player.elapsed))))
+            }.font(Theme.body(style.timeSize)).monospacedDigit().foregroundStyle(Theme.faint)
         }
     }
 }

@@ -5,6 +5,7 @@ import SwiftUI
 struct NowPlayingStage: Layout {
     let viewport: CGSize
     let isTablet: Bool
+    var centerY: CGFloat? = nil
 
     private struct Metrics {
         let cover: CGFloat
@@ -26,7 +27,7 @@ struct NowPlayingStage: Layout {
             : NowPlayingLayout.coverSpacing(in: viewport, isTablet: isTablet)
         return Metrics(cover: cover, controls: CGSize(width: width, height: controls.height), gap: gap,
             top: NowPlayingLayout.stageTop(in: viewport, coverSide: cover,
-                controlsHeight: controls.height, isTablet: isTablet), columns: columns)
+                controlsHeight: controls.height, isTablet: isTablet, centerY: centerY), columns: columns)
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -104,16 +105,15 @@ enum NowPlayingLayout {
         max(0, size.width - 2 * horizontalInset)
     }
 
-    static func stageTop(in size: CGSize, coverSide: CGFloat, controlsHeight: CGFloat, isTablet: Bool) -> CGFloat {
+    static func stageTop(in size: CGSize, coverSide: CGFloat, controlsHeight: CGFloat,
+                         isTablet: Bool, centerY: CGFloat? = nil) -> CGFloat {
         guard isTablet else { return topInset }
         let stageHeight = usesColumns(size) ? max(coverSide, controlsHeight)
             : coverSide + coverSpacing(in: size, isTablet: true) + controlsHeight
-        // Balance the full window rather than centering below a tall header.
-        // Give the larger bottom margin to the heavier play controls; clamp
-        // the optical lift so smaller windows and large text can still scroll.
-        let spare = max(0, size.height - stageHeight - topInset - bottomInset)
-        let lift = usesColumns(size) ? min(64, size.height * 0.08, spare * 0.35) : min(24, spare * 0.20)
-        return topInset + spare / 2 - lift
+        // Center the complete composition on the window, independently of the
+        // header's height. Preserve a scrollable top when large text cannot fit.
+        let desired = (centerY ?? size.height / 2) - stageHeight / 2
+        return max(topInset, min(desired, size.height - stageHeight - bottomInset))
     }
 
     static func coverSide(in size: CGSize, controlsHeight: CGFloat, isTablet: Bool = false) -> CGFloat {

@@ -1595,10 +1595,8 @@ final class MihonbanUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(collapse.minY, window.minY + 44, file: file, line: line)
         XCTAssertGreaterThanOrEqual(collapse.minX, window.minX + 30, file: file, line: line)
         if window.width > window.height {
-            XCTAssertGreaterThan(composition.midY, window.minY + window.height * 0.43, file: file, line: line)
-            XCTAssertLessThan(composition.midY, window.minY + window.height * 0.53, file: file, line: line)
-            XCTAssertGreaterThan(scroll.maxY - composition.maxY, composition.minY - visibleTop,
-                                 "the composition sits above the content area's mathematical center", file: file, line: line)
+            XCTAssertEqual(composition.midY, window.midY, accuracy: 2,
+                           "Artwork and controls share the window's vertical center", file: file, line: line)
         }
         XCTAssertGreaterThanOrEqual(composition.minY, visibleTop, file: file, line: line)
         XCTAssertLessThanOrEqual(composition.maxY, scroll.maxY, file: file, line: line)

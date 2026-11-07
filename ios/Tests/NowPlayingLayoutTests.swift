@@ -2,17 +2,41 @@ import XCTest
 @testable import Mihonban
 
 final class NowPlayingLayoutTests: XCTestCase {
-    func testOpticalCenterIsLiftedWithoutClippingOrNegativeInsets() {
+    func testTabletCompositionCentersOnTheWindowWithoutClipping() {
         for size in [CGSize(width: 1194, height: 700), CGSize(width: 1376, height: 900)] {
             let cover = NowPlayingLayout.coverSide(in: size, controlsHeight: 360, isTablet: true)
-            let top = NowPlayingLayout.stageTop(in: size, coverSide: cover, controlsHeight: 360, isTablet: true)
-            let bottom = size.height - top - max(cover, 360)
+            let center = size.height / 2 - 44
+            let top = NowPlayingLayout.stageTop(in: size, coverSide: cover, controlsHeight: 360,
+                isTablet: true, centerY: center)
             XCTAssertGreaterThanOrEqual(top, 12)
-            XCTAssertGreaterThan(bottom - top, 70)
-            XCTAssertLessThan(bottom - top, 150)
+            XCTAssertEqual(top + max(cover, 360) / 2, center, accuracy: 0.5)
+            XCTAssertLessThanOrEqual(top + max(cover, 360), size.height - 20)
         }
         XCTAssertEqual(NowPlayingLayout.stageTop(in: CGSize(width: 744, height: 600),
             coverSide: 160, controlsHeight: 900, isTablet: true), 12)
+    }
+
+    func testReleaseMotionIsMonotonicAndFinishesWithoutASpringTail() {
+        for distance: CGFloat in [-700, -80, 80, 700] {
+            for speed: CGFloat in [-800, 0, 80, 800, 4000] {
+                let motion = PlayerSettleAnimation(distance: distance, height: 1000, velocity: speed)
+                XCTAssertLessThanOrEqual(motion.duration, 0.34)
+                XCTAssertGreaterThanOrEqual(motion.duration, 0.12)
+                var previous = 0.0
+                for step in 0...120 {
+                    let fraction = motion.fraction(at: motion.duration * Double(step) / 120)
+                    XCTAssertGreaterThanOrEqual(fraction, previous - 0.000001)
+                    XCTAssertLessThanOrEqual(fraction, 1.000001)
+                    previous = fraction
+                }
+                XCTAssertEqual(previous, 1, accuracy: 0.000001)
+                let endSpeed = (1 - motion.fraction(at: motion.duration - 0.00001)) / 0.00001
+                XCTAssertLessThan(endSpeed, 0.003)
+            }
+        }
+        let motion = PlayerSettleAnimation(distance: 500, height: 1000, velocity: 800)
+        let startSpeed = motion.fraction(at: 0.00001) * 500 / 0.00001
+        XCTAssertEqual(startSpeed, 800, accuracy: 1, "Landing must preserve a normal release velocity")
     }
 
     func testPlayerGestureRequiresIntentAndSupportsFlicksAtDifferentSizes() {
