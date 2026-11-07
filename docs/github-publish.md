@@ -67,6 +67,18 @@ For native mobile changes, run Android JVM tests, lint and builds with JDK 17 an
 
 Do not add ignored build output, local D1 state, databases, or backups merely to make CI pass.
 
+## Maintain all seven languages
+
+Every maintained Markdown guide has an English `.md` file plus `.zh.md`, `.zh-Hant.md`, `.ja.md`, `.ko.md`, `.fr.md` and `.es.md` versions. Update all seven together, with full instructions, limitations and examples. Keep commands, API names, paths, version numbers and historical verification dates consistent; link to the matching language when available.
+
+Run the documentation check from the repository root:
+
+```sh
+node tools/check-docs.mjs
+```
+
+The check covers language files and navigation, heading/example structure, and local file and heading links, including screenshot paths. Review translation meaning separately. Original license texts and ignored private working notes are not translated public guides.
+
 ## Remotes and forks
 
 Confirm the destination before pushing:

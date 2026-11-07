@@ -63,9 +63,21 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-Pour les modifications mobiles natives, exécutez les tests JVM, lint et les builds Android avec JDK 17 et Android SDK 35. Les builds et tests sur simulateur iOS nécessitent macOS et Xcode ; consultez les guides [Android](../android/README.md) et [iOS](../ios/README.md). Les workflows se lancent pour les push et pull requests concernés. Les vérifications Windows ne remplacent pas les tests sur simulateur iOS.
+Pour les modifications mobiles natives, exécutez les tests JVM, lint et les builds Android avec JDK 17 et Android SDK 35. Les builds et tests sur simulateur iOS nécessitent macOS et Xcode ; consultez les guides [Android](../android/README.fr.md) et [iOS](../ios/README.fr.md). Les workflows se lancent pour les push et pull requests concernés. Les vérifications Windows ne remplacent pas les tests sur simulateur iOS.
 
 N’ajoutez pas de sorties de compilation ignorées, d’état D1 local, de bases de données ou de sauvegardes simplement pour faire passer le CI.
+
+## Maintenir les sept langues
+
+Chaque guide Markdown public maintenu possède un fichier anglais `.md` et les versions `.zh.md`, `.zh-Hant.md`, `.ja.md`, `.ko.md`, `.fr.md` et `.es.md`. Mettez les sept à jour dans la même modification, en conservant toutes les instructions, limites et tous les exemples. Gardez les commandes, noms d’API, chemins, versions et dates de vérification historiques cohérents ; privilégiez les liens vers la même langue.
+
+Exécutez la vérification des documents depuis la racine du dépôt :
+
+```sh
+node tools/check-docs.mjs
+```
+
+Elle contrôle les fichiers de langue, la navigation, la structure des titres et des exemples, ainsi que les liens vers les fichiers locaux et les titres, y compris les captures. Relisez séparément le sens des traductions. Les licences originales et les notes privées ignorées ne sont pas des guides publics à traduire.
 
 ## Remotes et forks
 

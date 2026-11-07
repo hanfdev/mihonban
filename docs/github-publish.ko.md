@@ -63,9 +63,21 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-모바일 변경은 JDK 17과 Android SDK 35로 Android 단위 테스트, lint 및 빌드를 실행하세요. iOS 빌드와 시뮬레이터 테스트에는 macOS와 Xcode가 필요합니다. [Android](../android/README.md) 및 [iOS](../ios/README.md) 안내를 참고하세요. 관련 push와 pull request에서 각 워크플로가 실행되며 Windows 검사는 iOS 시뮬레이터 검증을 대신하지 않습니다.
+모바일 변경은 JDK 17과 Android SDK 35로 Android 단위 테스트, lint 및 빌드를 실행하세요. iOS 빌드와 시뮬레이터 테스트에는 macOS와 Xcode가 필요합니다. [Android](../android/README.ko.md) 및 [iOS](../ios/README.ko.md) 안내를 참고하세요. 관련 push와 pull request에서 각 워크플로가 실행되며 Windows 검사는 iOS 시뮬레이터 검증을 대신하지 않습니다.
 
 CI 통과를 위해 무시된 빌드 출력, 로컬 D1 상태, 데이터베이스, 백업을 추가하지 마세요.
+
+## 일곱 언어 문서 유지
+
+공개적으로 유지하는 각 Markdown 안내에는 영어 `.md`와 `.zh.md`, `.zh-Hant.md`, `.ja.md`, `.ko.md`, `.fr.md`, `.es.md`를 제공합니다. 절차, 제한 사항과 예제를 생략하지 말고 같은 변경에서 일곱 언어를 함께 갱신하세요. 명령, API 이름, 경로, 버전 번호와 과거 검증 날짜를 일치시키고 번역본이 있으면 같은 언어의 문서로 연결하세요.
+
+저장소 루트에서 문서 검사를 실행하세요.
+
+```sh
+node tools/check-docs.mjs
+```
+
+언어 파일과 탐색, 제목 및 예제 구조, 스크린샷을 포함한 로컬 파일과 제목 앵커 링크를 검사합니다. 번역의 의미는 별도로 검토하세요. 원문 라이선스와 Git에서 제외된 개인 작업 기록은 번역할 공개 안내에 포함되지 않습니다.
 
 ## remote와 fork
 

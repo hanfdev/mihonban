@@ -1,6 +1,6 @@
 # Mihonban for iPhone and iPad
 
-[English](README.md) · [简体中文](README.zh.md)
+[English](README.md) · [简体中文](README.zh.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Español](README.es.md)
 
 A native SwiftUI client for an existing Mihonban server, using SFBAudioEngine for playback. The current preview is 0.2.0 and requires iOS/iPadOS 17 or later. It does not host the server or use a WebView for its listening interface.
 
@@ -78,3 +78,5 @@ python3 -I ios/tools/check-fonts.py
 Only when changing artwork or font coverage, install Pillow, fontTools and Brotli in a development Python environment and run `python3 ios/tools/prepare-assets.py .`. This regenerates the icon/logo and the fallback font from the pinned source and shared Web assets; it is not required for an ordinary build.
 
 The project uses AGPL-3.0-only. Bundled fonts retain their SIL Open Font Licenses. SFBAudioEngine and its codec dependencies retain their own licenses; retain the generated notices and dependency information when distributing builds.
+
+[Back to project documentation](../README.md)

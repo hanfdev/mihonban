@@ -40,10 +40,12 @@ Utilisez au moins 32 caractères aléatoires ; une chaîne hexadécimale génér
 
 ## 2. Configurez le Worker principal
 
+Utilisez le fichier privé existant du Worker principal, `wrangler.local.jsonc`, décrit dans [Installation et déploiement](install.fr.md). Il contient les véritables identifiants des ressources du déploiement ; le modèle public ne contient que des valeurs fictives. Si votre fichier privé se trouve ailleurs, indiquez ce chemin avec `--config`.
+
 ```bash
 cd ../worker
-npx wrangler secret put STREAM_PROXY_SECRET
-npx wrangler deploy
+npx wrangler secret put STREAM_PROXY_SECRET --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 Collez exactement le même secret que pour `PROXY_SECRET`.

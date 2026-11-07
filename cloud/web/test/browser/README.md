@@ -1,5 +1,7 @@
 # Browser list regressions
 
+[English](README.md) · [简体中文](README.zh.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Español](README.es.md)
+
 This harness mounts the actual React list views and compares the current source with Git revision `95eed448dd80ca49de0de2703d1db1f7e78e8e94`, immediately before the list memoization change. It checks unchanged sort/filter results, playback callbacks, favorite reordering, query work and track-row render counts. Recently-added ordering has changed intentionally since that revision, so separate current-view cases cover original addition times, rating/title edits, refresh order, new imports, tied timestamps, unknown dates and hidden albums in Library, Artists and Import.
 
 From the repository root, install the web dependencies and build the harness:

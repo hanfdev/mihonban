@@ -40,10 +40,12 @@ Use at least 32 random characters; a hex string generated from 32 random bytes i
 
 ## 2. Configure the main Worker
 
+Use the main Worker’s existing private `wrangler.local.jsonc` from [Install and deploy](install.md). It contains the deployment’s real resource IDs; the public template contains placeholders. If your private config has a different path, use that path with `--config`.
+
 ```bash
 cd ../worker
-npx wrangler secret put STREAM_PROXY_SECRET
-npx wrangler deploy
+npx wrangler secret put STREAM_PROXY_SECRET --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 Paste the exact same secret used for `PROXY_SECRET`.

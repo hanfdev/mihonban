@@ -6,7 +6,7 @@ Mihonban est une bibliothèque musicale privée et auto-hébergée dotée d’un
 
 ## Aperçu de l’interface
 
-Captures de l’application réelle, avec des données fictives et des pochettes originales de démonstration ou des images de remplacement intégrées. [Détails des captures](docs/images/README.md).
+Captures de l’application réelle, avec des données fictives et des pochettes originales de démonstration ou des images de remplacement intégrées. [Détails des captures](docs/images/README.fr.md).
 
 ![Bibliothèque Web](docs/images/web-library.webp)
 
@@ -39,9 +39,9 @@ Application iOS native capturée dans le simulateur, avec des données fictives 
 - Crédits d’album multi-artistes ordonnés et collaborations définies par morceau, avec recherche, page et lien du lecteur pour chaque artiste
 - Mots de passe distincts pour les auditeurs et les administrateurs, avec un mode invité facultatif, sans mot de passe et en lecture seule
 - File d’attente persistante, commandes mobiles complètes piste précédente／lecture-pause／piste suivante, démarrage lié au geste utilisateur, lecture aléatoire/répétée, navigation Range et contrôles Media Session
-- Client de bureau natif pour Windows dans `desktop/` (egui + Rodio), distribué sous forme d’exe portable sur la [page Releases](https://github.com/hanfdev/mihonban/releases)
-- Client Android natif dans [`android/`](android/README.md) (Kotlin + Jetpack Compose + Media3), avec lecture en arrière-plan, téléchargements hors ligne et administration native
-- Client iPhone/iPad natif dans [`ios/`](ios/README.md) (SwiftUI + SFBAudioEngine), avec lecture en arrière-plan, téléchargements et interfaces adaptées aux deux formats
+- Client de bureau natif pour Windows dans [`desktop/`](desktop/README.fr.md) (egui + Rodio), distribué sous forme d’exe portable sur la [page Releases](https://github.com/hanfdev/mihonban/releases)
+- Client Android natif dans [`android/`](android/README.fr.md) (Kotlin + Jetpack Compose + Media3), avec lecture en arrière-plan, téléchargements hors ligne et administration native
+- Client iPhone/iPad natif dans [`ios/`](ios/README.fr.md) (SwiftUI + SFBAudioEngine), avec lecture en arrière-plan, téléchargements et interfaces adaptées aux deux formats
 - Stockages nommés OneDrive, WebDAV, Google Drive et dossiers locaux réservés au runtime Node
 - Miroir d’images R2 facultatif et auto-réparable pour les pochettes, galeries et portraits d’artistes
 - Importation via l’API Discogs et mises à jour RYM depuis du HTML enregistré ou une extension Chrome/Edge facultative, avec actualisation des notes par lots lancée par l’utilisateur
@@ -150,6 +150,7 @@ mihonban cloud sync             upload/register local albums
 mihonban cloud pull             pull web imports back to the local library
 mihonban rym parse|match|write  process manually saved RYM HTML
 
+node tools/check-docs.mjs
 cd cloud/worker && npm test
 cd cloud/proxy-worker && npm test
 cd cloud/web && npm test && npm run build
@@ -177,6 +178,15 @@ python -m pytest -q
 | Hébergement serverless | [English](docs/serverless-hosting.md) · [简体中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
 | Proxy audio facultatif | [English](docs/audio-proxy.md) · [简体中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
 | Publication sécurisée | [English](docs/github-publish.md) · [简体中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
+| Client Windows natif | [English](desktop/README.md) · [简体中文](desktop/README.zh.md) · [繁體中文](desktop/README.zh-Hant.md) · [日本語](desktop/README.ja.md) · [한국어](desktop/README.ko.md) · [Français](desktop/README.fr.md) · [Español](desktop/README.es.md) |
+| Contrat de compatibilité API des clients natifs | [English](desktop/API_COMPATIBILITY.md) · [简体中文](desktop/API_COMPATIBILITY.zh.md) · [繁體中文](desktop/API_COMPATIBILITY.zh-Hant.md) · [日本語](desktop/API_COMPATIBILITY.ja.md) · [한국어](desktop/API_COMPATIBILITY.ko.md) · [Français](desktop/API_COMPATIBILITY.fr.md) · [Español](desktop/API_COMPATIBILITY.es.md) |
+| Données de régression du déplacement audio | [English](desktop/tests/fixtures/README.md) · [简体中文](desktop/tests/fixtures/README.zh.md) · [繁體中文](desktop/tests/fixtures/README.zh-Hant.md) · [日本語](desktop/tests/fixtures/README.ja.md) · [한국어](desktop/tests/fixtures/README.ko.md) · [Français](desktop/tests/fixtures/README.fr.md) · [Español](desktop/tests/fixtures/README.es.md) |
+| Client Android | [English](android/README.md) · [简体中文](android/README.zh.md) · [繁體中文](android/README.zh-Hant.md) · [日本語](android/README.ja.md) · [한국어](android/README.ko.md) · [Français](android/README.fr.md) · [Español](android/README.es.md) |
+| Validation Android | [English](android/VERIFICATION.md) · [简体中文](android/VERIFICATION.zh.md) · [繁體中文](android/VERIFICATION.zh-Hant.md) · [日本語](android/VERIFICATION.ja.md) · [한국어](android/VERIFICATION.ko.md) · [Français](android/VERIFICATION.fr.md) · [Español](android/VERIFICATION.es.md) |
+| Client iPhone et iPad | [English](ios/README.md) · [简体中文](ios/README.zh.md) · [繁體中文](ios/README.zh-Hant.md) · [日本語](ios/README.ja.md) · [한국어](ios/README.ko.md) · [Français](ios/README.fr.md) · [Español](ios/README.es.md) |
+| Extension de navigateur RYM | [English](extensions/rym/README.md) · [简体中文](extensions/rym/README.zh.md) · [繁體中文](extensions/rym/README.zh-Hant.md) · [日本語](extensions/rym/README.ja.md) · [한국어](extensions/rym/README.ko.md) · [Français](extensions/rym/README.fr.md) · [Español](extensions/rym/README.es.md) |
+| Régressions des listes dans le navigateur | [English](cloud/web/test/browser/README.md) · [简体中文](cloud/web/test/browser/README.zh.md) · [繁體中文](cloud/web/test/browser/README.zh-Hant.md) · [日本語](cloud/web/test/browser/README.ja.md) · [한국어](cloud/web/test/browser/README.ko.md) · [Français](cloud/web/test/browser/README.fr.md) · [Español](cloud/web/test/browser/README.es.md) |
+| Captures et reproduction | [English](docs/images/README.md) · [简体中文](docs/images/README.zh.md) · [繁體中文](docs/images/README.zh-Hant.md) · [日本語](docs/images/README.ja.md) · [한국어](docs/images/README.ko.md) · [Français](docs/images/README.fr.md) · [Español](docs/images/README.es.md) |
 
 ## Licence
 

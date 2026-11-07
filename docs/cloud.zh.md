@@ -125,9 +125,11 @@ Workers 无法访问家中电脑目录、常驻等待文件事件、转码、运
 
 Cloudflare：
 
+使用[安装与部署](install.zh.md)中已有的主 Worker 私有配置 `wrangler.local.jsonc`。它包含部署的实际资源 ID；公开模板只有占位值。若私有配置位于其他路径，请把 `--config` 参数改为该路径。
+
 ```bash
 cd cloud/worker
-npx wrangler tail
+npx wrangler tail --config wrangler.local.jsonc
 npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc \
   --command "SELECT COUNT(*) AS albums FROM albums"
 ```

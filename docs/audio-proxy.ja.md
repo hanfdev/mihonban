@@ -40,10 +40,12 @@ npx wrangler deploy
 
 ## 2. メイン Worker の設定
 
+[インストールとデプロイ](install.ja.md)で作成した、メイン Worker の既存の非公開設定 `wrangler.local.jsonc` を使用してください。このファイルにはデプロイ先の実際のリソース ID が入り、公開テンプレートはプレースホルダーのままです。非公開設定のパスが異なる場合は、そのパスを `--config` に指定してください。
+
 ```bash
 cd ../worker
-npx wrangler secret put STREAM_PROXY_SECRET
-npx wrangler deploy
+npx wrangler secret put STREAM_PROXY_SECRET --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 `PROXY_SECRET`に使ったのとまったく同じ秘密を貼り付けます。

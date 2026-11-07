@@ -143,8 +143,8 @@ npx wrangler d1 execute mihonban --remote \
 
 ## 4. 設定とシークレットの復元
 
-1. 新しい`APP_PASSWORD`、`ADMIN_PASSWORD`、`SESSION_SECRET`、`COMPANION_KEY`秘密を備えたメインWorkerを展開する。
-2. 新しい管理者パスワードでログインします。
+1. `APP_PASSWORD`、`ADMIN_PASSWORD`、`SESSION_SECRET` を設定してメイン Worker をデプロイします。ローカルのコンパニオンが接続する場合にだけ `COMPANION_KEY` を追加してください。
+2. 新規の移行先では、新しい `ADMIN_PASSWORD` でログインします。移行先の管理画面ですでに管理者パスワードを保存している場合は、その既存パスワードを使用してください。保存されたハッシュが環境シークレットより優先されます。変更が必要なら、ログイン後に管理画面で変更します。
 3. 管理者→バックアップ設定→古いJSONを取り込む。
 4. すべてのストレージおよびR2構成をテストする。
 5. 外部オーディオプロキシを使用する場合、メインWorkerに`STREAM_PROXY_SECRET`を設定し、プロキシWorkerの`PROXY_SECRET`と同じ値を設定します。

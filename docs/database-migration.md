@@ -143,8 +143,8 @@ For the same R2 bucket, add `--include-cache`; omit it for a new bucket.
 
 ## 4. Restore configuration and secrets
 
-1. Deploy the main Worker with new `APP_PASSWORD`, `ADMIN_PASSWORD`, `SESSION_SECRET`, and `COMPANION_KEY` secrets.
-2. Log in using the new admin password.
+1. Deploy the main Worker with `APP_PASSWORD`, `ADMIN_PASSWORD` and `SESSION_SECRET` secrets. Add `COMPANION_KEY` only if a local companion will use the deployment.
+2. On a fresh target, log in with the new `ADMIN_PASSWORD`. If the target already has an administrator password saved in Admin, use that existing password: its stored hash takes precedence over the environment secret. Change it through Admin after signing in if needed.
 3. Admin → Backup settings → import the old JSON.
 4. Test every storage and R2 configuration.
 5. If using the external audio proxy, set `STREAM_PROXY_SECRET` on the main Worker and the same value as `PROXY_SECRET` on the proxy Worker.

@@ -125,9 +125,11 @@ Workers は自宅 PC のフォルダーへアクセスできず、ファイル�
 
 Cloudflare:
 
+[インストールとデプロイ](install.ja.md)で作成した、メイン Worker の既存の非公開設定 `wrangler.local.jsonc` を使用してください。このファイルにはデプロイ先の実際のリソース ID が入り、公開テンプレートはプレースホルダーのままです。非公開設定のパスが異なる場合は、そのパスを `--config` に指定してください。
+
 ```bash
 cd cloud/worker
-npx wrangler tail
+npx wrangler tail --config wrangler.local.jsonc
 npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc \
   --command "SELECT COUNT(*) AS albums FROM albums"
 ```

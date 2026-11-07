@@ -125,9 +125,11 @@ Workers ne peut pas accéder aux dossiers d’un ordinateur personnel, rester r�
 
 Cloudflare :
 
+Utilisez le fichier privé existant du Worker principal, `wrangler.local.jsonc`, décrit dans [Installation et déploiement](install.fr.md). Il contient les véritables identifiants des ressources du déploiement ; le modèle public ne contient que des valeurs fictives. Si votre fichier privé se trouve ailleurs, indiquez ce chemin avec `--config`.
+
 ```bash
 cd cloud/worker
-npx wrangler tail
+npx wrangler tail --config wrangler.local.jsonc
 npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc \
   --command "SELECT COUNT(*) AS albums FROM albums"
 ```

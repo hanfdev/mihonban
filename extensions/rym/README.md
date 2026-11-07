@@ -1,5 +1,7 @@
 # Mihonban RYM browser tool
 
+[English](README.md) · [简体中文](README.zh.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Español](README.es.md)
+
 This optional Chrome/Edge Manifest V3 extension sends release metadata from RYM to an existing Mihonban library. Version 1.1.0 also provides a user-started queue that refreshes ratings and rating counts for albums with an existing source link.
 
 ## Build and install

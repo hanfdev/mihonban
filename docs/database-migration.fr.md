@@ -143,8 +143,8 @@ Pour le même R2 seau, ajoutez `--include-cache` ; omettez pour un nouveau seau.
 
 ## 4. Restauration de la configuration et des secrets
 
-1. Déployer la Worker principale avec de nouveaux secrets `APP_PASSWORD`, `ADMIN_PASSWORD`, `SESSION_SECRET` et `COMPANION_KEY`.
-2. Connectez-vous avec le nouveau mot de passe administrateur.
+1. Déployez le Worker principal avec les secrets `APP_PASSWORD`, `ADMIN_PASSWORD` et `SESSION_SECRET`. Ajoutez `COMPANION_KEY` uniquement si un compagnon local utilisera ce déploiement.
+2. Sur une cible neuve, connectez-vous avec le nouvel `ADMIN_PASSWORD`. Si un mot de passe administrateur a déjà été enregistré dans l’interface Admin de la cible, utilisez ce mot de passe existant : son hachage enregistré prévaut sur le secret d’environnement. Modifiez-le dans Admin après connexion si nécessaire.
 3. Paramètres d’administration → de sauvegarde → importer l’ancien JSON.
 4. Tester chaque configuration de stockage et R2.
 5. Si vous utilisez le proxy audio externe, réglez `STREAM_PROXY_SECRET` sur le Worker principal et la même valeur que `PROXY_SECRET` sur le Worker proxy.

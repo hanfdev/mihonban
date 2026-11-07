@@ -1,5 +1,7 @@
 # Android validation
 
+[English](VERIFICATION.md) · [简体中文](VERIFICATION.zh.md) · [繁體中文](VERIFICATION.zh-Hant.md) · [日本語](VERIFICATION.ja.md) · [한국어](VERIFICATION.ko.md) · [Français](VERIFICATION.fr.md) · [Español](VERIFICATION.es.md)
+
 Current source version: 0.1.10 / version code 11. The toolchain is JDK 17, Gradle 8.9, Android Gradle Plugin 8.7.3, Kotlin 2.0.21, SDK 35 and Build Tools 35.0.0.
 
 ## Reproduce
@@ -21,7 +23,7 @@ Standard outputs are under `android/app/build/`:
 - `outputs/apk/debug/app-debug.apk`: development APK.
 - `outputs/apk/release/app-release-unsigned.apk`: minified APK requiring a release signature.
 
-The [Android workflow](../.github/workflows/android.yml) builds Debug and Release, runs JVM tests and lint, and runs a separate API 35 emulator job. It uploads APKs, reports and screenshots as CI artifacts. Generated outputs and local evidence are excluded from the source checkout.
+The [Android workflow](../.github/workflows/android.yml) builds Debug and Release, runs JVM tests and lint, and runs a separate API 35 emulator job. It uploads APKs, reports and screenshots as CI artifacts. Selected documentation screenshots are committed under `docs/images/`; full generated outputs and local test evidence remain outside version control.
 
 ## Recorded results
 

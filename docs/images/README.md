@@ -1,8 +1,8 @@
-# Documentation screenshots / 文档演示图
+# Documentation screenshots
+
+[English](README.md) · [简体中文](README.zh.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Español](README.es.md)
 
 These are captures of the actual Mihonban interfaces with fictional albums, artists, ratings and notes. Web and Android use original geometric cover artwork; iOS uses the app's built-in record placeholders. They contain no private collection or commercial album artwork. The Web, native Android and native iOS screenshots show separate clients; they are not design mockups.
-
-这些图片来自 Mihonban 的实际界面，使用虚构的音盘、艺人、评分与介绍。Web 和 Android 使用原创几何封面，iOS 使用应用内置的唱片占位图，不包含私人曲库或商业唱片封面。Web、原生 Android 与原生 iOS 分别标注，均非设计效果图。
 
 ## Image inventory
 
@@ -41,7 +41,7 @@ To refresh these images, capture the relevant pages from the current build, insp
 
 The Android examples come from the native UI fixture in [`NativeUiTest.kt`](../../android/app/src/androidTest/java/org/mihonban/android/NativeUiTest.kt), which supplies fictional catalog data and draws its own cover artwork with Android Canvas. The selected local originals are `android/build/screenshots/0110-08-library-overview.png` and `android/build/screenshots/018-player-tall.png`. They are representative captures from the versions listed above, rather than a claim that every client or current screen was recaptured together.
 
-See the [Android development guide](../../android/README.md) ([简体中文](../../android/README.zh.md)) for build and instrumented-test instructions. Only the selected compressed documentation images in this directory are committed; full test runs remain in the ignored Android build directory.
+See the [Android development guide](../../android/README.md) for build and instrumented-test instructions. Only the selected compressed documentation images in this directory are committed; full test runs remain in the ignored Android build directory.
 
 ## iOS sources
 
@@ -56,4 +56,6 @@ The native iOS images come from the successful [iOS preview run #72](https://git
 
 The downloaded `iOS-screenshots-72` archive was verified against the SHA-256 digest published on the GitHub run: `34f1bb830c6453fe2074c77744ff23a34461b0fb32fb57688636e2542fae8457`. The attachment manifests record each test, device, timestamp and original filename; the iPad attachments are under `ipad/`. None of these selected attachments is associated with a test failure.
 
-To refresh the images, follow the [iOS development guide](../../ios/README.md) ([简体中文](../../ios/README.zh.md)) on macOS, run the corresponding tests in [`MihonbanUITests.swift`](../../ios/UITests/MihonbanUITests.swift), and export the result-bundle attachments with `xcrun xcresulttool export attachments`. The [iOS workflow](../../.github/workflows/mobile.yml) already performs this export and publishes an `iOS-screenshots-<run_number>` artifact. Choose the named attachments above, apply the image's recorded orientation, resize proportionally, and update the capture/version table. CI artifacts expire after their retention period; these selected WebP images remain in the repository.
+To refresh the images, follow the [iOS development guide](../../ios/README.md) on macOS, run the corresponding tests in [`MihonbanUITests.swift`](../../ios/UITests/MihonbanUITests.swift), and export the result-bundle attachments with `xcrun xcresulttool export attachments`. The [iOS workflow](../../.github/workflows/mobile.yml) already performs this export and publishes an `iOS-screenshots-<run_number>` artifact. Choose the named attachments above, apply the image's recorded orientation, resize proportionally, and update the capture/version table. CI artifacts expire after their retention period; these selected WebP images remain in the repository.
+
+[Back to project documentation](../../README.md)

@@ -63,9 +63,21 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-原生行動端改動需使用 JDK 17 和 Android SDK 35 執行 Android 單元測試、lint 與建置。iOS 建置及模擬器測試需要 macOS 和 Xcode，步驟見 [Android 指南](../android/README.md)與 [iOS 指南](../ios/README.md)。Android 和 iOS 工作流程在相關推送與提取要求上執行；Windows 檢查不能取代 iOS 模擬器驗證。
+原生行動端改動需使用 JDK 17 和 Android SDK 35 執行 Android 單元測試、lint 與建置。iOS 建置及模擬器測試需要 macOS 和 Xcode，步驟見 [Android 指南](../android/README.zh-Hant.md)與 [iOS 指南](../ios/README.zh-Hant.md)。Android 和 iOS 工作流程在相關推送與提取要求上執行；Windows 檢查不能取代 iOS 模擬器驗證。
 
 不要為了讓 CI 透過而新增被忽略的構建產物、本地 D1、資料庫或備份。
+
+## 維護完整七語文件
+
+每組公開維護的 Markdown 文件包含英文 `.md`，以及 `.zh.md`、`.zh-Hant.md`、`.ja.md`、`.ko.md`、`.fr.md` 和 `.es.md`。同一次改動應同步更新七語，完整保留操作說明、限制和範例。指令、API 名稱、路徑、版本號與歷史驗證日期應保持一致；有對應譯本時，連結應開啟同語言文件。
+
+從儲存庫根目錄執行文件檢查：
+
+```sh
+node tools/check-docs.mjs
+```
+
+檢查涵蓋語言檔案及導覽、標題和範例結構、本機檔案與標題錨點連結，包括截圖路徑。譯文含義仍需人工審閱。授權條款原文和被忽略的私人工作記錄不屬於需翻譯的公開指南。
 
 ## 遠端與 Fork
 

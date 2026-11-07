@@ -125,9 +125,11 @@ Workers cannot access a home computer's folders, stay resident for filesystem ev
 
 Cloudflare:
 
+Use the main Worker’s existing private `wrangler.local.jsonc` from [Install and deploy](install.md). It contains the deployment’s real resource IDs; the public template contains placeholders. If your private config has a different path, use that path with `--config`.
+
 ```bash
 cd cloud/worker
-npx wrangler tail
+npx wrangler tail --config wrangler.local.jsonc
 npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc \
   --command "SELECT COUNT(*) AS albums FROM albums"
 ```

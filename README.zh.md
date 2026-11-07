@@ -6,7 +6,7 @@ Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。�
 
 ## 界面预览
 
-以下为实际应用界面，使用虚构演示数据、原创示例封面或内置封面占位图。[截图说明](docs/images/README.md)。
+以下为实际应用界面，使用虚构演示数据、原创示例封面或内置封面占位图。[截图说明](docs/images/README.zh.md)。
 
 ![Web 音盘库](docs/images/web-library-zh.webp)
 
@@ -39,7 +39,7 @@ Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。�
 - 原生支持有顺序的专辑多艺人署名与单曲合作艺人覆盖，每位艺人均可独立搜索、进入主页并从播放器跳转
 - 听众与管理员双口令，以及可选的免密只读访客模式
 - 播放队列、移动端上一首/播放暂停/下一首完整控制、手势安全首播、随机/循环、Range 拖动和系统媒体控制
-- `desktop/` 目录下的原生 Windows 桌面客户端（egui + Rodio），以免安装便携 exe 发布于 [Releases 页面](https://github.com/hanfdev/mihonban/releases)
+- [`desktop/`](desktop/README.zh.md) 目录下的原生 Windows 桌面客户端（egui + Rodio），以免安装便携 exe 发布于 [Releases 页面](https://github.com/hanfdev/mihonban/releases)
 - [`android/`](android/README.zh.md) 目录下的原生 Android 客户端（Kotlin + Jetpack Compose + Media3），支持后台播放、离线下载和原生管理界面
 - [`ios/`](ios/README.zh.md) 目录下的原生 iPhone／iPad 客户端（SwiftUI + SFBAudioEngine），支持后台播放、下载及手机和平板布局
 - 命名 OneDrive、WebDAV、Google Drive，以及仅 Node 支持的本地文件夹后端
@@ -150,6 +150,7 @@ mihonban cloud sync             上传并登记本机专辑
 mihonban cloud pull             把网页导入拉回本机
 mihonban rym parse|match|write  处理手动保存的 RYM HTML
 
+node tools/check-docs.mjs
 cd cloud/worker && npm test
 cd cloud/proxy-worker && npm test
 cd cloud/web && npm test && npm run build
@@ -177,6 +178,15 @@ python -m pytest -q
 | 纯 Cloudflare 托管 | [English](docs/serverless-hosting.md) · [简体中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
 | 可选音源代理 | [English](docs/audio-proxy.md) · [简体中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
 | 安全发布代码 | [English](docs/github-publish.md) · [简体中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
+| Windows 桌面客户端 | [English](desktop/README.md) · [简体中文](desktop/README.zh.md) · [繁體中文](desktop/README.zh-Hant.md) · [日本語](desktop/README.ja.md) · [한국어](desktop/README.ko.md) · [Français](desktop/README.fr.md) · [Español](desktop/README.es.md) |
+| 原生客户端 API 兼容约定 | [English](desktop/API_COMPATIBILITY.md) · [简体中文](desktop/API_COMPATIBILITY.zh.md) · [繁體中文](desktop/API_COMPATIBILITY.zh-Hant.md) · [日本語](desktop/API_COMPATIBILITY.ja.md) · [한국어](desktop/API_COMPATIBILITY.ko.md) · [Français](desktop/API_COMPATIBILITY.fr.md) · [Español](desktop/API_COMPATIBILITY.es.md) |
+| 音频跳转回归测试样本 | [English](desktop/tests/fixtures/README.md) · [简体中文](desktop/tests/fixtures/README.zh.md) · [繁體中文](desktop/tests/fixtures/README.zh-Hant.md) · [日本語](desktop/tests/fixtures/README.ja.md) · [한국어](desktop/tests/fixtures/README.ko.md) · [Français](desktop/tests/fixtures/README.fr.md) · [Español](desktop/tests/fixtures/README.es.md) |
+| Android 客户端 | [English](android/README.md) · [简体中文](android/README.zh.md) · [繁體中文](android/README.zh-Hant.md) · [日本語](android/README.ja.md) · [한국어](android/README.ko.md) · [Français](android/README.fr.md) · [Español](android/README.es.md) |
+| Android 验证记录 | [English](android/VERIFICATION.md) · [简体中文](android/VERIFICATION.zh.md) · [繁體中文](android/VERIFICATION.zh-Hant.md) · [日本語](android/VERIFICATION.ja.md) · [한국어](android/VERIFICATION.ko.md) · [Français](android/VERIFICATION.fr.md) · [Español](android/VERIFICATION.es.md) |
+| iPhone 与 iPad 客户端 | [English](ios/README.md) · [简体中文](ios/README.zh.md) · [繁體中文](ios/README.zh-Hant.md) · [日本語](ios/README.ja.md) · [한국어](ios/README.ko.md) · [Français](ios/README.fr.md) · [Español](ios/README.es.md) |
+| RYM 浏览器扩展 | [English](extensions/rym/README.md) · [简体中文](extensions/rym/README.zh.md) · [繁體中文](extensions/rym/README.zh-Hant.md) · [日本語](extensions/rym/README.ja.md) · [한국어](extensions/rym/README.ko.md) · [Français](extensions/rym/README.fr.md) · [Español](extensions/rym/README.es.md) |
+| 浏览器列表回归测试 | [English](cloud/web/test/browser/README.md) · [简体中文](cloud/web/test/browser/README.zh.md) · [繁體中文](cloud/web/test/browser/README.zh-Hant.md) · [日本語](cloud/web/test/browser/README.ja.md) · [한국어](cloud/web/test/browser/README.ko.md) · [Français](cloud/web/test/browser/README.fr.md) · [Español](cloud/web/test/browser/README.es.md) |
+| 截图来源与重拍方法 | [English](docs/images/README.md) · [简体中文](docs/images/README.zh.md) · [繁體中文](docs/images/README.zh-Hant.md) · [日本語](docs/images/README.ja.md) · [한국어](docs/images/README.ko.md) · [Français](docs/images/README.fr.md) · [Español](docs/images/README.es.md) |
 
 ## 许可证
 

@@ -132,8 +132,8 @@ npx wrangler d1 execute mihonban --remote \
 
 ## 4. 恢复设置和 secrets
 
-1. 新主 Worker 配置新的 `APP_PASSWORD`、`ADMIN_PASSWORD`、`SESSION_SECRET`、`COMPANION_KEY`。
-2. 用新管理员口令登录。
+1. 为主 Worker 配置 `APP_PASSWORD`、`ADMIN_PASSWORD` 和 `SESSION_SECRET` 后部署。仅在本机伴侣需要访问该部署时添加 `COMPANION_KEY`。
+2. 全新目标使用新的 `ADMIN_PASSWORD` 登录。若目标已有通过管理页面保存的管理员口令，应使用该现有口令：数据库中的口令哈希优先于环境 secret。需要更改时，登录后在管理页面修改。
 3. 管理 → 设置备份 → 导入旧 JSON。
 4. 逐个测试存储和 R2。
 5. 使用外部音源代理时，主 Worker 设置 `STREAM_PROXY_SECRET`，代理 Worker 设置相同值为 `PROXY_SECRET`。

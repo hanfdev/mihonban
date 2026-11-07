@@ -63,9 +63,21 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-Para cambios móviles nativos, ejecuta las pruebas JVM, lint y compilaciones Android con JDK 17 y Android SDK 35. Las compilaciones y pruebas del simulador iOS requieren macOS y Xcode; consulta las guías de [Android](../android/README.md) e [iOS](../ios/README.md). Los workflows se ejecutan en los push y pull requests correspondientes. Las comprobaciones de Windows no sustituyen las pruebas del simulador iOS.
+Para cambios móviles nativos, ejecuta las pruebas JVM, lint y compilaciones Android con JDK 17 y Android SDK 35. Las compilaciones y pruebas del simulador iOS requieren macOS y Xcode; consulta las guías de [Android](../android/README.es.md) e [iOS](../ios/README.es.md). Los workflows se ejecutan en los push y pull requests correspondientes. Las comprobaciones de Windows no sustituyen las pruebas del simulador iOS.
 
 No añadas la salida de compilación ignorada, el estado local de D1, bases de datos o copias de seguridad solo para que el CI pase.
+
+## Mantener los siete idiomas
+
+Cada guía Markdown pública mantenida incluye un archivo inglés `.md` y las versiones `.zh.md`, `.zh-Hant.md`, `.ja.md`, `.ko.md`, `.fr.md` y `.es.md`. Actualiza las siete en el mismo cambio, conservando todas las instrucciones, limitaciones y ejemplos. Mantén coherentes los comandos, nombres de API, rutas, versiones y fechas históricas de verificación; enlaza a la versión del mismo idioma cuando exista.
+
+Ejecuta la comprobación documental desde la raíz del repositorio:
+
+```sh
+node tools/check-docs.mjs
+```
+
+Comprueba los archivos de idiomas, la navegación, la estructura de títulos y ejemplos, y los enlaces a archivos locales y títulos, incluidas las capturas. Revisa el significado de las traducciones por separado. Los textos originales de las licencias y las notas privadas ignoradas no son guías públicas que deban traducirse.
 
 ## Remotes y forks
 

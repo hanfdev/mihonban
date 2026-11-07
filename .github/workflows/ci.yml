@@ -9,6 +9,16 @@ permissions:
   contents: read
 
 jobs:
+  docs:
+    name: Documentation languages and links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node tools/check-docs.mjs
+
   python:
     name: Python pipeline
     runs-on: ubuntu-latest

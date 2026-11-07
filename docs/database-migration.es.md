@@ -143,8 +143,8 @@ Para el mismo cubo R2, añade `--include-cache`; omitítelo y pon un cubo nuevo.
 
 ## 4. Restaurar configuración y secretos
 
-1. Desplegar el Worker principal con nuevos secretos de `APP_PASSWORD`, `ADMIN_PASSWORD`, `SESSION_SECRET` y `COMPANION_KEY`.
-2. Iniciar sesión usando la nueva contraseña de administrador.
+1. Despliega el Worker principal con los secretos `APP_PASSWORD`, `ADMIN_PASSWORD` y `SESSION_SECRET`. Añade `COMPANION_KEY` solo si un acompañante local utilizará el despliegue.
+2. En un destino nuevo, inicia sesión con el nuevo `ADMIN_PASSWORD`. Si el destino ya tiene una contraseña de administrador guardada en Admin, utiliza esa contraseña existente: su hash almacenado tiene prioridad sobre el secreto de entorno. Si necesitas cambiarla, hazlo en Admin después de iniciar sesión.
 3. Configuración de administrador → copia de seguridad → importar el JSON antiguo.
 4. Prueba cada almacenamiento y configuración R2.
 5. Si usas el proxy de audio externo, establece `STREAM_PROXY_SECRET` en la Worker principal y el mismo valor que `PROXY_SECRET` en la Worker proxy.

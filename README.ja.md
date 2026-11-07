@@ -6,7 +6,7 @@ Mihonban は、レスポンシブな Web プレーヤーを備えた、個人向
 
 ## 画面プレビュー
 
-架空のデモデータと、オリジナルのサンプルカバーまたは内蔵の代替カバー画像を使った、実際のアプリ画面です。[撮影について](docs/images/README.md)。
+架空のデモデータと、オリジナルのサンプルカバーまたは内蔵の代替カバー画像を使った、実際のアプリ画面です。[撮影について](docs/images/README.ja.md)。
 
 ![Web ライブラリ](docs/images/web-library.webp)
 
@@ -39,9 +39,9 @@ Mihonban は、レスポンシブな Web プレーヤーを備えた、個人向
 - アルバムの順序付き複数アーティスト表記と曲ごとのコラボレーション表記に対応し、各アーティストを個別に検索・表示・プレーヤーから移動可能
 - リスナー用・管理者用パスワードと、任意で有効にできるパスワード不要の読み取り専用ゲストモード
 - 永続的な再生キュー、モバイルの前の曲／再生・一時停止／次の曲の完全な操作、ユーザー操作内で開始する再生、シャッフル／リピート、Range シーク、Media Session
-- `desktop/` にあるネイティブ Windows デスクトップクライアント（egui + Rodio）。インストール不要のポータブル exe として [Releases ページ](https://github.com/hanfdev/mihonban/releases) で配布
-- [`android/`](android/README.md) のネイティブ Android クライアント（Kotlin + Jetpack Compose + Media3）。バックグラウンド再生、オフライン保存、管理画面に対応
-- [`ios/`](ios/README.md) のネイティブ iPhone／iPad クライアント（SwiftUI + SFBAudioEngine）。バックグラウンド再生、ダウンロード、両端末向けレイアウトに対応
+- [`desktop/`](desktop/README.ja.md) にあるネイティブ Windows デスクトップクライアント（egui + Rodio）。インストール不要のポータブル exe として [Releases ページ](https://github.com/hanfdev/mihonban/releases) で配布
+- [`android/`](android/README.ja.md) のネイティブ Android クライアント（Kotlin + Jetpack Compose + Media3）。バックグラウンド再生、オフライン保存、管理画面に対応
+- [`ios/`](ios/README.ja.md) のネイティブ iPhone／iPad クライアント（SwiftUI + SFBAudioEngine）。バックグラウンド再生、ダウンロード、両端末向けレイアウトに対応
 - OneDrive、WebDAV、Google Drive、Node 専用ローカルフォルダーを名前付きストレージとして管理
 - カバー、ギャラリー、アーティスト画像を配信し、自動復旧できる任意の R2 イメージミラー
 - Discogs API からのインポートと、保存済み HTML または任意の Chrome／Edge 拡張機能による RYM 更新。手動開始の評価一括更新にも対応
@@ -150,6 +150,7 @@ mihonban cloud sync             upload/register local albums
 mihonban cloud pull             pull web imports back to the local library
 mihonban rym parse|match|write  process manually saved RYM HTML
 
+node tools/check-docs.mjs
 cd cloud/worker && npm test
 cd cloud/proxy-worker && npm test
 cd cloud/web && npm test && npm run build
@@ -177,6 +178,15 @@ python -m pytest -q
 | サーバーレスホスティング | [English](docs/serverless-hosting.md) · [简体中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
 | 任意の音声プロキシ | [English](docs/audio-proxy.md) · [简体中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
 | 安全な公開手順 | [English](docs/github-publish.md) · [简体中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
+| Windows デスクトップクライアント | [English](desktop/README.md) · [简体中文](desktop/README.zh.md) · [繁體中文](desktop/README.zh-Hant.md) · [日本語](desktop/README.ja.md) · [한국어](desktop/README.ko.md) · [Français](desktop/README.fr.md) · [Español](desktop/README.es.md) |
+| ネイティブクライアントの API 互換性 | [English](desktop/API_COMPATIBILITY.md) · [简体中文](desktop/API_COMPATIBILITY.zh.md) · [繁體中文](desktop/API_COMPATIBILITY.zh-Hant.md) · [日本語](desktop/API_COMPATIBILITY.ja.md) · [한국어](desktop/API_COMPATIBILITY.ko.md) · [Français](desktop/API_COMPATIBILITY.fr.md) · [Español](desktop/API_COMPATIBILITY.es.md) |
+| 音声シークの回帰テストデータ | [English](desktop/tests/fixtures/README.md) · [简体中文](desktop/tests/fixtures/README.zh.md) · [繁體中文](desktop/tests/fixtures/README.zh-Hant.md) · [日本語](desktop/tests/fixtures/README.ja.md) · [한국어](desktop/tests/fixtures/README.ko.md) · [Français](desktop/tests/fixtures/README.fr.md) · [Español](desktop/tests/fixtures/README.es.md) |
+| Android クライアント | [English](android/README.md) · [简体中文](android/README.zh.md) · [繁體中文](android/README.zh-Hant.md) · [日本語](android/README.ja.md) · [한국어](android/README.ko.md) · [Français](android/README.fr.md) · [Español](android/README.es.md) |
+| Android の検証記録 | [English](android/VERIFICATION.md) · [简体中文](android/VERIFICATION.zh.md) · [繁體中文](android/VERIFICATION.zh-Hant.md) · [日本語](android/VERIFICATION.ja.md) · [한국어](android/VERIFICATION.ko.md) · [Français](android/VERIFICATION.fr.md) · [Español](android/VERIFICATION.es.md) |
+| iPhone / iPad クライアント | [English](ios/README.md) · [简体中文](ios/README.zh.md) · [繁體中文](ios/README.zh-Hant.md) · [日本語](ios/README.ja.md) · [한국어](ios/README.ko.md) · [Français](ios/README.fr.md) · [Español](ios/README.es.md) |
+| RYM ブラウザー拡張機能 | [English](extensions/rym/README.md) · [简体中文](extensions/rym/README.zh.md) · [繁體中文](extensions/rym/README.zh-Hant.md) · [日本語](extensions/rym/README.ja.md) · [한국어](extensions/rym/README.ko.md) · [Français](extensions/rym/README.fr.md) · [Español](extensions/rym/README.es.md) |
+| ブラウザーの一覧回帰テスト | [English](cloud/web/test/browser/README.md) · [简体中文](cloud/web/test/browser/README.zh.md) · [繁體中文](cloud/web/test/browser/README.zh-Hant.md) · [日本語](cloud/web/test/browser/README.ja.md) · [한국어](cloud/web/test/browser/README.ko.md) · [Français](cloud/web/test/browser/README.fr.md) · [Español](cloud/web/test/browser/README.es.md) |
+| スクリーンショットと再撮影 | [English](docs/images/README.md) · [简体中文](docs/images/README.zh.md) · [繁體中文](docs/images/README.zh-Hant.md) · [日本語](docs/images/README.ja.md) · [한국어](docs/images/README.ko.md) · [Français](docs/images/README.fr.md) · [Español](docs/images/README.es.md) |
 
 ## ライセンス
 

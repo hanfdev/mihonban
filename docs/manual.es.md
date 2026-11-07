@@ -27,7 +27,7 @@ Las contraseñas guardadas en Admin anulan los valores de arranque del entorno d
 
 ## Reproducción e interacción móvil
 
-La página de álbum Web reúne la portada, los metadatos, las pistas y los controles de reproducción. Esta captura utiliza datos ficticios y portadas originales de demostración. [Detalles de las capturas](images/README.md).
+La página de álbum Web reúne la portada, los metadatos, las pistas y los controles de reproducción. Esta captura utiliza datos ficticios y portadas originales de demostración. [Detalles de las capturas](images/README.es.md).
 
 ![Detalles del álbum en la Web](images/web-album.webp)
 

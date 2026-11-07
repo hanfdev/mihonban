@@ -63,9 +63,21 @@ cargo test --locked
 cargo build --release --locked
 ```
 
-モバイルの変更では JDK 17 と Android SDK 35 で Android の単体テスト、lint、ビルドを実行してください。iOS のビルドとシミュレータテストには macOS と Xcode が必要です。[Android](../android/README.md) と [iOS](../ios/README.md) の手順を参照してください。対応する push と pull request で各ワークフローが動作します。Windows の検査は iOS シミュレータ検証の代わりにはなりません。
+モバイルの変更では JDK 17 と Android SDK 35 で Android の単体テスト、lint、ビルドを実行してください。iOS のビルドとシミュレータテストには macOS と Xcode が必要です。[Android](../android/README.ja.md) と [iOS](../ios/README.ja.md) の手順を参照してください。対応する push と pull request で各ワークフローが動作します。Windows の検査は iOS シミュレータ検証の代わりにはなりません。
 
 CIパスを通すためだけに、無視されたビルド出力やローカルD1状態、データベース、バックアップを追加しないでください。
+
+## 7 言語の文書を維持する
+
+公開して保守する各 Markdown 文書には、英語の `.md` と `.zh.md`、`.zh-Hant.md`、`.ja.md`、`.ko.md`、`.fr.md`、`.es.md` を用意します。手順、制限、例を省略せず、7 言語を同じ変更で更新してください。コマンド、API 名、パス、バージョン番号、過去の検証日を一致させ、対応する翻訳があれば同じ言語の文書にリンクします。
+
+リポジトリのルートから文書チェックを実行します。
+
+```sh
+node tools/check-docs.mjs
+```
+
+言語ファイルとナビゲーション、見出しと例の構造、画像を含むローカルファイルと見出しアンカーへのリンクを検証します。翻訳の意味は別途レビューしてください。ライセンスの原文と Git 対象外の私的な作業メモは翻訳対象の公開ガイドではありません。
 
 ## remote と fork
 

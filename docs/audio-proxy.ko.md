@@ -40,10 +40,12 @@ npx wrangler deploy
 
 ## 2. 메인 Worker 설정
 
+[설치 및 배포](install.ko.md)에서 만든 메인 Worker의 기존 비공개 설정 `wrangler.local.jsonc`를 사용하세요. 이 파일에는 배포의 실제 리소스 ID가 들어 있고 공개 템플릿에는 자리표시자만 있습니다. 비공개 설정 경로가 다르면 해당 경로를 `--config`에 지정하세요.
+
 ```bash
 cd ../worker
-npx wrangler secret put STREAM_PROXY_SECRET
-npx wrangler deploy
+npx wrangler secret put STREAM_PROXY_SECRET --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 `PROXY_SECRET`에 사용된 똑같은 비밀을 붙여넣으세요.

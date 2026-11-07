@@ -143,8 +143,8 @@ npx wrangler d1 execute mihonban --remote \
 
 ## 4. 설정과 시크릿 복원
 
-1. 새로운 `APP_PASSWORD`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `COMPANION_KEY` 비밀을 가진 메인 Worker을 배치한다.
-2. 새 관리자 비밀번호로 로그인.
+1. `APP_PASSWORD`, `ADMIN_PASSWORD`, `SESSION_SECRET` 시크릿을 설정해 메인 Worker를 배포하세요. 로컬 동반 프로그램이 이 배포에 접속할 때만 `COMPANION_KEY`를 추가하세요.
+2. 새 대상에서는 새 `ADMIN_PASSWORD`로 로그인하세요. 대상의 관리 화면에서 이미 관리자 암호를 저장했다면 기존 암호를 사용해야 합니다. 저장된 해시가 환경 시크릿보다 우선합니다. 변경이 필요하면 로그인 후 관리 화면에서 변경하세요.
 3. 관리자 → 백업 설정 → 이전 JSON 가져오기.
 4. 모든 저장 공간과 R2 구성을 테스트합니다.
 5. 외부 오디오 프록시를 사용할 경우, 메인 Worker에 `STREAM_PROXY_SECRET`를 설정하고 프록시 Worker에서 `PROXY_SECRET` 값과 동일하게 설정하세요.

@@ -27,7 +27,7 @@ Les mots de passe enregistrés dans Admin dépassent les valeurs de démarrage d
 
 ## Lecture et interactions mobiles
 
-La page d’album Web réunit pochette, métadonnées, pistes et commandes de lecture. Cette capture utilise des données fictives et des pochettes originales de démonstration. [Détails des captures](images/README.md).
+La page d’album Web réunit pochette, métadonnées, pistes et commandes de lecture. Cette capture utilise des données fictives et des pochettes originales de démonstration. [Détails des captures](images/README.fr.md).
 
 ![Détails d’album Web](images/web-album.webp)
 

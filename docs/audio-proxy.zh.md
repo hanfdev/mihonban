@@ -40,10 +40,12 @@ npx wrangler deploy
 
 ## 2. 配置主 Worker
 
+使用[安装与部署](install.zh.md)中已有的主 Worker 私有配置 `wrangler.local.jsonc`。它包含部署的实际资源 ID；公开模板只有占位值。若私有配置位于其他路径，请把 `--config` 参数改为该路径。
+
 ```bash
 cd ../worker
-npx wrangler secret put STREAM_PROXY_SECRET
-npx wrangler deploy
+npx wrangler secret put STREAM_PROXY_SECRET --config wrangler.local.jsonc
+npx wrangler deploy --config wrangler.local.jsonc
 ```
 
 输入与 `PROXY_SECRET` 完全相同的值。

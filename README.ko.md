@@ -6,7 +6,7 @@ Mihonban은 반응형 웹 플레이어를 제공하는 개인용 셀프 호스�
 
 ## 화면 미리 보기
 
-가상의 데모 데이터와 직접 제작한 예시 표지 또는 기본 표지 이미지를 사용한 실제 앱 화면입니다. [촬영 안내](docs/images/README.md).
+가상의 데모 데이터와 직접 제작한 예시 표지 또는 기본 표지 이미지를 사용한 실제 앱 화면입니다. [촬영 안내](docs/images/README.ko.md).
 
 ![Web 라이브러리](docs/images/web-library.webp)
 
@@ -39,9 +39,9 @@ Mihonban은 반응형 웹 플레이어를 제공하는 개인용 셀프 호스�
 - 순서가 유지되는 앨범 다중 아티스트 크레딧과 트랙별 협업 아티스트 재정의, 아티스트별 검색·페이지·플레이어 링크
 - 청취자 및 관리자 비밀번호와 선택적으로 사용할 수 있는 비밀번호 없는 읽기 전용 게스트 모드
 - 영구 재생 대기열, 모바일 이전 곡／재생·일시 정지／다음 곡 전체 제어, 사용자 동작 안에서 시작되는 재생, 셔플／반복, Range 탐색, Media Session 제어
-- `desktop/`의 네이티브 Windows 데스크톱 클라이언트(egui + Rodio), 설치가 필요 없는 포터블 exe로 [Releases 페이지](https://github.com/hanfdev/mihonban/releases)에서 배포
-- [`android/`](android/README.md)의 네이티브 Android 클라이언트(Kotlin + Jetpack Compose + Media3): 백그라운드 재생, 오프라인 다운로드, 기본 관리 화면 지원
-- [`ios/`](ios/README.md)의 네이티브 iPhone／iPad 클라이언트(SwiftUI + SFBAudioEngine): 백그라운드 재생, 다운로드, 휴대폰 및 태블릿 레이아웃 지원
+- [`desktop/`](desktop/README.ko.md)의 네이티브 Windows 데스크톱 클라이언트(egui + Rodio), 설치가 필요 없는 포터블 exe로 [Releases 페이지](https://github.com/hanfdev/mihonban/releases)에서 배포
+- [`android/`](android/README.ko.md)의 네이티브 Android 클라이언트(Kotlin + Jetpack Compose + Media3): 백그라운드 재생, 오프라인 다운로드, 기본 관리 화면 지원
+- [`ios/`](ios/README.ko.md)의 네이티브 iPhone／iPad 클라이언트(SwiftUI + SFBAudioEngine): 백그라운드 재생, 다운로드, 휴대폰 및 태블릿 레이아웃 지원
 - OneDrive, WebDAV, Google Drive와 Node 전용 로컬 폴더를 이름 있는 저장소로 관리
 - 표지, 갤러리, 아티스트 이미지를 위한 자동 복구 R2 이미지 미러
 - Discogs API 가져오기 및 저장된 HTML이나 선택적 Chrome／Edge 확장을 통한 RYM 갱신, 사용자가 시작하는 평점 일괄 갱신 지원
@@ -150,6 +150,7 @@ mihonban cloud sync             upload/register local albums
 mihonban cloud pull             pull web imports back to the local library
 mihonban rym parse|match|write  process manually saved RYM HTML
 
+node tools/check-docs.mjs
 cd cloud/worker && npm test
 cd cloud/proxy-worker && npm test
 cd cloud/web && npm test && npm run build
@@ -177,6 +178,15 @@ python -m pytest -q
 | 서버리스 호스팅 | [English](docs/serverless-hosting.md) · [简体中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
 | 선택적 오디오 프록시 | [English](docs/audio-proxy.md) · [简体中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
 | 안전한 공개 절차 | [English](docs/github-publish.md) · [简体中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
+| Windows 데스크톱 클라이언트 | [English](desktop/README.md) · [简体中文](desktop/README.zh.md) · [繁體中文](desktop/README.zh-Hant.md) · [日本語](desktop/README.ja.md) · [한국어](desktop/README.ko.md) · [Français](desktop/README.fr.md) · [Español](desktop/README.es.md) |
+| 네이티브 클라이언트 API 호환 규약 | [English](desktop/API_COMPATIBILITY.md) · [简体中文](desktop/API_COMPATIBILITY.zh.md) · [繁體中文](desktop/API_COMPATIBILITY.zh-Hant.md) · [日本語](desktop/API_COMPATIBILITY.ja.md) · [한국어](desktop/API_COMPATIBILITY.ko.md) · [Français](desktop/API_COMPATIBILITY.fr.md) · [Español](desktop/API_COMPATIBILITY.es.md) |
+| 오디오 탐색 회귀 테스트 데이터 | [English](desktop/tests/fixtures/README.md) · [简体中文](desktop/tests/fixtures/README.zh.md) · [繁體中文](desktop/tests/fixtures/README.zh-Hant.md) · [日本語](desktop/tests/fixtures/README.ja.md) · [한국어](desktop/tests/fixtures/README.ko.md) · [Français](desktop/tests/fixtures/README.fr.md) · [Español](desktop/tests/fixtures/README.es.md) |
+| Android 클라이언트 | [English](android/README.md) · [简体中文](android/README.zh.md) · [繁體中文](android/README.zh-Hant.md) · [日本語](android/README.ja.md) · [한국어](android/README.ko.md) · [Français](android/README.fr.md) · [Español](android/README.es.md) |
+| Android 검증 기록 | [English](android/VERIFICATION.md) · [简体中文](android/VERIFICATION.zh.md) · [繁體中文](android/VERIFICATION.zh-Hant.md) · [日本語](android/VERIFICATION.ja.md) · [한국어](android/VERIFICATION.ko.md) · [Français](android/VERIFICATION.fr.md) · [Español](android/VERIFICATION.es.md) |
+| iPhone 및 iPad 클라이언트 | [English](ios/README.md) · [简体中文](ios/README.zh.md) · [繁體中文](ios/README.zh-Hant.md) · [日本語](ios/README.ja.md) · [한국어](ios/README.ko.md) · [Français](ios/README.fr.md) · [Español](ios/README.es.md) |
+| RYM 브라우저 확장 | [English](extensions/rym/README.md) · [简体中文](extensions/rym/README.zh.md) · [繁體中文](extensions/rym/README.zh-Hant.md) · [日本語](extensions/rym/README.ja.md) · [한국어](extensions/rym/README.ko.md) · [Français](extensions/rym/README.fr.md) · [Español](extensions/rym/README.es.md) |
+| 브라우저 목록 회귀 테스트 | [English](cloud/web/test/browser/README.md) · [简体中文](cloud/web/test/browser/README.zh.md) · [繁體中文](cloud/web/test/browser/README.zh-Hant.md) · [日本語](cloud/web/test/browser/README.ja.md) · [한국어](cloud/web/test/browser/README.ko.md) · [Français](cloud/web/test/browser/README.fr.md) · [Español](cloud/web/test/browser/README.es.md) |
+| 스크린샷 출처 및 재촬영 | [English](docs/images/README.md) · [简体中文](docs/images/README.zh.md) · [繁體中文](docs/images/README.zh-Hant.md) · [日本語](docs/images/README.ja.md) · [한국어](docs/images/README.ko.md) · [Français](docs/images/README.fr.md) · [Español](docs/images/README.es.md) |
 
 ## 라이선스
 

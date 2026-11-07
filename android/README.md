@@ -1,5 +1,7 @@
 # Mihonban for Android
 
+[English](README.md) · [简体中文](README.zh.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Español](README.es.md)
+
 A native Kotlin / Jetpack Compose client for the existing Mihonban server. No WebView is used. Android 8.0 (API 26) or newer is required.
 
 ## A look inside
@@ -18,7 +20,7 @@ HTTPS is recommended for remote servers. Local HTTP is supported for the existin
 
 ## Native features
 
-- Album grid and track lists, genre filtering, year/title/artist/rating sorting, whole-library search, multi-artist credits and artist discographies.
+- Album grid and track lists, genre filtering, year/title/artist/rating/recently-added sorting, whole-library search, multi-artist credits and artist discographies.
 - Album details, ratings, notes, related albums, gallery paging and pinch zoom, Android share sheet, shared album and track favorites.
 - Compact player and full player, seek, shuffle, repeat, editable queue, play next, sleep timer, audio focus and headphone disconnect handling.
 - Media3 foreground playback service with notification, headset and lock-screen controls. Playback continues when the UI is backgrounded; the queue restores paused after process restart.
@@ -27,7 +29,7 @@ HTTPS is recommended for remote servers. Local HTTP is supported for the existin
 - Server administration: guest access and module settings, named storage configuration/testing/write target, R2 configuration/testing, source inbox and scanning, listener/admin passphrase changes.
 - Web palette preserved: black-brown surfaces, warm ivory text, vermilion accents and serif headings. Touch targets, bottom navigation, scroll restoration, system back, rotation and Android insets use native Compose behavior.
 
-The catalog opens directly into albums or tracks. Its top app bar collapses on upward scroll and returns on downward scroll. Grid density is switchable, while genre and sort controls live in a dismissible bottom sheet. Search provides existing genres, recently added albums and result categories. Album details place artwork beside metadata and collect secondary actions in a menu. Tab state is saved separately for each server and access role.
+The catalog opens directly into albums or tracks. Its top app bar collapses on upward scroll and returns on downward scroll. Grid density is switchable, while genre and sort controls live in a dismissible bottom sheet. Search provides existing genres, recently added albums and result categories. Album details place artwork beside metadata and collect secondary actions in a menu. Tab state is saved separately for each server and access role. Recently added sorts by the original album creation time; editing ratings or other metadata does not move an old album to the front.
 
 Version 0.1.3 replaces inline description expansion with a dedicated reader. Album pages retain a three-line plain-text excerpt; the reader keeps its header and Close button fixed, offers Back to top, restores the album scroll position on closing and retains reading progress when reopened. CommonMark plus GFM tables/strikethrough render natively with selectable text, nested lists, blockquotes, links, code, dividers and standalone images. Wide tables/code scroll horizontally. Raw HTML remains inert text. The reader follows the Web palette and typography without a WebView.
 

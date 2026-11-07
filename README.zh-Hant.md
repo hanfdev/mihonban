@@ -6,7 +6,7 @@ Mihonban 是一套私有、自託管音樂曲庫和響應式網頁播放器。�
 
 ## 介面預覽
 
-以下為實際應用介面，使用虛構示範資料、原創範例封面或內建封面預設圖。[截圖說明](docs/images/README.md)。
+以下為實際應用介面，使用虛構示範資料、原創範例封面或內建封面預設圖。[截圖說明](docs/images/README.zh-Hant.md)。
 
 ![Web 音盤庫](docs/images/web-library.webp)
 
@@ -39,9 +39,9 @@ Mihonban 是一套私有、自託管音樂曲庫和響應式網頁播放器。�
 - 原生支援有順序的專輯多藝人署名與單曲合作藝人覆寫，每位藝人均可獨立搜尋、進入主頁並從播放器跳轉
 - 聽眾與管理員雙口令，以及可選的免密只讀訪客模式
 - 播放佇列、行動端上一首/播放暫停/下一首完整控制、手勢安全首播、隨機/迴圈、Range 拖動和系統媒體控制
-- `desktop/` 目錄下的原生 Windows 桌面客戶端（egui + Rodio），以免安裝可攜 exe 形式發佈於 [Releases 頁面](https://github.com/hanfdev/mihonban/releases)
-- [`android/`](android/README.md) 目錄下的原生 Android 客戶端（Kotlin + Jetpack Compose + Media3），支援背景播放、離線下載和原生管理介面
-- [`ios/`](ios/README.md) 目錄下的原生 iPhone／iPad 客戶端（SwiftUI + SFBAudioEngine），支援背景播放、下載及手機和平板版面
+- [`desktop/`](desktop/README.zh-Hant.md) 目錄下的原生 Windows 桌面客戶端（egui + Rodio），以免安裝可攜 exe 形式發佈於 [Releases 頁面](https://github.com/hanfdev/mihonban/releases)
+- [`android/`](android/README.zh-Hant.md) 目錄下的原生 Android 客戶端（Kotlin + Jetpack Compose + Media3），支援背景播放、離線下載和原生管理介面
+- [`ios/`](ios/README.zh-Hant.md) 目錄下的原生 iPhone／iPad 客戶端（SwiftUI + SFBAudioEngine），支援背景播放、下載及手機和平板版面
 - 命名 OneDrive、WebDAV、Google Drive，以及僅 Node 支援的本地資料夾後端
 - 可自動回源修復的 R2 圖片映象，用於封面、內頁和藝人頭像
 - Discogs 官方 API 匯入；RYM 支援儲存的 HTML 和可選 Chrome／Edge 擴充功能，包含手動啟動的評分批次更新
@@ -150,6 +150,7 @@ mihonban cloud sync             上傳並登記本機專輯
 mihonban cloud pull             把網頁匯入拉回本機
 mihonban rym parse|match|write  處理手動儲存的 RYM HTML
 
+node tools/check-docs.mjs
 cd cloud/worker && npm test
 cd cloud/proxy-worker && npm test
 cd cloud/web && npm test && npm run build
@@ -169,14 +170,23 @@ python -m pytest -q
 
 | 指南 | 語言版本 |
 |---|---|
-| 安裝與部署 | [English](docs/install.md) · [簡體中文](docs/install.zh.md) · [繁體中文](docs/install.zh-Hant.md) · [日本語](docs/install.ja.md) · [한국어](docs/install.ko.md) · [Français](docs/install.fr.md) · [Español](docs/install.es.md) |
-| 架構與執行模型 | [English](docs/cloud.md) · [簡體中文](docs/cloud.zh.md) · [繁體中文](docs/cloud.zh-Hant.md) · [日本語](docs/cloud.ja.md) · [한국어](docs/cloud.ko.md) · [Français](docs/cloud.fr.md) · [Español](docs/cloud.es.md) |
-| 日常使用手冊 | [English](docs/manual.md) · [簡體中文](docs/manual.zh.md) · [繁體中文](docs/manual.zh-Hant.md) · [日本語](docs/manual.ja.md) · [한국어](docs/manual.ko.md) · [Français](docs/manual.fr.md) · [Español](docs/manual.es.md) |
-| 資料庫遷移 | [English](docs/database-migration.md) · [簡體中文](docs/database-migration.zh.md) · [繁體中文](docs/database-migration.zh-Hant.md) · [日本語](docs/database-migration.ja.md) · [한국어](docs/database-migration.ko.md) · [Français](docs/database-migration.fr.md) · [Español](docs/database-migration.es.md) |
-| 多儲存與檔案遷移 | [English](docs/storage.md) · [簡體中文](docs/storage.zh.md) · [繁體中文](docs/storage.zh-Hant.md) · [日本語](docs/storage.ja.md) · [한국어](docs/storage.ko.md) · [Français](docs/storage.fr.md) · [Español](docs/storage.es.md) |
-| 純 Cloudflare 託管 | [English](docs/serverless-hosting.md) · [簡體中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
-| 可選音源代理 | [English](docs/audio-proxy.md) · [簡體中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
-| 安全釋出程式碼 | [English](docs/github-publish.md) · [簡體中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
+| 安裝與部署 | [English](docs/install.md) · [简体中文](docs/install.zh.md) · [繁體中文](docs/install.zh-Hant.md) · [日本語](docs/install.ja.md) · [한국어](docs/install.ko.md) · [Français](docs/install.fr.md) · [Español](docs/install.es.md) |
+| 架構與執行模型 | [English](docs/cloud.md) · [简体中文](docs/cloud.zh.md) · [繁體中文](docs/cloud.zh-Hant.md) · [日本語](docs/cloud.ja.md) · [한국어](docs/cloud.ko.md) · [Français](docs/cloud.fr.md) · [Español](docs/cloud.es.md) |
+| 日常使用手冊 | [English](docs/manual.md) · [简体中文](docs/manual.zh.md) · [繁體中文](docs/manual.zh-Hant.md) · [日本語](docs/manual.ja.md) · [한국어](docs/manual.ko.md) · [Français](docs/manual.fr.md) · [Español](docs/manual.es.md) |
+| 資料庫遷移 | [English](docs/database-migration.md) · [简体中文](docs/database-migration.zh.md) · [繁體中文](docs/database-migration.zh-Hant.md) · [日本語](docs/database-migration.ja.md) · [한국어](docs/database-migration.ko.md) · [Français](docs/database-migration.fr.md) · [Español](docs/database-migration.es.md) |
+| 多儲存與檔案遷移 | [English](docs/storage.md) · [简体中文](docs/storage.zh.md) · [繁體中文](docs/storage.zh-Hant.md) · [日本語](docs/storage.ja.md) · [한국어](docs/storage.ko.md) · [Français](docs/storage.fr.md) · [Español](docs/storage.es.md) |
+| 純 Cloudflare 託管 | [English](docs/serverless-hosting.md) · [简体中文](docs/serverless-hosting.zh.md) · [繁體中文](docs/serverless-hosting.zh-Hant.md) · [日本語](docs/serverless-hosting.ja.md) · [한국어](docs/serverless-hosting.ko.md) · [Français](docs/serverless-hosting.fr.md) · [Español](docs/serverless-hosting.es.md) |
+| 可選音源代理 | [English](docs/audio-proxy.md) · [简体中文](docs/audio-proxy.zh.md) · [繁體中文](docs/audio-proxy.zh-Hant.md) · [日本語](docs/audio-proxy.ja.md) · [한국어](docs/audio-proxy.ko.md) · [Français](docs/audio-proxy.fr.md) · [Español](docs/audio-proxy.es.md) |
+| 安全釋出程式碼 | [English](docs/github-publish.md) · [简体中文](docs/github-publish.zh.md) · [繁體中文](docs/github-publish.zh-Hant.md) · [日本語](docs/github-publish.ja.md) · [한국어](docs/github-publish.ko.md) · [Français](docs/github-publish.fr.md) · [Español](docs/github-publish.es.md) |
+| Windows 桌面用戶端 | [English](desktop/README.md) · [简体中文](desktop/README.zh.md) · [繁體中文](desktop/README.zh-Hant.md) · [日本語](desktop/README.ja.md) · [한국어](desktop/README.ko.md) · [Français](desktop/README.fr.md) · [Español](desktop/README.es.md) |
+| 原生用戶端 API 相容約定 | [English](desktop/API_COMPATIBILITY.md) · [简体中文](desktop/API_COMPATIBILITY.zh.md) · [繁體中文](desktop/API_COMPATIBILITY.zh-Hant.md) · [日本語](desktop/API_COMPATIBILITY.ja.md) · [한국어](desktop/API_COMPATIBILITY.ko.md) · [Français](desktop/API_COMPATIBILITY.fr.md) · [Español](desktop/API_COMPATIBILITY.es.md) |
+| 音訊跳轉迴歸測試樣本 | [English](desktop/tests/fixtures/README.md) · [简体中文](desktop/tests/fixtures/README.zh.md) · [繁體中文](desktop/tests/fixtures/README.zh-Hant.md) · [日本語](desktop/tests/fixtures/README.ja.md) · [한국어](desktop/tests/fixtures/README.ko.md) · [Français](desktop/tests/fixtures/README.fr.md) · [Español](desktop/tests/fixtures/README.es.md) |
+| Android 用戶端 | [English](android/README.md) · [简体中文](android/README.zh.md) · [繁體中文](android/README.zh-Hant.md) · [日本語](android/README.ja.md) · [한국어](android/README.ko.md) · [Français](android/README.fr.md) · [Español](android/README.es.md) |
+| Android 驗證記錄 | [English](android/VERIFICATION.md) · [简体中文](android/VERIFICATION.zh.md) · [繁體中文](android/VERIFICATION.zh-Hant.md) · [日本語](android/VERIFICATION.ja.md) · [한국어](android/VERIFICATION.ko.md) · [Français](android/VERIFICATION.fr.md) · [Español](android/VERIFICATION.es.md) |
+| iPhone 與 iPad 用戶端 | [English](ios/README.md) · [简体中文](ios/README.zh.md) · [繁體中文](ios/README.zh-Hant.md) · [日本語](ios/README.ja.md) · [한국어](ios/README.ko.md) · [Français](ios/README.fr.md) · [Español](ios/README.es.md) |
+| RYM 瀏覽器擴充功能 | [English](extensions/rym/README.md) · [简体中文](extensions/rym/README.zh.md) · [繁體中文](extensions/rym/README.zh-Hant.md) · [日本語](extensions/rym/README.ja.md) · [한국어](extensions/rym/README.ko.md) · [Français](extensions/rym/README.fr.md) · [Español](extensions/rym/README.es.md) |
+| 瀏覽器清單迴歸測試 | [English](cloud/web/test/browser/README.md) · [简体中文](cloud/web/test/browser/README.zh.md) · [繁體中文](cloud/web/test/browser/README.zh-Hant.md) · [日本語](cloud/web/test/browser/README.ja.md) · [한국어](cloud/web/test/browser/README.ko.md) · [Français](cloud/web/test/browser/README.fr.md) · [Español](cloud/web/test/browser/README.es.md) |
+| 截圖來源與重拍方式 | [English](docs/images/README.md) · [简体中文](docs/images/README.zh.md) · [繁體中文](docs/images/README.zh-Hant.md) · [日本語](docs/images/README.ja.md) · [한국어](docs/images/README.ko.md) · [Français](docs/images/README.fr.md) · [Español](docs/images/README.es.md) |
 
 ## 許可證
 

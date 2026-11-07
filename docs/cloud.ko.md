@@ -125,9 +125,11 @@ Workers는 가정용 컴퓨터의 폴더에 접근하거나 파일 시스템 이
 
 Cloudflare:
 
+[설치 및 배포](install.ko.md)에서 만든 메인 Worker의 기존 비공개 설정 `wrangler.local.jsonc`를 사용하세요. 이 파일에는 배포의 실제 리소스 ID가 들어 있고 공개 템플릿에는 자리표시자만 있습니다. 비공개 설정 경로가 다르면 해당 경로를 `--config`에 지정하세요.
+
 ```bash
 cd cloud/worker
-npx wrangler tail
+npx wrangler tail --config wrangler.local.jsonc
 npx wrangler d1 execute mihonban --remote --config wrangler.local.jsonc \
   --command "SELECT COUNT(*) AS albums FROM albums"
 ```
