@@ -50,7 +50,17 @@ final class PlayerTransitionTests: XCTestCase {
             actions.changed(distance)
             try await Task.sleep(for: .milliseconds(16))
         }
-        actions.ended(220, 280, 600)
+        let previewDistance = window.bounds.height * 0.88
+        actions.changed(previewDistance)
+        try await Task.sleep(for: .milliseconds(50))
+        let preview = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: preview)
+        attachment.name = "64-player-rounded-pull"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        actions.ended(previewDistance, previewDistance + 60, 600)
         try await Task.sleep(for: .milliseconds(900))
         XCTAssertTrue(model.player.isExpanded)
         for (name, values, expected) in [("cover", frames.cover, cover), ("heading", frames.heading, heading)] {
@@ -59,6 +69,7 @@ final class PlayerTransitionTests: XCTestCase {
                     abs(frame.width - expected.width), abs(frame.height - expected.height))
             }.max() ?? 0
             print("Player settlement: \(name) maximum local frame drift = \(drift) pt")
+            if drift > 1 { print("Player settlement frames: \(name) expected=\(expected), samples=\(values)") }
             XCTAssertLessThanOrEqual(drift, 1, "\(name) must keep the same size and local position through tap, swipe and completion")
         }
     }
@@ -122,6 +133,26 @@ final class PlayerTransitionTests: XCTestCase {
         }
     }
 
+    func testPlayerSurfaceRoundsOnlyItsTopCornersWhileAwayFromFullScreen() {
+        for size in [CGSize(width: 402, height: 874), CGSize(width: 1194, height: 834)] {
+            let bounds = CGRect(origin: .zero, size: size)
+            let top = CGPoint(x: 1, y: 1)
+            let bottom = CGPoint(x: 1, y: size.height - 1)
+            let expanded = PlayerSurfaceShape(progress: 1, travelHeight: size.height).path(in: bounds)
+            XCTAssertTrue(expanded.contains(top), "Full-screen corners must fill the canvas")
+            for pull: CGFloat in [8, 48, 120, 300] {
+                let shape = PlayerSurfaceShape(progress: 1 - pull / size.height, travelHeight: size.height)
+                let path = shape.path(in: bounds)
+                XCTAssertFalse(path.contains(top))
+                XCTAssertFalse(path.contains(CGPoint(x: size.width - 1, y: 1)))
+                XCTAssertTrue(path.contains(bottom), "Bottom corners remain square during travel")
+                XCTAssertTrue(path.contains(CGPoint(x: 1, y: 40)), "The radius must stay restrained")
+                XCTAssertTrue(path.contains(CGPoint(x: size.width / 2, y: 1)))
+                XCTAssertEqual(path.boundingRect, bounds)
+            }
+        }
+    }
+
     private final class Position { var y: CGFloat = 0 }
 
     private final class GestureDriver { var expand: PlayerDragActions? }
@@ -130,7 +161,7 @@ final class PlayerTransitionTests: XCTestCase {
         @Environment(\.expandPlayer) private var expand
         var body: some View {
             TabView {
-                Color.clear.safeAreaInset(edge: .bottom) { Color.clear.frame(height: 68) }
+                Theme.raised.safeAreaInset(edge: .bottom) { Color.clear.frame(height: 68) }
                     .tabItem { Label("Library", systemImage: "music.note") }
             }.onAppear { driver.expand = expand }
         }

@@ -21,8 +21,32 @@ struct PlayerTranslationEffect: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .clipShape(PlayerSurfaceShape(progress: reduceMotion ? 1 : translation.progress,
+                travelHeight: height), style: FillStyle(antialiased: true))
             .offset(y: reduceMotion ? 0 : (1 - translation.progress) * height)
             .opacity(reduceMotion ? translation.progress : 1)
+    }
+}
+
+// Animate the same progress as translation, deriving the curve at draw time.
+// The complete surface, including its background, keeps its existing layout.
+struct PlayerSurfaceShape: Shape {
+    var progress: CGFloat
+    let travelHeight: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let limit = min(32, max(0, min(rect.width, rect.height) / 2))
+        let pull = max(0, (1 - progress) * travelHeight)
+        // Ease into the maximum radius without a visible saturation kink.
+        let fraction = min(1, pull / 96)
+        let radius = limit * (1 - pow(1 - fraction, 3))
+        return UnevenRoundedRectangle(topLeadingRadius: radius, bottomLeadingRadius: 0,
+            bottomTrailingRadius: 0, topTrailingRadius: radius, style: .continuous).path(in: rect)
     }
 }
 

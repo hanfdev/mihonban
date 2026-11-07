@@ -48,7 +48,7 @@ struct NowPlayingView: View {
         #if DEBUG
         let _ = { PlayerRenderWork.content += 1 }()
         #endif
-        Group {
+        GeometryReader { surface in
             VStack(spacing: 0) {
                 header
                 GeometryReader { geometry in
@@ -56,7 +56,10 @@ struct NowPlayingView: View {
                         let side = NowPlayingLayout.coverSide(in: geometry.size, controlsHeight: 0, isTablet: isTablet)
                         let width = NowPlayingLayout.controlsWidth(in: geometry.size, coverSide: side, isTablet: isTablet)
                         let style = NowPlayingLayout.controlStyle(in: geometry.size, isTablet: isTablet)
-                        let center = viewportCenterY.map { $0 - geometry.frame(in: .named(Space.surface)).minY }
+                        // Use local sizes so moving the surface cannot alter its
+                        // center through transformed coordinate-space origins.
+                        let headerHeight = surface.size.height - geometry.size.height
+                        let center = viewportCenterY.map { $0 - headerHeight }
                         NowPlayingStage(viewport: geometry.size, isTablet: isTablet, centerY: center) {
                             cover.measurePlayerFrame(cover: true, in: Space.surface)
                             controls(style: style, width: width)
