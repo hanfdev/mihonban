@@ -31,6 +31,17 @@ cloud/proxy-worker/dist/
 # Native Rust desktop build output
 desktop/target*/
 
+# Native mobile build products, dependency checkouts, and signing profiles
+.spm/
+.swiftpm/
+*.xcarchive/
+*.xcresult/
+*.ipa
+*.apk
+*.aab
+*.apks
+*.mobileprovision
+
 # Cloudflare and local runtimes
 .wrangler/
 .dev.vars

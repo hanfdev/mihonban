@@ -1,0 +1,9 @@
+Generated/
+*.xcodeproj/
+DerivedData/
+build/
+TestFixtures/tone.*
+Resources/ThirdParty/
+*.xcresult/
+!Sources/Data/
+!Sources/Data/*.swift

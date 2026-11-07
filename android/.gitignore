@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+app/build-*/
+local.properties
+captures/
+*.jks
+*.keystore
+# Local conversation history and archived build evidence.
+HANDOFF.md
+PROGRESS.md
+VERIFICATION-0.1.9.md
+!**/data/
+!**/data/**

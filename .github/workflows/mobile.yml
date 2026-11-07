@@ -1,0 +1,294 @@
+name: iOS preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, mobile-dev]
+    paths: ["ios/**", "desktop/assets/**", "cloud/web/public/fonts/**", ".github/workflows/mobile.yml"]
+  pull_request:
+    paths: ["ios/**", "desktop/assets/**", "cloud/web/public/fonts/**", ".github/workflows/mobile.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: Build and test native iOS
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode and install build tools
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+          brew install xcodegen ffmpeg
+      - uses: actions/cache@v4
+        with:
+          path: .spm
+          key: ios-spm-${{ runner.arch }}-${{ hashFiles('ios/project.yml', 'ios/Package.resolved') }}
+      - name: Prepare synthetic audio and project
+        run: |
+          python3 -I ios/tools/check-l10n.py
+          python3 -I ios/tools/check-fonts.py
+          mkdir -p ios/TestFixtures ios/Resources/ThirdParty
+          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a libmp3lame -q:a 3 ios/TestFixtures/tone.mp3
+          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a flac ios/TestFixtures/tone.flac
+          ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=8:sample_rate=44100' -ac 2 -c:a vorbis -strict experimental -q:a 4 ios/TestFixtures/tone.ogg
+          xcodegen generate --spec ios/project.yml
+          if [ -f ios/Package.resolved ]; then
+            mkdir -p ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+            cp ios/Package.resolved ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          fi
+          xcodebuild -resolvePackageDependencies -project ios/Mihonban.xcodeproj -scheme Mihonban -clonedSourcePackagesDirPath .spm
+          python3 -I ios/tools/acknowledgements.py .spm/checkouts ios/Resources/ThirdParty/Acknowledgements.txt
+          xcodegen generate --spec ios/project.yml
+      - name: Build unsigned device archive
+        id: device-archive
+        run: |
+          set -o pipefail
+          xcodebuild archive -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/Mihonban.xcarchive \
+            -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} CODE_SIGNING_ALLOWED=NO \
+            | tee build-device.log
+      - name: Package IPA and dependency lock
+        run: |
+          mkdir -p build/export/Payload
+          cp -R build/Mihonban.xcarchive/Products/Applications/Mihonban.app build/export/Payload/
+          # SideStore compares these values, so a stale 1.0 (1) would hide updates.
+          plist=build/export/Payload/Mihonban.app/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$plist")" = "${{ github.run_number }}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$plist")" = "$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"$/\1/p' ios/project.yml)"
+          cd build/export
+          zip -qry Mihonban.ipa Payload
+          shasum -a 256 Mihonban.ipa > SHA256SUMS
+          cd ../..
+          cp ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved build/export/Package.resolved
+          cp ios/Resources/ThirdParty/Acknowledgements.txt build/export/
+      - name: Run simulator tests
+        id: iphone-tests
+        run: |
+          set -o pipefail
+          python3 -I ios/tools/fixture-server.py ios/TestFixtures > fixture-server.log 2>&1 &
+          FIXTURE_PID=$!
+          trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"] == "iPhone 17"))')
+          echo "SIM_DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          # The audio engine opens during app initialization. Finish the simulator's
+          # first boot before launching the test host and its CoreAudio connection.
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl ui "$DEVICE" appearance dark
+          # Ad-hoc signing binds the bundle identifier into the signature; an unsigned
+          # build may be refused as a background transfer client (run 15/16, error -1).
+          # Catch presentation regressions before the longer catalog/network suite.
+          xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
+            -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
+            -resultBundlePath build/PresentationTests.xcresult \
+            -only-testing:MihonbanTests/TypographyTests \
+            -only-testing:MihonbanTests/FavoritesRefreshTests \
+            -only-testing:MihonbanTests/PlaybackCompletionTests \
+            -only-testing:MihonbanTests/AlbumPlaybackRequestTests \
+            -only-testing:MihonbanTests/PlayerTransitionTests \
+            -only-testing:MihonbanTests/TrackListingTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
+            -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsStayCompactAndOpenEveryArtist \
+            -only-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
+            -only-testing:MihonbanTests/NowPlayingTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
+            -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            2>&1 | tee build-presentation.log
+          xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO \
+            -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
+            -resultBundlePath build/Tests.xcresult \
+            -skip-testing:MihonbanTests/TypographyTests \
+            -skip-testing:MihonbanTests/FavoritesRefreshTests \
+            -skip-testing:MihonbanTests/PlaybackCompletionTests \
+            -skip-testing:MihonbanTests/AlbumPlaybackRequestTests \
+            -skip-testing:MihonbanTests/PlayerTransitionTests \
+            -skip-testing:MihonbanTests/TrackListingTests \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsStayCompactAndOpenEveryArtist \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
+            -skip-testing:MihonbanTests/NowPlayingTests \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
+            -skip-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            2>&1 | tee build-simulator.log
+      - name: Preserve iPhone failure evidence before iPad tests
+        if: ${{ !cancelled() && steps.iphone-tests.outcome == 'failure' }}
+        run: |
+          if [ -d build/Tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/iphone-failure || true
+          fi
+          if [ -d build/PresentationTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/PresentationTests.xcresult --output-path build/iphone-failure/presentation || true
+          fi
+      - name: Upload iPhone failure evidence
+        if: ${{ !cancelled() && steps.iphone-tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-iPhone-failure-${{ github.run_number }}
+          path: |
+            build-simulator.log
+            build-presentation.log
+            build/iphone-failure
+          retention-days: 14
+      - name: Check iPad player layout
+        if: ${{ !cancelled() && steps.device-archive.outcome == 'success' }}
+        run: |
+          set -o pipefail
+          # Release the completed phone simulator before starting the tablet's
+          # UI automation; both otherwise compete for the runner's resources.
+          if [ -n "${SIM_DEVICE:-}" ]; then xcrun simctl shutdown "$SIM_DEVICE" || true; fi
+          python3 -I ios/tools/fixture-server.py ios/TestFixtures > fixture-ipad.log 2>&1 &
+          FIXTURE_PID=$!
+          trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
+          IPAD=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in sorted(d.items(),reverse=True) for x in v if "iOS" in k and x["name"].startswith("iPad")))')
+          echo "IPAD_DEVICE=$IPAD" >> "$GITHUB_ENV"
+          xcrun simctl bootstatus "$IPAD" -b
+          xcrun simctl ui "$IPAD" appearance dark
+          xcodebuild test -project ios/Mihonban.xcodeproj -scheme Mihonban -configuration Debug \
+            -destination "platform=iOS Simulator,id=$IPAD" -parallel-testing-enabled NO \
+            -derivedDataPath build/Simulator -clonedSourcePackagesDirPath .spm \
+            -resultBundlePath build/iPadTests.xcresult \
+            -only-testing:MihonbanTests/FavoritesRefreshTests \
+            -only-testing:MihonbanTests/NowPlayingTests \
+            -only-testing:MihonbanTests/OfflineLaunchTests \
+            -only-testing:MihonbanTests/PlayerTransitionTests \
+            -only-testing:MihonbanTests/TrackListingTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testLargeTracksTabOpensAndReopensWithTheCorrectPlaybackOrder \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerAlbumHeaderOpensAlbumWithoutChangingPlayback \
+            -only-testing:MihonbanTests/PlaybackCompletionTests \
+            -only-testing:MihonbanTests/AlbumPlaybackRequestTests \
+            -only-testing:MihonbanTests/CatalogLayoutTests \
+            -only-testing:MihonbanTests/CatalogTests \
+            -only-testing:MihonbanTests/NowPlayingLayoutTests \
+            -only-testing:MihonbanTests/TypographyTests \
+            -only-testing:MihonbanTests/AlbumHeaderLayoutTests \
+            -only-testing:MihonbanTests/GalleryZoomTests \
+            -only-testing:MihonbanTests/MarqueeTests \
+            -only-testing:MihonbanTests/MarkdownTests \
+            -only-testing:MihonbanTests/PlaybackCreditsTests \
+            -only-testing:MihonbanTests/RymYearRankTests \
+            -only-testing:MihonbanTests/LibraryExperienceTests \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCoverIsLargerAndStable \
+            -only-testing:MihonbanUITests/MihonbanUITests/testArtistLastAlbumClearsMiniPlayerAcrossRotation \
+            -only-testing:MihonbanUITests/MihonbanUITests/testMiniPlayerFitsAccessibilityTextInBothOrientations \
+            -only-testing:MihonbanUITests/MihonbanUITests/testReadingSheetClosesWithoutLosingAlbumPosition \
+            -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndArtistDescriptionsRenderMarkdownNatively \
+            -only-testing:MihonbanUITests/MihonbanUITests/testQueueEditKeepsLongRowsAtTheSameHeightAndPosition \
+            -only-testing:MihonbanUITests/MihonbanUITests/testSimilarAlbumCardsKeepSquareCoversAndSingleLineTitles \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerCreditsWithLargeTextAndLandscape \
+            -only-testing:MihonbanUITests/MihonbanUITests/testTabletPlayerUsesWholeWindowAndReturnsFromQueue \
+            -only-testing:MihonbanUITests/MihonbanUITests/testDarkTabletPlayerUsesBalancedColumns \
+            -only-testing:MihonbanUITests/MihonbanUITests/testTabletAlbumHeaderBalancesArtworkAndInformation \
+            -only-testing:MihonbanUITests/MihonbanUITests/testSingleGlobalSearchHasInsetsAndIncludesSongs \
+            -only-testing:MihonbanUITests/MihonbanUITests/testAppearanceSettingsApplyAndPersist \
+            -only-testing:MihonbanUITests/MihonbanUITests/testAlbumAndSongSharingUseNativeSheetWithoutChangingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testFilteredTracksShuffleTogglesWithoutStartingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testPlayerSwipeExpandsCancelsAndCollapsesWithoutChangingPlayback \
+            -only-testing:MihonbanUITests/MihonbanUITests/testChineseQueueUsesTheBundledDisplayFont \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            2>&1 | tee build-ipad.log
+      - name: Preserve crash diagnostics and symbols
+        if: always()
+        run: |
+          mkdir -p build/diagnostics
+          if [ -d "$HOME/Library/Logs/DiagnosticReports" ]; then
+            cp -R "$HOME/Library/Logs/DiagnosticReports" build/diagnostics/host
+          fi
+          if [ -d build/Mihonban.xcarchive/dSYMs ]; then
+            cp -R build/Mihonban.xcarchive/dSYMs build/diagnostics/dSYMs
+          fi
+          # App and background transfer daemon messages, for transfer failures.
+          # The simulator is shut down after testing, so it is booted again to read its log.
+          if [ -n "${SIM_DEVICE:-}" ]; then xcrun simctl bootstatus "$SIM_DEVICE" -b > /dev/null 2>&1 || true; fi
+          xcrun simctl spawn "${SIM_DEVICE:-booted}" log show --last 20m --style compact \
+            --predicate 'subsystem == "org.mihonban.ios" OR process == "nsurlsessiond" OR (process == "Mihonban" AND subsystem == "com.apple.CFNetwork")' \
+            > build/diagnostics/simulator.log 2>&1 || true
+          # Keep gesture completion evidence from both simulator test sessions.
+          for DEVICE in ${SIM_DEVICE:-} ${IPAD_DEVICE:-}; do
+            xcrun simctl bootstatus "$DEVICE" -b > /dev/null 2>&1 || true
+            xcrun simctl spawn "$DEVICE" log show --last 2h --info --style compact \
+              --predicate 'subsystem == "org.mihonban.ios" AND category == "PlayerPresentation"' \
+              > "build/diagnostics/player-$DEVICE.log" 2>&1 || true
+          done
+      - name: Upload crash diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-diagnostics-${{ github.run_number }}
+          path: build/diagnostics
+          retention-days: 14
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          if [ -d build/Tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/screenshots || true
+          fi
+          if [ -d build/PresentationTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/PresentationTests.xcresult --output-path build/screenshots/presentation || true
+          fi
+          if [ -d build/iPadTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/iPadTests.xcresult --output-path build/screenshots/ipad || true
+          fi
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-screenshots-${{ github.run_number }}
+          path: build/screenshots
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mihonban-iOS-${{ github.run_number }}
+          path: |
+            build/export/Mihonban.ipa
+            build/export/SHA256SUMS
+            build/export/Package.resolved
+            build/export/Acknowledgements.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload build and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-test-results-${{ github.run_number }}
+          path: |
+            build/Tests.xcresult
+            build/PresentationTests.xcresult
+            build/iPadTests.xcresult
+            build/screenshots
+            build-device.log
+            build-simulator.log
+            build-presentation.log
+            build-ipad.log
+            fixture-server.log
+            fixture-ipad.log
+          retention-days: 14
+      - name: Save relinkable build objects
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-relink-${{ github.run_number }}
+          path: |
+            build/DerivedData/Build/Intermediates.noindex/ArchiveIntermediates/Mihonban/IntermediateBuildFilesPath/**/Objects-normal/arm64/*.o
+            build/DerivedData/Build/Intermediates.noindex/ArchiveIntermediates/Mihonban/BuildProductsPath/Release-iphoneos/**/*.a
+            build/DerivedData/Build/Intermediates.noindex/ArchiveIntermediates/Mihonban/BuildProductsPath/Release-iphoneos/**/*.framework
+            build/export/Package.resolved
+          retention-days: 30
