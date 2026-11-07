@@ -27,6 +27,10 @@ Las contraseñas guardadas en Admin anulan los valores de arranque del entorno d
 
 ## Reproducción e interacción móvil
 
+La página de álbum Web reúne la portada, los metadatos, las pistas y los controles de reproducción. Esta captura utiliza datos ficticios y portadas originales de demostración. [Detalles de las capturas](images/README.md).
+
+![Detalles del álbum en la Web](images/web-album.webp)
+
 - La ordenación **Añadidos** de la biblioteca web y la lista de importaciones recientes usan la fecha de incorporación original del álbum. Editar la puntuación, el título u otros datos, o volver a escanear un álbum existente, no lo mueve al principio. La lista Artistas usa la incorporación más reciente entre los álbumes visibles de cada artista. Los álbumes añadidos al mismo tiempo mantienen un orden estable; las fechas desconocidas quedan al final.
 - Álbumes, Artistas, Pistas y Selección recuerdan cada uno su propia posición de desplazamiento mientras la página siga abierta: al volver, continúas donde lo dejaste, y una página que aún no has visitado se abre desde arriba. Las páginas de álbum y de artista siempre se abren desde arriba, y al volver regresas a la posición de la lista de origen. Vuelve a pulsar el logotipo o la opción de navegación activa para subir suavemente; las pestañas Álbumes y Canciones de Selección siguen la misma regla.
 - El volumen, el idioma y la ordenación se guardan por origin del navegador. Un nombre de host o dominio personalizado nuevo empieza con preferencias nuevas; si no hay volumen guardado, comienza al 100 %.

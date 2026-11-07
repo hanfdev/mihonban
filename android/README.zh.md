@@ -2,6 +2,14 @@
 
 使用 Kotlin、Jetpack Compose 和 Media3 开发，支持 Android 8.0 及以上。所有页面和播放功能均为原生实现，无 WebView。
 
+## 界面预览
+
+原生 Android 客户端的实际截图，使用虚构测试数据和原创示例封面。[截图说明](../docs/images/README.md)。
+
+| Android 曲库 | Android 播放器 |
+|:---:|:---:|
+| <img src="../docs/images/android-library.webp" height="480" alt="Android 曲库"> | <img src="../docs/images/android-player.webp" height="480" alt="Android 播放器"> |
+
 ## 安装与连接
 
 1. 当前预览版本为 0.1.10，可自行构建，或从成功的 [Android 工作流](https://github.com/hanfdev/mihonban/actions/workflows/android.yml)下载 debug APK。自行构建时默认输出为 `app/build/outputs/apk/debug/app-debug.apk`；release APK 需要自行签名。版本可在“我的”页面确认。
@@ -65,7 +73,7 @@ android\gradlew.bat -p android connectedDebugAndroidTest
 
 也可以使用 Android Studio 打开 `android/`。通过 `ANDROID_HOME` 或未纳入版本控制的 `android/local.properties` 指定 SDK。
 
-发布版输出为 `app/build/outputs/apk/release/app-release-unsigned.apk`，需要使用自己的长期发布密钥签名后分发。GitHub Actions 已配置构建和模拟器测试，不会自动发布商店版本。APK、截图和报告属于生成产物，不随源代码提交；工作流产物需要对应访问权限，并会按保留设置过期。
+发布版输出为 `app/build/outputs/apk/release/app-release-unsigned.apk`，需要使用自己的长期发布密钥签名后分发。GitHub Actions 已配置构建和模拟器测试，不会自动发布商店版本。用于文档展示的代表性截图保存在 `docs/images/`；APK、完整截图集和构建报告仍属于生成产物，不随源代码提交；工作流产物需要对应访问权限，并会按保留设置过期。
 
 ## 当前边界
 

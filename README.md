@@ -4,6 +4,25 @@
 
 Mihonban is a private, self-hosted music library with a responsive web player. Run it locally with Node and SQLite, use Wrangler's local D1 emulator, or deploy the same application to Cloudflare Workers and D1. Audio remains in storage you control.
 
+## A look inside
+
+Actual application screenshots with fictional demo data and original example covers. [Capture details](docs/images/README.md).
+
+![Web library](docs/images/web-library.webp)
+
+<details>
+<summary>Album details and native Android</summary>
+
+**Web album details**
+
+![Web album details](docs/images/web-album.webp)
+
+| Android library | Android player |
+|:---:|:---:|
+| <img src="docs/images/android-library.webp" height="480" alt="Android library"> | <img src="docs/images/android-player.webp" height="480" alt="Android player"> |
+
+</details>
+
 ## Highlights
 
 - Responsive album, track, artist, favorites, import, and administration views

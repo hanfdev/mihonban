@@ -4,6 +4,25 @@
 
 Mihonban は、レスポンシブな Web プレーヤーを備えた、個人向けのセルフホスト型音楽ライブラリです。Node と SQLite を使ったローカル実行、Wrangler のローカル D1 エミュレーター、Cloudflare Workers と D1 へのデプロイに対応しています。音声ファイルは、常に自分で管理するストレージに保管されます。
 
+## 画面プレビュー
+
+架空のデモデータとオリジナルのサンプルカバーを使った、実際のアプリ画面です。[撮影について](docs/images/README.md)。
+
+![Web ライブラリ](docs/images/web-library.webp)
+
+<details>
+<summary>アルバム詳細とネイティブ Android アプリ</summary>
+
+**Web アルバム詳細**
+
+![Web アルバム詳細](docs/images/web-album.webp)
+
+| Android ライブラリ | Android プレーヤー |
+|:---:|:---:|
+| <img src="docs/images/android-library.webp" height="480" alt="Android ライブラリ"> | <img src="docs/images/android-player.webp" height="480" alt="Android プレーヤー"> |
+
+</details>
+
 ## 主な機能
 
 - アルバム、トラック、アーティスト、お気に入り、インポート、管理画面に対応したレスポンシブ UI

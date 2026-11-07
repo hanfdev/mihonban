@@ -4,6 +4,25 @@
 
 Mihonban es una biblioteca musical privada y autoalojada con un reproductor web adaptable. Puedes ejecutarla localmente con Node y SQLite, usar el emulador D1 local de Wrangler o desplegar la misma aplicación en Cloudflare Workers y D1. Los archivos de audio permanecen en un almacenamiento bajo tu control.
 
+## Vista previa
+
+Capturas de la aplicación real con datos ficticios y portadas originales de demostración. [Detalles de las capturas](docs/images/README.md).
+
+![Biblioteca Web](docs/images/web-library.webp)
+
+<details>
+<summary>Detalles del álbum y aplicación Android nativa</summary>
+
+**Detalles del álbum en la Web**
+
+![Detalles del álbum en la Web](docs/images/web-album.webp)
+
+| Biblioteca Android | Reproductor Android |
+|:---:|:---:|
+| <img src="docs/images/android-library.webp" height="480" alt="Biblioteca Android"> | <img src="docs/images/android-player.webp" height="480" alt="Reproductor Android"> |
+
+</details>
+
 ## Características principales
 
 - Vistas adaptables de álbumes, pistas, artistas, favoritos, importación y administración

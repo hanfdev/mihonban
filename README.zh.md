@@ -4,6 +4,25 @@
 
 Mihonban 是一套私有、自托管音乐曲库和响应式网页播放器。它可以使用 Node + SQLite 在本地运行，也可以使用 Wrangler 本地 D1，或部署到 Cloudflare Workers + D1；音频始终保存在你控制的存储中。
 
+## 界面预览
+
+以下为实际应用界面，使用虚构演示数据和原创示例封面。[截图说明](docs/images/README.md)。
+
+![Web 音盘库](docs/images/web-library-zh.webp)
+
+<details>
+<summary>查看音盘详情与原生 Android 客户端</summary>
+
+**Web 音盘详情**
+
+![Web 音盘详情](docs/images/web-album.webp)
+
+| Android 曲库 | Android 播放器 |
+|:---:|:---:|
+| <img src="docs/images/android-library.webp" height="480" alt="Android 曲库"> | <img src="docs/images/android-player.webp" height="480" alt="Android 播放器"> |
+
+</details>
+
 ## 主要能力
 
 - 完整适配桌面与手机的专辑、歌曲、艺人、精选、导入和管理页面

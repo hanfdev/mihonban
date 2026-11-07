@@ -27,6 +27,10 @@ Passwords saved in Admin override environment bootstrap values. Changing either 
 
 ## Playback and mobile interaction
 
+The Web album page brings together artwork, metadata, tracks and playback controls. This screenshot uses fictional demo data and original example covers. [Capture details](images/README.md).
+
+![Web album details](images/web-album.webp)
+
 - **Recently added** in the web library and the recent-import list uses the album's original addition to the library. Editing ratings, titles or other metadata, or rescanning an existing album, does not move it to the front. The Artists list uses the most recent addition among that artist's visible albums. Albums added at the same time keep a stable order; missing addition dates sort last.
 - Albums, Artists, Tracks and Picks each remember their own scroll position while the page stays open; returning to one of them resumes where you left it, and a page you have not visited yet opens at the top. Album and artist pages always open at the top, and going back returns to the list position you came from. Click the active logo or navigation item again to scroll smoothly back to the top; the Albums and Tracks tabs inside Picks follow the same rule.
 - Volume, language, and sort preferences are local to each browser origin. Opening a new hostname or custom domain starts with fresh preferences; an unset volume starts at 100%.

@@ -2,6 +2,14 @@
 
 A native Kotlin / Jetpack Compose client for the existing Mihonban server. No WebView is used. Android 8.0 (API 26) or newer is required.
 
+## A look inside
+
+Actual native Android screenshots with fictional test data and original example covers. [Capture details](../docs/images/README.md).
+
+| Android library | Android player |
+|:---:|:---:|
+| <img src="../docs/images/android-library.webp" height="480" alt="Android library"> | <img src="../docs/images/android-player.webp" height="480" alt="Android player"> |
+
 ## Connect
 
 Build the current 0.1.10 preview locally, or download the debug APK from a successful [Android workflow run](https://github.com/hanfdev/mihonban/actions/workflows/android.yml). A release APK needs your own signing key. Enter the server's root address, for example `https://music.example.com` or `http://192.168.1.20:8788`, and your listener or administrator passphrase. Leave the passphrase blank only if the server allows guest access. An Android emulator can access a development server on the host at `http://10.0.2.2:8788`.
@@ -73,7 +81,7 @@ Outputs:
 
 The Android GitHub Actions workflow builds both variants and runs JVM/lint checks, with a separate API 35 emulator job. It does not publish a release or sign with a production key.
 
-See [VERIFICATION.md](VERIFICATION.md) for validation commands, recorded results and limits of device coverage. APKs, screenshots and build reports are generated artifacts; they are not included in the source checkout. CI artifacts require access to the workflow run and expire according to GitHub's retention settings.
+See [VERIFICATION.md](VERIFICATION.md) for validation commands, recorded results and limits of device coverage. Representative documentation screenshots are included under `docs/images/`. APKs, complete screenshot runs and build reports remain generated artifacts and are not included in the source checkout. CI artifacts require access to the workflow run and expire according to GitHub's retention settings.
 
 ## Current limits
 

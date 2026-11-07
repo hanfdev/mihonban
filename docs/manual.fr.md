@@ -27,6 +27,10 @@ Les mots de passe enregistrés dans Admin dépassent les valeurs de démarrage d
 
 ## Lecture et interactions mobiles
 
+La page d’album Web réunit pochette, métadonnées, pistes et commandes de lecture. Cette capture utilise des données fictives et des pochettes originales de démonstration. [Détails des captures](images/README.md).
+
+![Détails d’album Web](images/web-album.webp)
+
 - Le tri **Ajoutés** de la bibliothèque web et la liste des imports récents utilisent la date du premier ajout de l’album. Modifier la note, le titre ou d’autres données, ou analyser à nouveau un album existant, ne le ramène pas en tête. La liste Artistes utilise l’ajout le plus récent parmi les albums actuellement visibles de chaque artiste. Les albums ajoutés au même instant gardent un ordre stable ; les dates inconnues sont classées en dernier.
 - Albums, Artistes, Titres et Sélection mémorisent chacun leur position de défilement tant que la page reste ouverte : en y revenant, vous reprenez là où vous vous étiez arrêté, et une page pas encore visitée s’ouvre en haut. Les pages d’album et d’artiste s’ouvrent toujours en haut, et le retour vous ramène à la position de la liste d’origine. Cliquez de nouveau sur le logo ou l’élément de navigation actif pour remonter en douceur ; les onglets Albums et Morceaux de la page Sélection suivent la même règle.
 - Le volume, la langue et le tri sont enregistrés par origin du navigateur. Un nouveau nom d’hôte ou domaine personnalisé repart avec de nouvelles préférences ; sans valeur enregistrée, le volume commence à 100 %.
