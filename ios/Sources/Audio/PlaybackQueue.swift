@@ -8,6 +8,27 @@ struct PlaybackQueue: Sendable {
     private(set) var shuffled = false
     var repeatMode = RepeatMode.off
     private var identity = UUID()
+    private var shuffleRandom: ShuffleRandom
+
+    init(shuffleSeed: UInt64 = UInt64.random(in: UInt64.min...UInt64.max)) {
+        shuffleRandom = ShuffleRandom(state: shuffleSeed)
+    }
+
+    // Copies must plan the same next cycle without consuming the live queue's
+    // random state. Advancing or adopting a snapshot then carries that state
+    // forward, so later cycles still receive a fresh shuffle. SplitMix64 keeps
+    // the generator value-semantic with only one word of state.
+    private struct ShuffleRandom: RandomNumberGenerator, Sendable {
+        var state: UInt64
+
+        mutating func next() -> UInt64 {
+            state &+= 0x9E3779B97F4A7C15
+            var value = state
+            value = (value ^ (value >> 30)) &* 0xBF58476D1CE4E5B9
+            value = (value ^ (value >> 27)) &* 0x94D049BB133111EB
+            return value ^ (value >> 31)
+        }
+    }
 
     struct Entry: Identifiable, Sendable {
         struct ID: Hashable, Sendable {
@@ -42,7 +63,7 @@ struct PlaybackQueue: Sendable {
         let start = tracks.indices.contains(index) ? index : 0
         shuffled = shuffle ?? shuffled
         if shuffled {
-            order = tracks.isEmpty ? [] : [start] + tracks.indices.filter { $0 != start }.shuffled()
+            order = tracks.isEmpty ? [] : [start] + tracks.indices.filter { $0 != start }.shuffled(using: &shuffleRandom)
             cursor = 0
         } else {
             order = Array(tracks.indices)
@@ -58,7 +79,7 @@ struct PlaybackQueue: Sendable {
         if enabled {
             // Preserve actual playback history; only shuffle what has not played.
             let prefix = Array(order.prefix(cursor + 1))
-            order = prefix + order.dropFirst(cursor + 1).shuffled()
+            order = prefix + order.dropFirst(cursor + 1).shuffled(using: &shuffleRandom)
         } else {
             // Restore album order for what is still queued, keeping user edits.
             let history = Array(order.prefix(cursor))
@@ -73,11 +94,14 @@ struct PlaybackQueue: Sendable {
         if automatic && repeatMode == .one { return true }
         if cursor + 1 < order.count { cursor += 1; return true }
         guard repeatMode == .all else { return false }
-        let previous = currentIndex
+        let previous = current?.id
         cursor = 0
         if shuffled {
-            order.shuffle()
-            if order.count > 1 && order.first == previous { order.swapAt(0, 1) }
+            order.shuffle(using: &shuffleRandom)
+            if tracks[order[0]].id == previous,
+               let different = order.firstIndex(where: { tracks[$0].id != previous }) {
+                order.swapAt(0, different)
+            }
         }
         return true
     }

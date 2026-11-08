@@ -178,3 +178,112 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(queue.upcoming.map(\.id), ["1", "2", "4"])
     }
 }
+
+// Keep these regressions in the playback suite exercised on both device sizes.
+extension PlaybackCompletionTests {
+    private var shuffleBoundaryTracks: [Track] {
+        (0..<8).map { Track(id: String($0), title: "Track \($0)") }
+    }
+
+    func testShuffleRepeatSnapshotsAgreeWithAdvanceAcrossCycles() throws {
+        var queue = PlaybackQueue(shuffleSeed: 42)
+        queue.replace(shuffleBoundaryTracks, startingAt: 0, shuffle: true)
+        queue.repeatMode = .all
+        while queue.cursor + 1 < queue.order.count { XCTAssertTrue(queue.advance()) }
+        var cycleOrders: Set<[Int]> = []
+
+        for _ in 0..<6 {
+            let oldOrder = queue.order
+            let oldCursor = queue.cursor
+            let last = queue.current?.id
+            let planned = try XCTUnwrap(queue.nextSnapshot())
+            for _ in 0..<4 {
+                XCTAssertEqual(queue.nextSnapshot()?.order, planned.order)
+                XCTAssertEqual(queue.order, oldOrder, "Prefetch must not change the visible queue")
+                XCTAssertEqual(queue.cursor, oldCursor)
+            }
+            var manual = queue
+            XCTAssertTrue(manual.advance())
+            XCTAssertTrue(queue.advance(automatic: true))
+            XCTAssertEqual(manual.order, planned.order)
+            XCTAssertEqual(queue.order, planned.order)
+            XCTAssertEqual(queue.current?.id, planned.current?.id)
+            XCTAssertNotEqual(queue.current?.id, last)
+            XCTAssertEqual(Set(queue.order), Set(oldOrder))
+            cycleOrders.insert(queue.order)
+
+            // Gapless playback adopts the prefetched snapshot; direct playback
+            // advances the live queue. Both must also agree on the next cycle.
+            var adopted = planned
+            while queue.cursor + 1 < queue.order.count {
+                XCTAssertTrue(queue.advance())
+                XCTAssertTrue(adopted.advance())
+            }
+            XCTAssertEqual(queue.nextSnapshot()?.order, adopted.nextSnapshot()?.order)
+        }
+        XCTAssertGreaterThan(cycleOrders.count, 1, "Later cycles must continue to reshuffle")
+    }
+
+    func testShuffleRepeatPlanningPreservesQueueEditsAndHistory() throws {
+        var queue = PlaybackQueue(shuffleSeed: 12)
+        queue.replace(shuffleBoundaryTracks, startingAt: 0, shuffle: true)
+        queue.repeatMode = .all
+        XCTAssertTrue(queue.advance())
+        let history = Array(queue.order.prefix(queue.cursor + 1))
+        let removed = try XCTUnwrap(queue.upcomingEntries.first)
+        queue.removeUpcoming(entries: [removed.id])
+        let first = try XCTUnwrap(queue.upcomingEntries.first)
+        let last = try XCTUnwrap(queue.upcomingEntries.last)
+        queue.moveUpcoming(entries: [last.id], before: first.id)
+        queue.enqueue([Track(id: "added", title: "Added")], next: false)
+        XCTAssertEqual(Array(queue.order.prefix(queue.cursor + 1)), history)
+        let editedOrder = queue.order
+        while queue.cursor + 1 < queue.order.count { XCTAssertTrue(queue.advance()) }
+        let planned = try XCTUnwrap(queue.nextSnapshot())
+        XCTAssertEqual(queue.nextSnapshot()?.order, planned.order)
+        XCTAssertEqual(Set(planned.order), Set(editedOrder))
+        XCTAssertEqual(planned.order.count, editedOrder.count)
+        XCTAssertFalse(planned.order.contains(removed.id.slot))
+        XCTAssertTrue(queue.advance(automatic: true))
+        XCTAssertEqual(queue.order, planned.order)
+    }
+
+    func testShuffleRepeatPlanningDoesNotConsumeRandomnessWhenRepeatChanges() throws {
+        var queue = PlaybackQueue(shuffleSeed: 93)
+        queue.replace(shuffleBoundaryTracks, startingAt: 0, shuffle: true)
+        while queue.cursor + 1 < queue.order.count { XCTAssertTrue(queue.advance()) }
+        queue.repeatMode = .all
+        let planned = try XCTUnwrap(queue.nextSnapshot())
+        queue.repeatMode = .one
+        XCTAssertEqual(queue.nextSnapshot()?.current?.id, queue.current?.id)
+        XCTAssertEqual(queue.nextSnapshot()?.order, queue.order)
+        queue.repeatMode = .off
+        XCTAssertNil(queue.nextSnapshot())
+        queue.repeatMode = .all
+        XCTAssertEqual(queue.nextSnapshot()?.order, planned.order)
+        XCTAssertTrue(queue.advance(automatic: true))
+        XCTAssertEqual(queue.order, planned.order)
+    }
+
+    func testShuffleRepeatAvoidsDuplicateSongAtCycleBoundaryWhenPossible() throws {
+        let duplicates = (0..<8).map { Track(id: String($0 % 3), title: "Duplicate \($0 % 3)") }
+        for seed in UInt64(0)..<16 {
+            var queue = PlaybackQueue(shuffleSeed: seed)
+            queue.replace(duplicates, startingAt: 0, shuffle: true)
+            queue.repeatMode = .all
+            while queue.cursor + 1 < queue.order.count { XCTAssertTrue(queue.advance()) }
+            let last = queue.current?.id
+            let planned = try XCTUnwrap(queue.nextSnapshot())
+            XCTAssertNotEqual(planned.current?.id, last)
+            XCTAssertTrue(queue.advance(automatic: true))
+            XCTAssertEqual(queue.order, planned.order)
+            XCTAssertEqual(Set(queue.order), Set(duplicates.indices))
+        }
+        var sameSong = PlaybackQueue(shuffleSeed: 3)
+        sameSong.replace(Array(repeating: duplicates[0], count: 2), startingAt: 0, shuffle: true)
+        sameSong.repeatMode = .all
+        XCTAssertTrue(sameSong.advance())
+        XCTAssertTrue(sameSong.advance(automatic: true), "Repeated copies of one song must remain playable")
+        XCTAssertEqual(sameSong.current?.id, duplicates[0].id)
+    }
+}

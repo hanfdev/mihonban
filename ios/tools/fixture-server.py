@@ -102,6 +102,17 @@ class State:
         self.favorites = {"album": ["network-mp3", "network-ogg"], "track": ["network-flac"]}
 
 
+class StreamGates:
+    """Hold selected audio responses until a test releases their unique token."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.events = {}
+
+    def event(self, token):
+        with self.lock:
+            return self.events.setdefault(token, threading.Event())
+
+
 def track_row(extension, state=None):
     detail = album(extension, detail=True)
     if state is not None:
@@ -168,6 +179,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlsplit(self.path).path
         state = self.server.state
+        gate = re.fullmatch(r"/fixture/stream-gate/([a-fA-F0-9-]+)/release", path)
+        if gate:
+            self.server.stream_gates.event(gate[1]).set()
+            return self.reply(200, {"ok": True})
         if path == "/fixture/reset":
             state.reset()
             return self.reply(200, {"ok": True})
@@ -335,6 +350,9 @@ class Handler(BaseHTTPRequestHandler):
             ext = parts[1] if len(parts) > 1 else ""
             if ext not in FORMATS:
                 return self.reply(404, {})
+            gate = re.fullmatch(r"network-[a-z]+-held-([a-fA-F0-9-]+)", path.rsplit("/", 1)[-1])
+            if gate and not self.server.stream_gates.event(gate[1]).wait(30):
+                return self.reply(503, {})
             # "-remote" ids redirect to another origin (the next port), like a storage backend.
             if parts[-1] == "remote":
                 port = self.server.server_address[1] + 1
@@ -389,11 +407,13 @@ def main():
     root = args.fixtures.resolve()
     state = State()
     media_cookies = []
+    stream_gates = StreamGates()
     servers = [ThreadingHTTPServer(("127.0.0.1", port), Handler) for port in (args.port, args.port + 1)]
     for server in servers:
         server.fixtures = root
         server.state = state
         server.media_cookies = media_cookies
+        server.stream_gates = stream_gates
         server.cover = root.parent / "Resources/Assets.xcassets/Logo.imageset/logo.png"
     # The second port stands in for a storage host on a different origin.
     threading.Thread(target=servers[1].serve_forever, daemon=True).start()

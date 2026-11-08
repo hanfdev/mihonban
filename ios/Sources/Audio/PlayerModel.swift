@@ -47,6 +47,7 @@ final class PlayerModel: NSObject {
     @ObservationIgnored private var pendingSeek: PendingSeek?
     #if DEBUG
     @ObservationIgnored var suppressSeekCompletionForTesting = false
+    var isWaitingForNextForTesting: Bool { waitingForNext }
     #endif
     @ObservationIgnored private var interrupted = false
     @ObservationIgnored private var initialPosition: Double = 0
@@ -340,9 +341,9 @@ final class PlayerModel: NSObject {
                 else { discardNext(id) }
             } else { entries[id]?.queue = queue }
         }
-        // A prefetch still decoding is checked against the live queue when it
-        // finishes, and replaced there if the next track changed.
-        prepareNext()
+        // A cancelled prefetch cannot deliver the callback that resolves EOF.
+        // Reconcile the edited queue now, or keep waiting for an unchanged next.
+        if waitingForNext { ended() } else { prepareNext() }
     }
 
     private func discardNext(_ id: ObjectIdentifier) {
