@@ -8,6 +8,7 @@ final class SessionStore {
     private(set) var revision = UUID()
     private(set) var needsSignIn = false
     @ObservationIgnored private var renewal: Task<SessionInfo, Error>?
+    @ObservationIgnored var authorizationRejected: ((URL) -> Void)?
     var isAdmin: Bool { info?.role == "admin" }
     var canSeeHidden: Bool { isAdmin || info?.role == "companion" }
 
@@ -38,24 +39,42 @@ final class SessionStore {
             guard token == revision else { throw CancellationError() }
             return value
         } catch {
-            if isRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
-            let expired = (error as? ServerError)?.status == 401 ||
-                (error as? ClientError)?.key == "mobile.sessionExpired"
-            guard expired, token == revision else { throw error }
+            if isRequestCancellation(error) || Task.isCancelled || token != revision { throw CancellationError() }
+            guard Self.isExpired(error) else { throw error }
+            let renewed: SessionInfo
             do {
-                let renewed = try await renew(client, token: token)
+                renewed = try await renew(client, token: token)
+                try Task.checkCancellation()
                 guard token == revision else { throw CancellationError() }
-                info = renewed
+            } catch {
+                if isRequestCancellation(error) || Task.isCancelled || token != revision { throw CancellationError() }
+                if isRejected(error) { rejectAuthorization(client, token: token) }
+                throw error
+            }
+            info = renewed
+            do {
                 let value = try await operation(client)
                 try Task.checkCancellation()
                 guard token == revision else { throw CancellationError() }
                 return value
             } catch {
-                if isRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
-                if token == revision { needsSignIn = true }
+                if isRequestCancellation(error) || Task.isCancelled || token != revision { throw CancellationError() }
+                // A retried request may fail for transport or resource permissions
+                // even though renewal succeeded. Only session rejection signs out.
+                if Self.isExpired(error) { rejectAuthorization(client, token: token) }
                 throw error
             }
         }
+    }
+
+    private static func isExpired(_ error: Error) -> Bool {
+        (error as? ServerError)?.status == 401 || (error as? ClientError)?.key == "mobile.sessionExpired"
+    }
+
+    private func rejectAuthorization(_ client: APIClient, token: UUID) {
+        guard token == revision, !needsSignIn else { return }
+        needsSignIn = true
+        authorizationRejected?(client.baseURL)
     }
 
     private func renew(_ client: APIClient, token: UUID) async throws -> SessionInfo {
@@ -63,11 +82,13 @@ final class SessionStore {
         guard let password = CredentialStore.read(for: client.baseURL.absoluteString) else {
             throw ClientError.sessionExpired
         }
-        let task = Task { try await client.login(password: password) }
+        let task = Task {
+            let result = try await client.login(password: password)
+            guard result.ok else { throw ClientError.sessionExpired }
+            return result
+        }
         renewal = task
         defer { if token == revision { renewal = nil } }
-        let result = try await task.value
-        guard result.ok else { throw ClientError.sessionExpired }
-        return result
+        return try await task.value
     }
 }

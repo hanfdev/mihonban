@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import Observation
 @testable import Mihonban
 
 // Fails every request as if the device had no connection.
@@ -139,6 +140,76 @@ final class OfflineLaunchTests: XCTestCase {
         XCTAssertFalse(model.isBootstrapping)
         XCTAssertFalse(RootView(model: model).showsStartupBrand)
         XCTAssertNil(model.error)
+    }
+
+    func testReplacingSessionClearsOldCatalogBeforePublishingAuthorization() async throws {
+        let (defaults, name) = try suite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let session = transport(StartupRefreshProtocol.self)
+        let old = try APIClient(address: "https://old-\(UUID().uuidString).invalid", session: session)
+        let new = try APIClient(address: "https://new-\(UUID().uuidString).invalid", session: session)
+        let model = AppModel(defaults: defaults, transport: session)
+        model.sessionStore.connect(old, info: SessionInfo(ok: true, role: "admin", guest: false))
+        model.catalog.seed(albums: [Album(id: "old-private", title: "Old service", artist: "Old artist", hidden: true)],
+            artists: [], tracks: [Track(id: "old-track", title: "Old track")])
+        model.address = new.baseURL.absoluteString
+        let observed = CatalogResetObservation()
+        withObservationTracking {
+            _ = model.sessionStore.info
+        } onChange: {
+            MainActor.assumeIsolated {
+                observed.changed = true
+                observed.cleared = model.catalog.albums.isEmpty && model.catalog.tracks.isEmpty
+            }
+        }
+        let connection = Task { await model.connect() }
+        defer {
+            connection.cancel()
+            StartupRefreshProtocol.state.finish()
+            session.invalidateAndCancel()
+            leave(model)
+            model.player.setForeground(false)
+        }
+        for _ in 0..<250 {
+            if StartupRefreshProtocol.state.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(observed.changed)
+        XCTAssertTrue(observed.cleared, "Old service data must be invalidated before the new session becomes observable")
+        XCTAssertTrue(model.catalog.albums.isEmpty)
+        XCTAssertTrue(model.catalog.tracks.isEmpty)
+        XCTAssertEqual(model.session?.role, "user")
+        StartupRefreshProtocol.state.finish()
+        await connection.value
+        XCTAssertNil(model.error)
+    }
+
+    func testRuntimeRefusalForgetsOfflineAuthorization() async throws {
+        let (defaults, name) = try suite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let session = transport(RejectingProtocol.self)
+        let api = try APIClient(address: "https://rejected-\(UUID().uuidString).invalid", session: session)
+        defaults.set(api.baseURL.absoluteString, forKey: "serviceAddress")
+        RememberedSession.save(RememberedSession(address: api.baseURL.absoluteString, role: "user", guest: false), defaults)
+        let model = AppModel(defaults: defaults, transport: session)
+        model.sessionStore.connect(api, info: SessionInfo(ok: true, role: "user", guest: false))
+        defer { session.invalidateAndCancel(); leave(model); model.player.setForeground(false) }
+        do {
+            _ = try await model.sessionStore.perform { try await $0.favorites() }
+            XCTFail("The fixture rejects this session")
+        } catch { XCTAssertTrue(isRejected(error)) }
+        XCTAssertTrue(model.sessionStore.needsSignIn)
+        XCTAssertNil(RememberedSession.load(defaults), "A known refusal cannot be revived by a later offline launch")
+        let offline = AppModel(defaults: defaults, transport: transport(UnreachableProtocol.self))
+        defer { leave(offline); offline.player.setForeground(false) }
+        await offline.bootstrap()
+        XCTAssertFalse(offline.signedIn)
+        XCTAssertTrue(offline.catalog.albums.isEmpty)
+    }
+
+    @MainActor private final class CatalogResetObservation {
+        var changed = false
+        var cleared = false
     }
 
     func testStartupBrandUsesBundledLogoWithoutMotionOrNewAssets() throws {

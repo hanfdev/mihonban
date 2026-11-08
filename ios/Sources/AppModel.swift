@@ -57,6 +57,10 @@ final class AppModel {
         player.cache = cache
         cache.preloadDidChange = { [weak player = player] in player?.preloadSettingsChanged() }
         catalog.localAlbum = { [weak self] id in self?.downloads?.albums[id] }
+        session.authorizationRejected = { [weak self] address in
+            guard let self, RememberedSession.load(self.defaults)?.address == address.absoluteString else { return }
+            RememberedSession.save(nil, self.defaults)
+        }
     }
 
     var client: APIClient? { sessionStore.client }
@@ -197,6 +201,9 @@ final class AppModel {
     }
 
     private func open(_ api: APIClient, info: SessionInfo, token: UUID) async {
+        // Invalidate the previous catalog before publishing a new authorization.
+        // Storage setup can suspend, allowing the new shell to appear meanwhile.
+        catalog.reset()
         favorites.reset()
         // Metadata is shown only after authorization, never while signed out.
         sessionStore.connect(api, info: info)
