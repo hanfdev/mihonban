@@ -170,6 +170,90 @@ class StreamRecovery:
                 value["drops"] += 1
 
 
+def flac_metadata_end(data):
+    """Return the first audio-frame byte without passing any PCM to a decoder."""
+    if data[:4] != b"fLaC":
+        raise ValueError("The prefetch fixture requires native FLAC")
+    offset = 4
+    while offset + 4 <= len(data):
+        last = bool(data[offset] & 0x80)
+        length = int.from_bytes(data[offset + 1:offset + 4], "big")
+        offset += 4 + length
+        if offset > len(data):
+            break
+        if last and offset < len(data):
+            return offset
+    raise ValueError("The prefetch fixture has incomplete metadata")
+
+
+class PrefetchDecoderFailures:
+    """Let decoder.open finish, hold every PCM frame, then fail real reads."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.scenarios = {}
+
+    def scenario(self, token):
+        with self.lock:
+            return self.scenarios.setdefault(token, {
+                "event": threading.Event(), "failed": False, "released": False, "active": 0,
+                "failuresRemaining": 0,
+                "metadataSent": 0, "metadataBytes": 0, "drops": 0, "requests": [],
+            })
+
+    def fail(self, token):
+        value = self.scenario(token)
+        with self.lock:
+            value["failed"] = True
+            value["event"].set()
+
+    def fail_then_recover(self, token):
+        value = self.scenario(token)
+        with self.lock:
+            value["failed"] = True
+            value["failuresRemaining"] = 1
+            value["event"].set()
+
+    def release(self, token):
+        value = self.scenario(token)
+        with self.lock:
+            value["released"] = True
+            value["event"].set()
+
+    def should_fail(self, value):
+        with self.lock:
+            return value["failed"] or not value["released"]
+
+    def begin(self, token, start):
+        value = self.scenario(token)
+        with self.lock:
+            failed = value["failed"]
+            if failed and value["failuresRemaining"] > 0:
+                value["failuresRemaining"] -= 1
+                if value["failuresRemaining"] == 0:
+                    value["failed"] = False
+                    value["released"] = True
+            value["requests"].append({"start": start, "status": 404 if failed else 206})
+            if not failed:
+                value["active"] += 1
+            return value, failed
+
+    def metadata(self, value, count):
+        with self.lock:
+            value["metadataSent"] += 1
+            value["metadataBytes"] = count
+
+    def finished(self, value, dropped=True):
+        with self.lock:
+            value["active"] -= 1
+            if dropped:
+                value["drops"] += 1
+
+    def snapshot(self, token):
+        value = self.scenario(token)
+        with self.lock:
+            return {key: json.loads(json.dumps(item)) for key, item in value.items() if key != "event"}
+
+
 def track_row(extension, state=None):
     detail = album(extension, detail=True)
     if state is not None:
@@ -236,6 +320,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlsplit(self.path).path
         state = self.server.state
+        prefetch = re.fullmatch(r"/fixture/prefetch-decoder/([a-fA-F0-9-]+)/(fail|fail-recover|release)", path)
+        if prefetch:
+            if prefetch[2] == "fail":
+                self.server.prefetch_failures.fail(prefetch[1])
+            elif prefetch[2] == "fail-recover":
+                self.server.prefetch_failures.fail_then_recover(prefetch[1])
+            else:
+                self.server.prefetch_failures.release(prefetch[1])
+            return self.reply(200, {"ok": True})
         gate = re.fullmatch(r"/fixture/stream-gate/([a-fA-F0-9-]+)/release", path)
         if gate:
             self.server.stream_gates.event(gate[1]).set()
@@ -371,6 +464,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        prefetch = re.fullmatch(r"/fixture/prefetch-decoder/([a-fA-F0-9-]+)", path)
+        if prefetch:
+            return self.reply(200, self.server.prefetch_failures.snapshot(prefetch[1]))
+        prefetch = re.fullmatch(r"/prefetch-decoder/([a-fA-F0-9-]+)/tone\.flac", path)
+        if prefetch:
+            return self.prefetch_decoder_audio(prefetch[1])
         recovery = re.fullmatch(r"/fixture/stream-recovery/([a-fA-F0-9-]+)", path)
         if recovery:
             value = self.server.stream_recovery.snapshot(recovery[1])
@@ -423,6 +522,9 @@ class Handler(BaseHTTPRequestHandler):
             ext = parts[1] if len(parts) > 1 else ""
             if ext not in FORMATS:
                 return self.reply(404, {})
+            prefetch = re.fullmatch(r"network-flac-prefetch-failure-([a-fA-F0-9-]+)", path.rsplit("/", 1)[-1])
+            if prefetch:
+                return self.reply(307, b"", headers={"Location": f"/prefetch-decoder/{prefetch[1]}/tone.flac"})
             recovery = re.fullmatch(r"network-flac-recovery-([a-fA-F0-9-]+)", path.rsplit("/", 1)[-1])
             if recovery:
                 return self.reply(307, b"", headers={"Location": f"/recovery/{recovery[1]}/tone.flac"})
@@ -525,6 +627,50 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.server.stream_recovery.finish(scenario, sent, scenario["drop"])
 
+    def prefetch_decoder_audio(self, token):
+        match = re.fullmatch(r"bytes=(\d+)-(\d*)", self.headers.get("Range", "bytes=0-"))
+        if not match:
+            return self.reply(400, {})
+        start = int(match[1])
+        scenario, failed = self.server.prefetch_failures.begin(token, start)
+        if failed:
+            return self.reply(404, {})
+        data = (self.server.fixtures / "tone.flac").read_bytes()
+        boundary = flac_metadata_end(data)
+        if start >= len(data):
+            self.server.prefetch_failures.finished(scenario)
+            return self.reply(416, b"", headers={"Content-Range": f"bytes */{len(data)}"})
+        self.send_response(206)
+        self.send_header("Content-Type", "audio/flac")
+        self.send_header("Content-Length", str(len(data) - start))
+        self.send_header("Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        dropped = True
+        try:
+            prefix = data[start:boundary] if start < boundary else b""
+            if prefix:
+                self.wfile.write(prefix)
+                self.wfile.flush()
+            self.server.prefetch_failures.metadata(scenario, len(prefix))
+            # Releasing after renderingComplete creates a genuine decoder read
+            # failure; no fake EOF callback or malformed FLAC is injected.
+            scenario["event"].wait(30)
+            if self.server.prefetch_failures.should_fail(scenario):
+                self.server.prefetch_failures.fail(token)
+                self.connection.shutdown(socket.SHUT_RDWR)
+            else:
+                for position in range(max(start, boundary), len(data), 8192):
+                    self.wfile.write(data[position:position + 8192])
+                    self.wfile.flush()
+                    time.sleep(0.002)
+                dropped = False
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.close_connection = True
+            self.server.prefetch_failures.finished(scenario, dropped=dropped)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -536,6 +682,7 @@ def main():
     media_cookies = []
     stream_gates = StreamGates()
     stream_recovery = StreamRecovery()
+    prefetch_failures = PrefetchDecoderFailures()
     servers = [ThreadingHTTPServer(("127.0.0.1", port), Handler) for port in (args.port, args.port + 1)]
     for server in servers:
         server.fixtures = root
@@ -543,6 +690,7 @@ def main():
         server.media_cookies = media_cookies
         server.stream_gates = stream_gates
         server.stream_recovery = stream_recovery
+        server.prefetch_failures = prefetch_failures
         server.cover = root.parent / "Resources/Assets.xcassets/Logo.imageset/logo.png"
     # The second port stands in for a storage host on a different origin.
     threading.Thread(target=servers[1].serve_forever, daemon=True).start()

@@ -10,6 +10,31 @@ final class PreparedAudio: @unchecked Sendable {
     init(decoder: AudioDecoder, source: MBHTTPInputSource?) { self.decoder = decoder; self.source = source }
 }
 
+// The engine pairs EndOfAudio with renderingComplete on its serial event
+// queue. Retain that decoder across the actor hop so an old EOF cannot advance
+// a replacement track, even if object addresses are later reused.
+private final class CompletedAudio: @unchecked Sendable {
+    let decoder: AnyObject
+    var id: ObjectIdentifier { ObjectIdentifier(decoder) }
+    init(_ decoder: AnyObject) { self.decoder = decoder }
+}
+
+private final class AudioCompletionSignal: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var completed: AnyObject?
+    private var stopRevision: UInt64 = 0
+
+    func record(_ decoder: any PCMDecoding) { lock.withLock { completed = decoder as AnyObject } }
+    func take() -> CompletedAudio? {
+        lock.withLock {
+            defer { completed = nil }
+            return completed.map(CompletedAudio.init)
+        }
+    }
+    var stoppedRevision: UInt64 { lock.withLock { stopRevision } }
+    func didStop() { lock.withLock { stopRevision &+= 1 } }
+}
+
 @MainActor @Observable
 final class PlayerModel: NSObject {
     private(set) var queue = PlaybackQueue()
@@ -26,6 +51,7 @@ final class PlayerModel: NSObject {
 
     @ObservationIgnored private let engine = AudioPlayer()
     private nonisolated let reactivateAudioSession: @Sendable () throws -> Void
+    private nonisolated let completionSignal = AudioCompletionSignal()
     @ObservationIgnored private var client: APIClient?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var entries: [ObjectIdentifier: Entry] = [:]
@@ -46,9 +72,12 @@ final class PlayerModel: NSObject {
     @ObservationIgnored private var waitingForNext = false
     @ObservationIgnored private var activeID: ObjectIdentifier?
     @ObservationIgnored private var pendingSeek: PendingSeek?
+    @ObservationIgnored private var failedPrefetch: (generation: UUID, current: ObjectIdentifier, stopRevision: UInt64)?
     #if DEBUG
     @ObservationIgnored var suppressSeekCompletionForTesting = false
     var isWaitingForNextForTesting: Bool { waitingForNext }
+    private(set) var lastCompletedTrackIDForTesting: String?
+    private(set) var lastDecodingTrackIDForTesting: String?
     #endif
     @ObservationIgnored private var interrupted = false
     @ObservationIgnored private var initialPosition: Double = 0
@@ -146,6 +175,10 @@ final class PlayerModel: NSObject {
         discarded.removeAll()
         activeID = nil
         initialPosition = position
+        failedPrefetch = nil
+        #if DEBUG
+        lastCompletedTrackIDForTesting = nil
+        #endif
         current = queue.current
         error = nil
         elapsed = position
@@ -260,7 +293,7 @@ final class PlayerModel: NSObject {
     }
 
     private func prepareNext() {
-        guard (cache?.preloadPolicy ?? .automatic).allows(preloadNetwork), wantsPlayback, !isLoading, !nextIsPreparing,
+        guard failedPrefetch == nil, (cache?.preloadPolicy ?? .automatic).allows(preloadNetwork), wantsPlayback, !isLoading, !nextIsPreparing,
               entries.count == 1, pending.isEmpty,
               let next = queue.nextSnapshot(), next.current?.id != current?.id else { return }
         prepare(next, immediate: false)
@@ -383,6 +416,9 @@ final class PlayerModel: NSObject {
         guard current != nil else { return }
         wantsPlayback = true
         error = nil
+        // Resolve an empty failed-prefetch engine before a rapid Play command
+        // can reactivate it and hide the stopped snapshot.
+        reconcileFailedPrefetch()
         if !isLoading {
             if hasEnded || entries.isEmpty { beginCurrent() }
             else { do { try activateAndPlay() } catch { fail() } }
@@ -438,6 +474,10 @@ final class PlayerModel: NSObject {
             started: ProcessInfo.processInfo.systemUptime)
         isSeeking = true
         if engine.seek(time: position) {
+            failedPrefetch = nil
+            #if DEBUG
+            lastCompletedTrackIDForTesting = nil
+            #endif
             elapsed = position
             updateNowPlaying()
         } else { clearSeek(); error = L10n.text("mobile.seekFailed") }
@@ -472,6 +512,7 @@ final class PlayerModel: NSObject {
         isLoading = false
         clearSeek()
         activeID = nil
+        failedPrefetch = nil
         initialPosition = 0
         interrupted = false
         artworkTask?.cancel()
@@ -490,6 +531,7 @@ final class PlayerModel: NSObject {
     }
 
     private func fail() {
+        failedPrefetch = nil
         wantsPlayback = false
         isLoading = false
         clearSeek()
@@ -576,7 +618,7 @@ final class PlayerModel: NSObject {
         guard let entry = entries[id], entry.generation == generation else { return }
         waitingForNext = false
         // Any other track starting means the removed decoders never will.
-        if id != activeID { discarded.removeAll(); clearSeek() }
+        if id != activeID { discarded.removeAll(); clearSeek(); failedPrefetch = nil }
         let changed = current?.id != entry.queue.current?.id
         entry.audio.source?.unmeteredOnly = false
         entries[id]?.isNext = false
@@ -603,6 +645,7 @@ final class PlayerModel: NSObject {
         waitingForNext = false
         if queue.advance(automatic: true) { beginCurrent() }
         else {
+            failedPrefetch = nil
             hasEnded = true
             wantsPlayback = false
             clearSeek()
@@ -614,6 +657,29 @@ final class PlayerModel: NSObject {
             elapsed = duration
             updateNowPlaying()
         }
+    }
+
+    // A predecoded next item can fail after the current item has rendered its
+    // final frame. The engine then stops without an EndOfAudio callback. Wait
+    // for that terminal snapshot so an early speculative failure cannot stop
+    // a current item that is still playing or deliberately paused. A stop
+    // notification also proves deactivation finished if a rapid Play command
+    // has since reactivated the empty engine before its actor callback arrives.
+    private func reconcileFailedPrefetch() {
+        guard let failedPrefetch, failedPrefetch.generation == generation,
+              failedPrefetch.current == activeID, let entry = entries[failedPrefetch.current],
+              entry.generation == generation, !entry.isNext,
+              !isLoading, !hasEnded,
+              engine.isStopped || completionSignal.stoppedRevision != failedPrefetch.stopRevision,
+              engine.nowPlaying == nil else { return }
+        if let decoder = engine.currentDecoder,
+           ObjectIdentifier(decoder as AnyObject) == failedPrefetch.current { return }
+        self.failedPrefetch = nil
+        // A queue edit may have begun a replacement prefetch before the failed
+        // decoder's callback reached this actor. Rebuild from the live queue;
+        // enqueueing that preparation alone would not restart a stopped engine.
+        cancelNextPreparation()
+        ended()
     }
 
     private func updateNowPlaying() {
@@ -705,8 +771,35 @@ extension PlayerModel: AudioPlayer.Delegate {
         Task { @MainActor [weak self] in self?.rendered(id) }
     }
 
+    #if DEBUG
+    nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, decodingStarted decoder: any PCMDecoding) {
+        let id = ObjectIdentifier(decoder as AnyObject)
+        Task { @MainActor [weak self] in
+            guard let self, let entry = self.entries[id], entry.generation == self.generation else { return }
+            self.lastDecodingTrackIDForTesting = entry.queue.current?.id
+        }
+    }
+    #endif
+
+    nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, renderingComplete decoder: any PCMDecoding) {
+        completionSignal.record(decoder)
+        #if DEBUG
+        let id = ObjectIdentifier(decoder as AnyObject)
+        Task { @MainActor [weak self] in
+            guard let self, let entry = self.entries[id], entry.generation == self.generation,
+                  id == self.activeID else { return }
+            self.lastCompletedTrackIDForTesting = entry.queue.current?.id
+        }
+        #endif
+    }
+
     nonisolated func audioPlayerEndOfAudio(_ audioPlayer: AudioPlayer) {
-        Task { @MainActor [weak self] in self?.ended() }
+        guard let completed = completionSignal.take() else { return }
+        Task { @MainActor [weak self] in
+            guard let self, let entry = self.entries[completed.id],
+                  entry.generation == self.generation, completed.id == self.activeID else { return }
+            self.ended()
+        }
     }
 
     nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, didSeek decoder: any PCMDecoding, toFrame frame: AVAudioFramePosition) {
@@ -719,11 +812,16 @@ extension PlayerModel: AudioPlayer.Delegate {
     nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, decodingAborted decoder: any PCMDecoding,
                                  error: Error, framesRendered: AVAudioFramePosition) {
         let id = ObjectIdentifier(decoder as AnyObject)
+        let stopRevision = completionSignal.stoppedRevision
         Task { @MainActor [weak self] in
-            guard let self, let entry = self.entries[id] else { return }
+            guard let self, let entry = self.entries[id], entry.generation == self.generation else { return }
             entry.audio.source?.cancel()
             self.entries.removeValue(forKey: id)
-            if entry.queue.current?.id == self.current?.id { self.fail() }
+            if !entry.isNext { self.fail() }
+            else if let current = self.activeID {
+                self.failedPrefetch = (self.generation, current, stopRevision)
+                self.reconcileFailedPrefetch()
+            }
         }
     }
 
@@ -732,10 +830,12 @@ extension PlayerModel: AudioPlayer.Delegate {
     }
 
     nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, playbackStateChanged playbackState: AudioPlayer.PlaybackState) {
+        if playbackState == .stopped { completionSignal.didStop() }
         Task { @MainActor [weak self] in
             guard let self else { return }
             // The callback can be queued behind another command. Publish the
             // engine's current state, including transitions back to playing.
+            self.reconcileFailedPrefetch()
             self.updateNowPlaying()
         }
     }
