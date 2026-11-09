@@ -22,6 +22,52 @@ nonisolated struct DownloadManifest: Codable, Sendable {
     var albums: [String: Album] = [:]
 }
 
+// Enqueue on MainActor so snapshots keep their capture order, including when
+// one store detaches and another opens the same service. File work stays off it.
+@MainActor
+final class DownloadManifestStorage {
+    static let shared = DownloadManifestStorage()
+    private var pending: [URL: (id: UUID, task: Task<Void, Never>)] = [:]
+    private let writeManifest: @Sendable (DownloadManifest, URL) -> Void
+
+    init(writeManifest: @escaping @Sendable (DownloadManifest, URL) -> Void = DownloadManifestStorage.persist) {
+        self.writeManifest = writeManifest
+    }
+
+    func save(_ manifest: DownloadManifest, directory: URL) -> Task<Void, Never> {
+        let previous = pending[directory]?.task
+        let write = writeManifest
+        let id = UUID()
+        let work = Task.detached(priority: .utility) {
+            await previous?.value
+            write(manifest, directory)
+        }
+        pending[directory] = (id, work)
+        Task {
+            await work.value
+            if pending[directory]?.id == id { pending.removeValue(forKey: directory) }
+        }
+        return work
+    }
+
+    func load(directory: URL) async -> DownloadManifest? {
+        // A replaced store's final snapshot must reach disk before reopening it.
+        await pending[directory]?.task.value
+        return await Task.detached(priority: .userInitiated) {
+            let url = directory.appendingPathComponent("manifest.json")
+            guard let data = try? Data(contentsOf: url) else { return nil as DownloadManifest? }
+            return try? JSONDecoder().decode(DownloadManifest.self, from: data)
+        }.value
+    }
+
+    nonisolated static func persist(_ manifest: DownloadManifest, _ directory: URL) {
+        guard let data = try? JSONEncoder().encode(manifest) else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: MediaPaths.protection)
+        try? data.write(to: directory.appendingPathComponent("manifest.json"),
+                        options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+}
+
 enum AlbumDownloadState: Equatable {
     case none, partial, downloading(Double), failed, complete
 }
@@ -39,29 +85,31 @@ final class DownloadStore {
     @ObservationIgnored let directory: URL
     @ObservationIgnored private let engine: DownloadEngine
     @ObservationIgnored private let client: APIClient
+    @ObservationIgnored private let storage: DownloadManifestStorage
+    @ObservationIgnored private var active = true
+    @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var waiting: [String] = []
     @ObservationIgnored private var resolving = 0
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     private static let parallelResolves = 3
 
-    init(client: APIClient, engine: DownloadEngine = .shared) {
+    init(client: APIClient, engine: DownloadEngine = .shared, storage: DownloadManifestStorage = .shared) {
         self.client = client
         self.engine = engine
+        self.storage = storage
         service = MediaPaths.service(client.baseURL)
         directory = MediaPaths.downloads(root: engine.root, service: service)
     }
-
-    private var manifestURL: URL { directory.appendingPathComponent("manifest.json") }
 
     // Loads the manifest and reconciles it with the transfers the system still
     // holds. A transfer that vanished was cancelled by a force quit or a
     // reboot; it is shown as interrupted, never as failed or finished.
     func load() async {
-        let (url, engine, service) = (manifestURL, engine, service)
-        let saved = await Task.detached(priority: .userInitiated) { () -> DownloadManifest? in
-            guard let data = try? Data(contentsOf: url) else { return nil }
-            return try? JSONDecoder().decode(DownloadManifest.self, from: data)
-        }.value
+        guard active else { return }
+        let token = generation
+        let (engine, service) = (engine, service)
+        let saved = await storage.load(directory: directory)
+        guard active, token == generation else { return }
         let live = await engine.liveKeys()
         let restored = await Task.detached(priority: .userInitiated) { () -> [DownloadRecord] in
             (saved?.records ?? []).map { original in
@@ -81,6 +129,7 @@ final class DownloadStore {
                 return record
             }
         }.value
+        guard active, token == generation else { return }
         records = Dictionary(restored.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         albums = saved?.albums ?? [:]
         loaded = true
@@ -89,8 +138,15 @@ final class DownloadStore {
     }
 
     func detach() {
+        guard active else { return }
+        active = false
+        generation = UUID()
         engine.attach(nil)
         saveTask?.cancel()
+        // Preserve edits still inside the debounce interval before a replacement
+        // store reads this service. Detached callbacks cannot enqueue stale data.
+        if loaded { _ = storage.save(snapshot, directory: directory) }
+        waiting.removeAll()
     }
 
     nonisolated private static func forwarder(_ store: DownloadStore) -> @Sendable (DownloadEvent) -> Void {
@@ -106,7 +162,7 @@ final class DownloadStore {
 
     private func apply(_ event: DownloadEvent) {
         let target = event.key
-        guard target.service == service, var record = records[target.track], record.attempt == target.attempt else { return }
+        guard active, target.service == service, var record = records[target.track], record.attempt == target.attempt else { return }
         switch event {
         case .progress(_, let written, let expected):
             guard record.state != .done else { return }
@@ -137,6 +193,7 @@ final class DownloadStore {
     // Downloads a whole album, or one of its tracks when `only` is set. The
     // album is kept with the records so it can be browsed without a network.
     func download(album: Album, only trackID: String? = nil) async {
+        guard active else { return }
         albums[album.id] = album
         for track in album.normalizedTracks where trackID == nil || track.id == trackID { enqueue(track, album: album.id) }
         save()
@@ -152,7 +209,7 @@ final class DownloadStore {
     }
 
     func cancel(_ trackID: String) {
-        guard let record = records.removeValue(forKey: trackID) else { return }
+        guard active, let record = records.removeValue(forKey: trackID) else { return }
         waiting.removeAll { $0 == trackID }
         if record.state == .downloading { engine.cancel(key(record)) }
         save()
@@ -165,7 +222,7 @@ final class DownloadStore {
     }
 
     func retry(_ trackID: String) {
-        guard var record = records[trackID], record.state == .failed || record.state == .interrupted else { return }
+        guard active, var record = records[trackID], record.state == .failed || record.state == .interrupted else { return }
         // A new attempt token makes any late event from the old transfer inert.
         record.attempt = DownloadKey.newAttempt()
         record.state = .queued
@@ -182,7 +239,7 @@ final class DownloadStore {
     }
 
     func remove(_ trackID: String) {
-        guard let record = records[trackID] else { return }
+        guard active, let record = records[trackID] else { return }
         cancel(trackID)
         let file = engine.destination(key(record))
         Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: file) }
@@ -190,6 +247,7 @@ final class DownloadStore {
     }
 
     func remove(album albumID: String) {
+        guard active else { return }
         records.values.filter { $0.albumID == albumID }.forEach { remove($0.id) }
         albums.removeValue(forKey: albumID)
         let cover = MediaPaths.pinnedCover(baseURL: client.baseURL, album: albumID, root: engine.root)
@@ -245,6 +303,7 @@ final class DownloadStore {
     // Each stream address is resolved just before its transfer starts, since
     // storage redirects are short-lived signed URLs.
     private func pump() {
+        guard active else { return }
         while resolving < Self.parallelResolves, !waiting.isEmpty {
             let id = waiting.removeFirst()
             guard let record = records[id], record.state == .queued else { continue }
@@ -256,11 +315,11 @@ final class DownloadStore {
                 defer { resolving -= 1; pump() }
                 do {
                     let request = try await DownloadEngine.resolve(url, client: client)
-                    guard records[id]?.attempt == record.attempt, records[id]?.state == .queued else { return }
+                    guard active, records[id]?.attempt == record.attempt, records[id]?.state == .queued else { return }
                     records[id]?.state = .downloading
                     engine.start(request, key: transfer)
                 } catch {
-                    guard records[id]?.attempt == record.attempt else { return }
+                    guard active, records[id]?.attempt == record.attempt else { return }
                     records[id]?.state = .failed
                     let status = (error as? ServerError)?.status ?? (error as? URLError)?.code.rawValue ?? -1
                     records[id]?.status = status
@@ -293,6 +352,7 @@ final class DownloadStore {
     }
 
     private func save() {
+        guard active else { return }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(300))
@@ -302,12 +362,9 @@ final class DownloadStore {
     }
 
     private func write() async {
-        let manifest = DownloadManifest(records: Array(records.values), albums: albums)
-        let (directory, url) = (directory, manifestURL)
-        await Task.detached(priority: .utility) {
-            guard let data = try? JSONEncoder().encode(manifest) else { return }
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: MediaPaths.protection)
-            try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        }.value
+        guard active, loaded else { return }
+        await storage.save(snapshot, directory: directory).value
     }
+
+    private var snapshot: DownloadManifest { DownloadManifest(records: Array(records.values), albums: albums) }
 }
