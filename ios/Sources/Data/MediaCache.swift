@@ -110,13 +110,19 @@ final class MediaCache {
     @ObservationIgnored let root: URL
     @ObservationIgnored private(set) var generation: String
     @ObservationIgnored private let settings: CacheSettings
-    @ObservationIgnored private var pruning = false
+    private nonisolated let pruneFiles: @Sendable (URL, String, Int, Bool, Set<String>) -> Bool
+    @ObservationIgnored private var pruneTask: Task<Void, Never>?
+    @ObservationIgnored private var clearTask: Task<Bool, Never>?
     @ObservationIgnored private var pruneAgain = false
     @ObservationIgnored private var lastProtected: Set<String> = []
 
-    init(root: URL, settings: CacheSettings) {
+    init(root: URL, settings: CacheSettings,
+         pruneFiles: @escaping @Sendable (URL, String, Int, Bool, Set<String>) -> Bool = {
+             CacheFiles.prune(root: $0, generation: $1, limit: $2, enabled: $3, protected: $4)
+         }) {
         self.root = root
         self.settings = settings
+        self.pruneFiles = pruneFiles
         let marker = root.appendingPathComponent("generation")
         if let saved = try? String(contentsOf: marker, encoding: .utf8),
            saved.range(of: "^g[0-9a-f]{8}$", options: .regularExpression) != nil {
@@ -138,18 +144,18 @@ final class MediaCache {
     // runs once more afterwards with the latest protected set.
     func prune(protecting protected: Set<String> = []) {
         lastProtected = protected
-        guard !pruning else { pruneAgain = true; return }
-        pruning = true
+        guard pruneTask == nil, clearTask == nil else { pruneAgain = true; return }
         let (root, generation) = (root, generation)
         let (limit, enabled) = (settings.limitBytes, settings.enabled)
-        Task {
+        let pruneFiles = pruneFiles
+        pruneTask = Task {
             let usage = await Task.detached(priority: .utility) { () -> CacheUsage in
-                _ = CacheFiles.prune(root: root, generation: generation, limit: limit, enabled: enabled, protected: protected)
+                _ = pruneFiles(root, generation, limit, enabled, protected)
                 return CacheFiles.usage(root.appendingPathComponent(generation, isDirectory: true))
             }.value
             if generation == self.generation { self.usage = usage }
-            pruning = false
-            if pruneAgain { pruneAgain = false; prune(protecting: lastProtected) }
+            pruneTask = nil
+            if pruneAgain && clearTask == nil { pruneAgain = false; prune(protecting: lastProtected) }
         }
     }
 
@@ -163,14 +169,27 @@ final class MediaCache {
     // Returns false when some files could not be removed; the usage shown
     // afterwards is measured again rather than assumed to be zero.
     func clear() async -> Bool {
-        generation = MediaCache.newGeneration()
-        let (root, generation) = (root, generation)
-        let ok = await Task.detached(priority: .userInitiated) { () -> Bool in
-            MediaCache.write(generation, to: root)
-            return CacheFiles.prune(root: root, generation: generation, limit: 0, enabled: false, protected: [])
-        }.value
-        await refreshUsage()
-        return ok
+        if let clearTask { return await clearTask.value }
+        let task = Task {
+            // A stale scan deletes every generation except its own. Finish it
+            // before publishing a new directory, and defer later pruning until
+            // this clear finishes. Concurrent clears share the same operation.
+            await pruneTask?.value
+            generation = MediaCache.newGeneration()
+            let (root, generation, pruneFiles) = (root, generation, pruneFiles)
+            let ok = await Task.detached(priority: .userInitiated) { () -> Bool in
+                MediaCache.write(generation, to: root)
+                // Retire old generations while preserving files a new stream
+                // may have already written into the newly published directory.
+                return pruneFiles(root, generation, Int.max, true, [])
+            }.value
+            await refreshUsage()
+            clearTask = nil
+            if pruneAgain { pruneAgain = false; prune(protecting: lastProtected) }
+            return ok
+        }
+        clearTask = task
+        return await task.value
     }
 
     private static func newGeneration() -> String {

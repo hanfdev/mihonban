@@ -104,3 +104,178 @@ final class CacheTests: XCTestCase {
         XCTAssertNil(DownloadKey(nil))
     }
 }
+
+// Hold filesystem mutations on their worker thread while the main actor stays
+// free to request a clear, switch generations, or queue another prune.
+private final class CacheMutationGate: @unchecked Sendable {
+    private let condition = NSCondition()
+    private let heldCalls: Set<Int>
+    private var released: Set<Int> = []
+    private var releaseEverything = false
+    private var started = 0
+    private var completed = 0
+    private var active = 0
+    private var peakActive = 0
+    private var timedOut = false
+
+    init(holding calls: Set<Int>) { heldCalls = calls }
+
+    var state: (started: Int, completed: Int, peakActive: Int, timedOut: Bool) {
+        condition.lock()
+        defer { condition.unlock() }
+        return (started, completed, peakActive, timedOut)
+    }
+
+    func release(_ call: Int? = nil) {
+        condition.lock()
+        if let call { released.insert(call) } else { releaseEverything = true }
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    func prune(_ root: URL, _ generation: String, _ limit: Int, _ enabled: Bool,
+               _ protected: Set<String>) -> Bool {
+        condition.lock()
+        started += 1
+        let call = started
+        active += 1
+        peakActive = max(peakActive, active)
+        let deadline = Date(timeIntervalSinceNow: 10)
+        while heldCalls.contains(call) && !released.contains(call) && !releaseEverything {
+            if !condition.wait(until: deadline) { timedOut = true; break }
+        }
+        condition.unlock()
+        let result = CacheFiles.prune(root: root, generation: generation, limit: limit,
+                                      enabled: enabled, protected: protected)
+        condition.lock()
+        active -= 1
+        completed += 1
+        condition.broadcast()
+        condition.unlock()
+        return result
+    }
+}
+
+// The offline suite is selected by both iPhone and iPad native validation.
+extension OfflineLaunchTests {
+    func testCacheClearWaitsForExistingPruneBeforePublishingGeneration() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "org.mihonban.cache-order.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let settings = CacheSettings(defaults: defaults)
+        let gate = CacheMutationGate(holding: [1, 2])
+        let media = MediaCache(root: root, settings: settings, pruneFiles: { root, generation, limit, enabled, protected in
+            gate.prune(root, generation, limit, enabled, protected)
+        })
+        defer {
+            gate.release()
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let oldGeneration = media.generation
+        let oldAudio = media.audioDirectory
+        let playing = oldAudio.appendingPathComponent("playing.flac")
+        try writeCacheBytes(2000, to: playing)
+        let openAudio = try FileHandle(forReadingFrom: playing)
+        defer { try? openAudio.close() }
+
+        media.prune(protecting: ["playing.flac"])
+        try await waitForCacheMutation { gate.state.started == 1 }
+        var clearStarted = false
+        let clear = Task { @MainActor in
+            clearStarted = true
+            return await media.clear()
+        }
+        try await waitForCacheMutation { clearStarted }
+        XCTAssertEqual(media.generation, oldGeneration, "A live old-generation mutation must finish before publishing its replacement")
+        XCTAssertEqual(gate.state.started, 1)
+        media.prune(protecting: ["fresh.flac"])
+
+        gate.release(1)
+        try await waitForCacheMutation { gate.state.started == 2 }
+        let freshGeneration = media.generation
+        XCTAssertNotEqual(freshGeneration, oldGeneration)
+        let freshAudio = media.audioDirectory.appendingPathComponent("fresh.flac")
+        let freshArtwork = media.artworkDirectory.appendingPathComponent("fresh.img")
+        let freshPartial = media.audioDirectory.appendingPathComponent("fresh.flac.live.part")
+        try writeCacheBytes(3000, to: freshAudio)
+        try writeCacheBytes(700, to: freshArtwork)
+        try writeCacheBytes(500, to: freshPartial)
+        gate.release(2)
+        let cleared = await clear.value
+        XCTAssertTrue(cleared)
+        try await waitForCacheMutation { gate.state.completed >= 3 }
+        await media.refreshUsage()
+
+        XCTAssertEqual(gate.state.peakActive, 1, "Clear and prune may never delete generations concurrently")
+        XCTAssertFalse(gate.state.timedOut)
+        XCTAssertEqual(media.generation, freshGeneration)
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("generation"), encoding: .utf8), freshGeneration)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldAudio.path))
+        XCTAssertEqual(try Data(contentsOf: freshAudio).count, 3000)
+        XCTAssertEqual(try Data(contentsOf: freshArtwork).count, 700)
+        XCTAssertEqual(try Data(contentsOf: freshPartial).count, 500)
+        XCTAssertEqual(media.usage.audio, 3000)
+        XCTAssertEqual(media.usage.artwork, 700)
+        XCTAssertEqual(try openAudio.readToEnd()?.count, 2000, "Already-open playback remains readable after cache retirement")
+    }
+
+    func testConcurrentCacheClearsShareOneGenerationAndKeepNewFiles() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "org.mihonban.cache-clear.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let gate = CacheMutationGate(holding: [1])
+        let media = MediaCache(root: root, settings: CacheSettings(defaults: defaults),
+                               pruneFiles: { root, generation, limit, enabled, protected in
+            gate.prune(root, generation, limit, enabled, protected)
+        })
+        defer {
+            gate.release()
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let before = media.generation
+        let first = Task { @MainActor in await media.clear() }
+        try await waitForCacheMutation { gate.state.started == 1 }
+        let freshGeneration = media.generation
+        XCTAssertNotEqual(freshGeneration, before)
+        var secondStarted = false
+        let second = Task { @MainActor in
+            secondStarted = true
+            return await media.clear()
+        }
+        try await waitForCacheMutation { secondStarted }
+        XCTAssertEqual(media.generation, freshGeneration)
+        XCTAssertEqual(gate.state.started, 1)
+        let fresh = media.audioDirectory.appendingPathComponent("new.flac")
+        try writeCacheBytes(1234, to: fresh)
+        gate.release()
+        let firstResult = await first.value
+        let secondResult = await second.value
+        XCTAssertTrue(firstResult)
+        XCTAssertTrue(secondResult)
+        XCTAssertEqual(gate.state.started, 1, "Overlapping clears share the same filesystem operation")
+        XCTAssertEqual(gate.state.peakActive, 1)
+        XCTAssertFalse(gate.state.timedOut)
+        XCTAssertEqual(media.generation, freshGeneration)
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("generation"), encoding: .utf8), freshGeneration)
+        XCTAssertEqual(try Data(contentsOf: fresh).count, 1234)
+        XCTAssertEqual(media.usage.audio, 1234)
+    }
+
+    private func writeCacheBytes(_ count: Int, to file: URL) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(repeating: 7, count: count).write(to: file)
+    }
+
+    private func waitForCacheMutation(_ condition: () -> Bool,
+                                      file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while ContinuousClock.now < deadline {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTFail("Cache mutation did not reach the expected ordering boundary", file: file, line: line)
+        throw NSError(domain: "CacheMutationOrderingTests", code: 1)
+    }
+}
