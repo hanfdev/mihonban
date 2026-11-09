@@ -44,10 +44,22 @@ final class AppModel {
     @ObservationIgnored private let defaults: UserDefaults
     // Tests substitute the transport; nil uses the app's shared configuration.
     @ObservationIgnored private let transport: URLSession?
+    @ObservationIgnored private let artworkStore: ArtworkStore
+    @ObservationIgnored private let prepareArtworkDirectory: @Sendable (URL) async -> Void
+    @ObservationIgnored private var artworkConfiguration = UUID()
 
-    init(defaults: UserDefaults = .standard, transport: URLSession? = nil) {
+    init(defaults: UserDefaults = .standard, transport: URLSession? = nil,
+         artworkStore: ArtworkStore = .shared,
+         prepareArtworkDirectory: @escaping @Sendable (URL) async -> Void = { target in
+             await Task.detached(priority: .utility) {
+                 try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true,
+                                                         attributes: MediaPaths.protection)
+             }.value
+         }) {
         self.defaults = defaults
         self.transport = transport
+        self.artworkStore = artworkStore
+        self.prepareArtworkDirectory = prepareArtworkDirectory
         address = defaults.string(forKey: "serviceAddress") ?? ""
         let session = SessionStore()
         let favorites = FavoritesStore(session: session)
@@ -80,20 +92,30 @@ final class AppModel {
 
     // Applies a changed cache switch or limit at once.
     func cacheSettingsChanged() {
-        Task { await configureArtwork() }
+        Task { await applyCacheSettings() }
+    }
+
+    func applyCacheSettings() async {
+        let media = media
+        // Retire old artwork writers before deleting files when caching is off.
+        await configureArtwork()
+        guard self.media === media else { return }
         media?.prune(protecting: player.protectedFiles)
     }
 
     private func configureArtwork() async {
-        var directory: URL?
-        if let media, cache.enabled {
-            directory = media.artworkDirectory
-            let target = media.artworkDirectory
-            await Task.detached(priority: .utility) {
-                try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true, attributes: MediaPaths.protection)
-            }.value
-        }
-        await ArtworkStore.shared.configure(disk: directory)
+        let token = UUID()
+        artworkConfiguration = token
+        let session = generation
+        let media = media
+        let enabled = cache.enabled
+        let directory = enabled ? media?.artworkDirectory : nil
+        if let directory { await prepareArtworkDirectory(directory) }
+        // Directory creation may finish after a toggle, clear or disconnect.
+        // Its old destination must never become the current artwork cache.
+        guard artworkConfiguration == token, generation == session, self.media === media,
+              cache.enabled == enabled, directory == (cache.enabled ? self.media?.artworkDirectory : nil) else { return }
+        await artworkStore.configure(disk: directory, preservingRequests: true)
     }
 
     private func attachStorage(_ api: APIClient) async {
@@ -201,6 +223,10 @@ final class AppModel {
     }
 
     private func open(_ api: APIClient, info: SessionInfo, token: UUID) async {
+        // Retire the previous authorization before publishing a new shell.
+        // Cache-only configuration must not cancel this mandatory boundary.
+        await artworkStore.configure(disk: nil)
+        guard token == generation else { return }
         // Invalidate the previous catalog before publishing a new authorization.
         // Storage setup can suspend, allowing the new shell to appear meanwhile.
         catalog.reset()
@@ -272,6 +298,8 @@ final class AppModel {
 
     func disconnect() {
         generation = UUID()
+        artworkConfiguration = UUID()
+        let token = generation
         player.stop()
         // Downloaded files stay on disk for the next sign-in to this service;
         // they are reachable only through an authorized session's manifest.
@@ -280,7 +308,10 @@ final class AppModel {
         media = nil
         player.media = nil
         player.downloads = nil
-        Task { await ArtworkStore.shared.configure(disk: nil) }
+        Task {
+            guard generation == token, media == nil else { return }
+            await artworkStore.configure(disk: nil)
+        }
         if let client {
             client.clearCookies()
             _ = CredentialStore.save(nil, for: client.baseURL.absoluteString)

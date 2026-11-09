@@ -3,25 +3,42 @@ import ImageIO
 import UIKit
 
 // Covers are looked up in memory, then in a downloaded album's pinned cover,
-// then in the disk cache, and only then fetched. Disk writes never create the
-// cache directory, so a request started before "Clear cache" cannot recreate
-// the cleared generation.
+// then in the disk cache, and only then fetched. Cache changes retire writes;
+// authorization changes also retire the responses visible to waiting views.
 actor ArtworkStore {
     static let shared = ArtworkStore()
+    private struct Request {
+        let id: UUID
+        let task: Task<UIImage?, Never>
+    }
     private let images = NSCache<NSString, UIImage>()
-    private var pending: [String: Task<UIImage?, Never>] = [:]
+    private var pending: [String: Request] = [:]
     private var missing: [String: Date] = [:]
     private var disk: URL?
+    private var generation = UUID()
+    private var requestContext = UUID()
+    #if DEBUG
+    private(set) var coalescedRequestsForTesting = 0
+    #endif
 
     init() { images.totalCostLimit = 24 * 1024 * 1024; images.countLimit = 120 }
 
-    func configure(disk: URL?) {
+    func configure(disk: URL?, preservingRequests: Bool = false) {
+        generation = UUID()
+        if !preservingRequests {
+            requestContext = UUID()
+            pending.values.forEach { $0.task.cancel() }
+            pending.removeAll()
+        }
         self.disk = disk
         images.removeAllObjects()
         missing.removeAll()
     }
 
     func image(url: URL, session: URLSession, pixels: Int, pinned: URL? = nil) async -> UIImage? {
+        guard !Task.isCancelled else { return nil }
+        let token = generation
+        let context = requestContext
         let key = url.absoluteString + ":\(pixels)"
         if let image = images.object(forKey: key as NSString) { return image }
         if let pinned, let data = try? Data(contentsOf: pinned), let image = Self.decode(data, pixels: pixels) {
@@ -35,21 +52,44 @@ actor ArtworkStore {
             return image
         }
         if let date = missing[key], Date().timeIntervalSince(date) < 30 { return nil }
-        if let task = pending[key] { return await task.value }
-        let task = Task<UIImage?, Never> {
-            do {
-                let (data, response) = try await session.data(from: url)
-                try APIClient.validate(response)
-                guard data.count < 20 * 1024 * 1024, response.mimeType != "image/svg+xml",
-                      let image = Self.decode(data, pixels: pixels) else { return nil }
-                if let file { try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
+        let request: Request
+        if let existing = pending[key] {
+            #if DEBUG
+            coalescedRequestsForTesting += 1
+            #endif
+            request = existing
+        } else {
+            let id = UUID()
+            let task = Task<UIImage?, Never> {
+                var downloaded: Data?
+                do {
+                    let (data, response) = try await session.data(from: url)
+                    try APIClient.validate(response)
+                    if data.count < 20 * 1024 * 1024, response.mimeType != "image/svg+xml" { downloaded = data }
+                } catch {}
+                // This task resumes on the artwork actor. No suspension may
+                // separate the ownership check from file and cache updates.
+                guard requestContext == context, pending[key]?.id == id, !Task.isCancelled else { return nil }
+                pending.removeValue(forKey: key)
+                guard let data = downloaded, let image = Self.decode(data, pixels: pixels) else {
+                    if generation == token { missing[key] = Date() }
+                    return nil
+                }
+                if generation == token {
+                    if let file { try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
+                    store(image, key: key)
+                }
+                // Cache switches do not change a view's image task identity.
+                // Keep its response visible without refilling a retired cache.
                 return image
-            } catch { return nil }
+            }
+            request = Request(id: id, task: task)
+            pending[key] = request
         }
-        pending[key] = task
-        let image = await task.value
-        pending.removeValue(forKey: key)
-        if let image { store(image, key: key) } else { missing[key] = Date() }
+        let image = await request.task.value
+        // Joined callers also cross the actor suspension boundary; they must
+        // not receive a retired response after a new authorization.
+        guard requestContext == context, !Task.isCancelled else { return nil }
         return image
     }
 
