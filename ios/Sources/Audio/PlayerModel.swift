@@ -25,6 +25,7 @@ final class PlayerModel: NSObject {
     var isExpanded = false
 
     @ObservationIgnored private let engine = AudioPlayer()
+    private nonisolated let reactivateAudioSession: @Sendable () throws -> Void
     @ObservationIgnored private var client: APIClient?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var entries: [ObjectIdentifier: Entry] = [:]
@@ -84,7 +85,10 @@ final class PlayerModel: NSObject {
 
     override convenience init() { self.init(monitorNetwork: true) }
 
-    init(monitorNetwork: Bool) {
+    init(monitorNetwork: Bool, reactivateAudioSession: @escaping @Sendable () throws -> Void = {
+        try AVAudioSession.sharedInstance().setActive(true)
+    }) {
+        self.reactivateAudioSession = reactivateAudioSession
         super.init()
         engine.delegate = self
         installRemoteCommands()
@@ -739,15 +743,20 @@ extension PlayerModel: AudioPlayer.Delegate {
     nonisolated func audioPlayer(_ audioPlayer: AudioPlayer, audioSessionInterruption userInfo: [AnyHashable: Any]?) {
         let type = (userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) ?? 0
         let options = (userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
+        var activationFailed = false
         if type == AVAudioSession.InterruptionType.ended.rawValue &&
             options & AVAudioSession.InterruptionOptions.shouldResume.rawValue != 0 {
-            do { try AVAudioSession.sharedInstance().setActive(true) }
-            catch { audioPlayer.pause() }
+            do { try reactivateAudioSession() }
+            catch { activationFailed = true; audioPlayer.pause() }
         }
+        let cannotResume = activationFailed || options & AVAudioSession.InterruptionOptions.shouldResume.rawValue == 0
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.interrupted = type == AVAudioSession.InterruptionType.began.rawValue
-            if !self.interrupted && options & AVAudioSession.InterruptionOptions.shouldResume.rawValue == 0 {
+            // shouldResume permits an attempt; it does not guarantee session
+            // activation. Keep a failed attempt paused so one tap can retry.
+            // A later explicit play may already have succeeded before this hop.
+            if !self.interrupted && cannotResume && !self.engine.isPlaying {
                 self.wantsPlayback = false
             }
             self.updateNowPlaying()

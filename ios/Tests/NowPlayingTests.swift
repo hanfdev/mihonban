@@ -13,6 +13,72 @@ private final class ArtworkBox: @unchecked Sendable {
 
 @MainActor
 final class NowPlayingTests: XCTestCase {
+    func testFailedInterruptionReactivationPausesIntentAndOneTapRetries() async throws {
+        let player = PlayerModel(monitorNetwork: false, reactivateAudioSession: {
+            throw NSError(domain: "InterruptionActivationTest", code: 1)
+        })
+        let audio = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "tone", withExtension: "flac"))
+        player.connect(try APIClient(address: "https://example.invalid"), demoURL: audio)
+        defer { player.stop(); player.setForeground(false) }
+        player.play([Track(id: "interrupted", title: "Interrupted audio")])
+        try await waitForTimeline { $0.rate == 1 && player.elapsed > 0.2 }
+
+        postInterruption(.began)
+        try await waitForTimeline { $0.rate == 0 }
+        XCTAssertTrue(player.wantsPlayback, "The beginning preserves intent for a possible automatic resume")
+        postInterruption(.ended, options: .shouldResume)
+        try await waitForTimeline { $0.rate == 0 && !player.wantsPlayback }
+        let paused = try XCTUnwrap(systemTimeline()).elapsed
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(player.elapsed, paused, accuracy: 0.1)
+        XCTAssertFalse(player.isLoading)
+        XCTAssertFalse(player.hasEnded)
+        XCTAssertNil(player.error, "Losing audio priority leaves an ordinary paused player")
+
+        player.toggle()
+        try await waitForTimeline { $0.rate == 1 && player.elapsed > paused + 0.3 }
+        XCTAssertEqual(player.current?.id, "interrupted")
+        XCTAssertTrue(player.wantsPlayback)
+        XCTAssertNil(player.error)
+    }
+
+    func testInterruptionResumesOnlyWithPermissionAndWithoutAnExplicitPause() async throws {
+        let player = PlayerModel(monitorNetwork: false)
+        let audio = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "tone", withExtension: "flac"))
+        player.connect(try APIClient(address: "https://example.invalid"), demoURL: audio)
+        defer { player.stop(); player.setForeground(false) }
+        for (shouldResume, manuallyPaused) in [(true, false), (true, true), (false, false)] {
+            player.play([Track(id: "interrupted", title: "Interrupted audio")])
+            try await waitForTimeline { $0.rate == 1 && player.elapsed > 0.2 }
+            postInterruption(.began)
+            try await waitForTimeline { $0.rate == 0 }
+            if manuallyPaused { player.pause() }
+            let paused = try XCTUnwrap(systemTimeline()).elapsed
+            postInterruption(.ended, options: shouldResume ? .shouldResume : [])
+            if shouldResume && !manuallyPaused {
+                try await waitForTimeline { $0.rate == 1 && player.elapsed > paused + 0.3 }
+                XCTAssertTrue(player.wantsPlayback)
+            } else {
+                try await waitForTimeline { $0.rate == 0 && !player.wantsPlayback }
+                try await Task.sleep(for: .milliseconds(350))
+                XCTAssertEqual(player.elapsed, paused, accuracy: 0.1)
+                XCTAssertEqual(try XCTUnwrap(systemTimeline()).rate, 0)
+            }
+            XCTAssertNil(player.error)
+        }
+    }
+
+    private func postInterruption(_ type: AVAudioSession.InterruptionType,
+                                  options: AVAudioSession.InterruptionOptions = []) {
+        // Drive the actual engine observer and delegate, including its native
+        // preservation of decoders and explicit-pause suppression of resume.
+        NotificationCenter.default.post(name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(), userInfo: [
+                AVAudioSessionInterruptionTypeKey: type.rawValue,
+                AVAudioSessionInterruptionOptionKey: options.rawValue
+            ])
+    }
+
     func testBackgroundTimelineUsesEngineTimeWithoutForegroundTicks() async throws {
         let player = PlayerModel(monitorNetwork: false)
         let audio = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "tone", withExtension: "flac"))
