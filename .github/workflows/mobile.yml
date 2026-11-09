@@ -43,6 +43,7 @@ jobs:
             cp ios/Package.resolved ios/Mihonban.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
           fi
           xcodebuild -resolvePackageDependencies -project ios/Mihonban.xcodeproj -scheme Mihonban -clonedSourcePackagesDirPath .spm
+          python3 -I ios/tools/apply-audio-engine-fixes.py .spm/checkouts/SFBAudioEngine
           python3 -I ios/tools/acknowledgements.py .spm/checkouts ios/Resources/ThirdParty/Acknowledgements.txt
           xcodegen generate --spec ios/project.yml
       - name: Build unsigned device archive

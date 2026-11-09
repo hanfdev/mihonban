@@ -6,7 +6,10 @@ parser.add_argument("checkouts", type=Path)
 parser.add_argument("output", type=Path)
 args = parser.parse_args()
 sections = ["Mihonban iOS — third-party notices\n\n"
-            "SFBAudioEngine and its dependencies are unmodified. Some optional codecs are LGPL-licensed. "
+            "SFBAudioEngine includes a small FLAC decoder fix: a terminal read abort exits decoding instead of "
+            "looping without producing frames. The exact revision, source verification and patch are recorded in "
+            "ios/tools/apply-audio-engine-fixes.py in the Mihonban source repository. "
+            "Its codec dependencies are unmodified. Some optional codecs are LGPL-licensed. "
             "Dependency versions are recorded in Package.resolved; source is available at each package's "
             "GitHub URL. The CI build also provides application object files for relinking with modified libraries.\n"]
 for package in sorted(args.checkouts.iterdir()):
