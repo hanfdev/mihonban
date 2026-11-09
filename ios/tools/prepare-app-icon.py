@@ -63,7 +63,7 @@ def icon(s):
 
 
 def prepare_logo(root: Path):
-    # Reuse the approved native icon at the startup mark's maximum 3x size.
+    # Cover the 180pt iPad mark at 2x and the 104pt iPhone mark at 3x.
     icons = root / "ios/Resources/Assets.xcassets/AppIcon.appiconset"
     folder = root / "ios/Resources/Assets.xcassets/Logo.imageset"
     folder.mkdir(parents=True, exist_ok=True)
@@ -71,7 +71,7 @@ def prepare_logo(root: Path):
     for appearance, source, filename in [(None, "AppIcon.png", "logo.png"),
                                          ("dark", "AppIcon-dark.png", "logo-dark.png")]:
         with Image.open(icons / source) as image:
-            image.convert("RGB").resize((312, 312), Image.Resampling.LANCZOS).save(folder / filename, optimize=True)
+            image.convert("RGB").resize((360, 360), Image.Resampling.LANCZOS).save(folder / filename, optimize=True)
         entry = {"filename": filename, "idiom": "universal"}
         if appearance:
             entry["appearances"] = [{"appearance": "luminosity", "value": appearance}]

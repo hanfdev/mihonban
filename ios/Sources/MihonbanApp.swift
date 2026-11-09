@@ -42,15 +42,20 @@ struct RootView: View {
 
 struct StartupBrandView: View {
     var body: some View {
-        Image("Logo").resizable().scaledToFit()
-            .frame(width: 104, height: 104)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.background.ignoresSafeArea())
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: "見本盤"))
-            .accessibilityValue(Text(L10n.text("common.loading")))
-            .accessibilityIdentifier("connection.restoring")
+        GeometryReader { geometry in
+            let shortestSide = min(geometry.size.width, geometry.size.height)
+            let size: CGFloat = UIDevice.current.userInterfaceIdiom == .pad
+                ? min(180, max(104, shortestSide * 0.22)) : 104
+            Image("Logo").resizable().scaledToFit()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size / 4, style: .continuous))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Theme.background.ignoresSafeArea())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "見本盤"))
+        .accessibilityValue(Text(L10n.text("common.loading")))
+        .accessibilityIdentifier("connection.restoring")
     }
 }
 
