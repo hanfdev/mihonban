@@ -62,6 +62,24 @@ def icon(s):
     return im
 
 
+def prepare_logo(root: Path):
+    # Reuse the approved native icon at the startup mark's maximum 3x size.
+    icons = root / "ios/Resources/Assets.xcassets/AppIcon.appiconset"
+    folder = root / "ios/Resources/Assets.xcassets/Logo.imageset"
+    folder.mkdir(parents=True, exist_ok=True)
+    images = []
+    for appearance, source, filename in [(None, "AppIcon.png", "logo.png"),
+                                         ("dark", "AppIcon-dark.png", "logo-dark.png")]:
+        with Image.open(icons / source) as image:
+            image.convert("RGB").resize((312, 312), Image.Resampling.LANCZOS).save(folder / filename, optimize=True)
+        entry = {"filename": filename, "idiom": "universal"}
+        if appearance:
+            entry["appearances"] = [{"appearance": "luminosity", "value": appearance}]
+        images.append(entry)
+    (folder / "Contents.json").write_text(json.dumps({"images": images,
+        "info": {"author": "xcode", "version": 1}}, indent=2) + "\n", encoding="utf-8")
+
+
 def prepare(root: Path):
     folder = root / "ios/Resources/Assets.xcassets/AppIcon.appiconset"
     folder.mkdir(parents=True, exist_ok=True)
@@ -90,6 +108,7 @@ def prepare(root: Path):
         images.append(entry)
     (folder / "Contents.json").write_text(json.dumps({"images": images,
         "info": {"author": "xcode", "version": 1}}, indent=2) + "\n", encoding="utf-8")
+    prepare_logo(root)
 
 
 if __name__ == "__main__":

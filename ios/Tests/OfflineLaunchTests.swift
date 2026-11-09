@@ -212,7 +212,7 @@ final class OfflineLaunchTests: XCTestCase {
         var cleared = false
     }
 
-    func testStartupBrandUsesBundledLogoWithoutMotionOrNewAssets() throws {
+    func testStartupBrandUsesNativeLogoWithoutMotion() throws {
         XCTAssertNotNil(UIImage(named: "Logo"))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.windows.first(where: \.isKeyWindow)
