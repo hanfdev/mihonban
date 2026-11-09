@@ -29,6 +29,12 @@
     BOOL _rangeSupported;
     BOOL _persistent;
     BOOL _unmeteredOnly;
+    BOOL _retryPending;
+    NSUInteger _retryGeneration;
+    NSUInteger _retryAttempt;
+    NSTimeInterval _recoveryDeadline;
+    NSTimeInterval _lastProgressTime;
+    NSError *_transportError;
 }
 @end
 
@@ -107,6 +113,8 @@
 
 // The condition is held by all helpers that mutate transfer state.
 - (void)requestFromOffset:(NSInteger)offset {
+    _retryGeneration++;
+    _retryPending = NO;
     [_task cancel];
     _requestedOffset = offset;
     _receivedResponse = NO;
@@ -121,13 +129,92 @@
     [_task resume];
 }
 
+- (BOOL)isRecoverableTransportError:(NSError *)error {
+    if (![error.domain isEqualToString:NSURLErrorDomain]) return NO;
+    switch (error.code) {
+        case NSURLErrorTimedOut:
+        case NSURLErrorCannotFindHost:
+        case NSURLErrorCannotConnectToHost:
+        case NSURLErrorNetworkConnectionLost:
+        case NSURLErrorDNSLookupFailed:
+        case NSURLErrorNotConnectedToInternet:
+            return YES;
+        default:
+            return NO;
+    }
+}
+
+- (void)resetRecovery {
+    _retryAttempt = 0;
+    _recoveryDeadline = 0;
+    _transportError = nil;
+}
+
+- (NSInteger)recoveryOffset {
+    if (!_rangeSupported) return 0;
+    NSInteger offset = _receivedResponse ? _writeOffset : _requestedOffset;
+    if (_length >= 0 && offset >= _length) {
+        // A tail probe can finish while an earlier portion is still missing.
+        // Resume at the first hole instead of sending an invalid EOF range.
+        __block NSUInteger missing = 0;
+        [_available enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
+            if (range.location > missing) { *stop = YES; return; }
+            missing = NSMaxRange(range);
+        }];
+        offset = (NSInteger)missing;
+    }
+    return offset;
+}
+
+- (void)scheduleRecovery:(NSError *)error {
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    if (!_recoveryDeadline) _recoveryDeadline = now + 120;
+    _transportError = error;
+    if (now >= _recoveryDeadline) { _failure = error; return; }
+    NSTimeInterval delay = MIN(0.5 * (1UL << MIN(_retryAttempt, (NSUInteger)4)), _recoveryDeadline - now);
+    _retryAttempt = MIN(_retryAttempt + 1, (NSUInteger)4);
+    NSUInteger token = ++_retryGeneration;
+    _retryPending = YES;
+    __weak MBHTTPInputSource *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        MBHTTPInputSource *source = weakSelf;
+        if (!source) return;
+        [source->_condition lock];
+        if (source->_retryPending && source->_retryGeneration == token &&
+            !source->_cancelled && !source->_failure && !source->_complete) {
+            if (NSProcessInfo.processInfo.systemUptime >= source->_recoveryDeadline) {
+                source->_failure = source->_transportError;
+                source->_retryPending = NO;
+            } else {
+                [source requestFromOffset:[source recoveryOffset]];
+            }
+            [source->_condition broadcast];
+        }
+        [source->_condition unlock];
+    });
+}
+
+- (void)waitForProgressUntil:(NSDate *)deadline {
+    // A short outage gets one bounded recovery window. Ordinary reads retain
+    // their normal timeout; cancellation always wakes either kind of wait.
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    NSTimeInterval remaining = _recoveryDeadline > 0 ? _recoveryDeadline - now
+        : MAX(deadline.timeIntervalSinceNow, _lastProgressTime > 0 ? _lastProgressTime + 40 - now : 0);
+    NSDate *limit = [NSDate dateWithTimeIntervalSinceNow:MAX(0, remaining)];
+    if (![_condition waitUntilDate:limit]) {
+        _failure = _transportError ?: [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil];
+        _retryGeneration++;
+        _retryPending = NO;
+        [_task cancel];
+        [_condition broadcast];
+    }
+}
+
 - (BOOL)waitForResponse:(NSError **)error {
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:40];
     while (!_receivedResponse && !_failure && !_cancelled) {
-        if (![_condition waitUntilDate:deadline]) {
-            _failure = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil];
-            [_task cancel];
-        }
+        [self waitForProgressUntil:deadline];
     }
     return [self checkFailure:error];
 }
@@ -165,14 +252,11 @@
             continue;
         }
         // Tail probes and uncached seeks must not wait for the entire file.
-        if (_rangeSupported && (!_task || (_receivedResponse &&
+        if (_rangeSupported && ((!_task && !_retryPending) || (_receivedResponse &&
             (_offset < _requestedOffset || _offset > _writeOffset + 512 * 1024)))) {
             [self requestFromOffset:_offset];
         }
-        if (![_condition waitUntilDate:deadline]) {
-            _failure = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil];
-            [_task cancel];
-        }
+        [self waitForProgressUntil:deadline];
     }
     [_condition unlock];
     return NO;
@@ -182,10 +266,7 @@
     [_condition lock];
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:40];
     while (_length < 0 && [self checkFailure:error]) {
-        if (![_condition waitUntilDate:deadline]) {
-            _failure = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil];
-            [_task cancel];
-        }
+        [self waitForProgressUntil:deadline];
     }
     BOOL ok = [self checkFailure:error];
     if (ok) *length = _length;
@@ -203,7 +284,14 @@
 - (BOOL)seekToOffset:(NSInteger)offset error:(NSError **)error {
     [_condition lock];
     BOOL ok = offset >= 0 && (_length < 0 || offset <= _length) && [self checkFailure:error];
-    if (ok) _offset = offset;
+    if (ok) {
+        _offset = offset;
+        if (_recoveryDeadline > 0 && _rangeSupported && (_length < 0 || offset < _length) &&
+            ![_available containsIndex:(NSUInteger)offset]) {
+            // An explicit seek replaces active or delayed recovery of the old range.
+            [self requestFromOffset:offset];
+        }
+    }
     else if (error) *error = _failure ?: [NSError errorWithDomain:NSPOSIXErrorDomain code:EINVAL userInfo:nil];
     [_condition unlock];
     return ok;
@@ -219,7 +307,7 @@
         _unmeteredOnly = value;
         // Promotion to the current song lifts only the speculative request policy.
         // Keep buffered bytes and restart a live range with the new permissions.
-        if (_task && !_complete && !_cancelled && !_failure &&
+        if ((_task || _retryPending) && !_complete && !_cancelled && !_failure &&
             (_length < 0 || _writeOffset < _length)) {
             NSInteger nextOffset = _receivedResponse ? _writeOffset : _requestedOffset;
             [self requestFromOffset:_rangeSupported ? nextOffset : 0];
@@ -228,6 +316,7 @@
     [_condition unlock];
 }
 - (BOOL)isOpen { [_condition lock]; BOOL value = _opened && !_cancelled; [_condition unlock]; return value; }
+- (BOOL)isRecovering { [_condition lock]; BOOL value = _recoveryDeadline > 0 && !_failure && !_cancelled; [_condition unlock]; return value; }
 - (BOOL)atEOF { [_condition lock]; BOOL value = _length >= 0 && _offset >= _length; [_condition unlock]; return value; }
 - (double)downloadedFraction {
     [_condition lock];
@@ -239,6 +328,8 @@
 - (void)cancel {
     [_condition lock];
     _cancelled = YES;
+    _retryGeneration++;
+    _retryPending = NO;
     [_task cancel];
     [_session invalidateAndCancel];
     _task = nil;
@@ -278,8 +369,9 @@
         // treating an offset-zero body as the requested tail of the file.
         _rangeSupported = NO;
         _writeOffset = 0;
-        _length = response.expectedContentLength;
-        valid = _length <= 2LL * 1024 * 1024 * 1024;
+        NSInteger length = response.expectedContentLength;
+        valid = length <= 2LL * 1024 * 1024 * 1024 && (_length < 0 || _length == length);
+        if (valid) _length = length;
     }
     if (!valid) _failure = [NSError errorWithDomain:@"Mihonban.HTTP" code:status userInfo:nil];
     _receivedResponse = YES;
@@ -304,8 +396,14 @@
                 written += count;
             }
             if (_failure) [_task cancel];
+            NSUInteger previousCount = _available.count;
             [_available addIndexesInRange:NSMakeRange((NSUInteger)_writeOffset, written)];
             _writeOffset += written;
+            // Replaying a server's ignored Range must not prolong an outage.
+            if (_available.count > previousCount) {
+                _lastProgressTime = NSProcessInfo.processInfo.systemUptime;
+                [self resetRecovery];
+            }
         }
         [_condition broadcast];
     }
@@ -316,10 +414,10 @@
     [_condition lock];
     if (task == _task && !_cancelled) {
         _task = nil;
-        if (error) _failure = error;
-        else {
-            if (_length < 0) _length = _writeOffset;
-            if (_available.count == (NSUInteger)_length && _length > 0) {
+        if (!_failure) {
+            if (!error && _length < 0) _length = _writeOffset;
+            BOOL complete = _length > 0 && _available.count == (NSUInteger)_length;
+            if (complete && (!error || [self isRecoverableTransportError:error])) {
                 fsync(_fd);
                 // Rename is atomic; partial sparse files never become cache hits.
                 _complete = _persistent
@@ -327,6 +425,13 @@
                     : YES;
                 [_session finishTasksAndInvalidate];
                 _session = nil;
+                [self resetRecovery];
+            } else if ([self isRecoverableTransportError:error]) {
+                // Transport loss does not invalidate bytes already on disk or
+                // abort the decoder. Resume the growing file after a backoff.
+                [self scheduleRecovery:error];
+            } else if (error) {
+                _failure = error;
             }
         }
         [_condition broadcast];

@@ -12,6 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// Restricted requests cannot migrate to cellular, metered or Low Data Mode paths.
 @property(nonatomic) BOOL unmeteredOnly;
 @property(nonatomic, readonly) double downloadedFraction;
+/// A transport retry is active; buffered audio may still be playing normally.
+@property(nonatomic, readonly, getter=isRecovering) BOOL recovering;
 @end
 
 NS_ASSUME_NONNULL_END

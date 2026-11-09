@@ -1,6 +1,7 @@
 import argparse
 import json
 import re
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -113,6 +114,62 @@ class StreamGates:
             return self.events.setdefault(token, threading.Event())
 
 
+class StreamRecovery:
+    """Isolate deliberate connection loss and request evidence by test token."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.scenarios = {}
+        self.interrupts = {}
+
+    def configure(self, token, options):
+        with self.lock:
+            self.scenarios[token] = {
+                "failures": max(0, min(8, int(options.get("failures", 1)))),
+                "prefix": max(0, min(262144, int(options.get("prefix", 8192)))),
+                "ignoreRange": bool(options.get("ignoreRange", False)),
+                "status": int(options.get("status", 0)),
+                "hold": bool(options.get("hold", False)),
+                "interruptWhenRequested": bool(options.get("interruptWhenRequested", False)),
+                "released": False, "attempts": [], "drops": 0,
+            }
+            self.interrupts[token] = threading.Event()
+
+    def release(self, token):
+        with self.lock:
+            if token in self.scenarios:
+                self.scenarios[token]["released"] = True
+                self.interrupts[token].set()
+
+    def interrupt(self, token):
+        with self.lock:
+            if token in self.interrupts:
+                self.interrupts[token].set()
+
+    def snapshot(self, token):
+        with self.lock:
+            value = self.scenarios.get(token)
+            return None if value is None else json.loads(json.dumps(value))
+
+    def begin(self, token, start):
+        with self.lock:
+            value = self.scenarios.get(token)
+            if value is None:
+                return None
+            number = len(value["attempts"]) + 1
+            failed = (value["hold"] and not value["released"]) or number <= value["failures"]
+            attempt = {"start": start, "sent": 0, "finished": False, "drop": failed}
+            value["attempts"].append(attempt)
+            return dict(value, attempt=number - 1, drop=failed, owner=value,
+                        interruptGate=self.interrupts[token])
+
+    def finish(self, scenario, sent, dropped):
+        with self.lock:
+            value = scenario["owner"]
+            value["attempts"][scenario["attempt"]].update(sent=sent, finished=True)
+            if dropped:
+                value["drops"] += 1
+
+
 def track_row(extension, state=None):
     detail = album(extension, detail=True)
     if state is not None:
@@ -182,6 +239,15 @@ class Handler(BaseHTTPRequestHandler):
         gate = re.fullmatch(r"/fixture/stream-gate/([a-fA-F0-9-]+)/release", path)
         if gate:
             self.server.stream_gates.event(gate[1]).set()
+            return self.reply(200, {"ok": True})
+        recovery = re.fullmatch(r"/fixture/stream-recovery/([a-fA-F0-9-]+)(/release|/interrupt)?", path)
+        if recovery:
+            if recovery[2] == "/release":
+                self.server.stream_recovery.release(recovery[1])
+            elif recovery[2] == "/interrupt":
+                self.server.stream_recovery.interrupt(recovery[1])
+            else:
+                self.server.stream_recovery.configure(recovery[1], self.body() or {})
             return self.reply(200, {"ok": True})
         if path == "/fixture/reset":
             state.reset()
@@ -305,6 +371,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        recovery = re.fullmatch(r"/fixture/stream-recovery/([a-fA-F0-9-]+)", path)
+        if recovery:
+            value = self.server.stream_recovery.snapshot(recovery[1])
+            return self.reply(200 if value is not None else 404, value or {})
+        recovery = re.fullmatch(r"/recovery/([a-fA-F0-9-]+)/tone\.flac", path)
+        if recovery:
+            return self.recovery_audio(recovery[1])
         if path == "/api/health":
             return self.reply(200, {"ok": True})
         if path == "/fixture/media-cookies":
@@ -350,6 +423,9 @@ class Handler(BaseHTTPRequestHandler):
             ext = parts[1] if len(parts) > 1 else ""
             if ext not in FORMATS:
                 return self.reply(404, {})
+            recovery = re.fullmatch(r"network-flac-recovery-([a-fA-F0-9-]+)", path.rsplit("/", 1)[-1])
+            if recovery:
+                return self.reply(307, b"", headers={"Location": f"/recovery/{recovery[1]}/tone.flac"})
             gate = re.fullmatch(r"network-[a-z]+-held-([a-fA-F0-9-]+)", path.rsplit("/", 1)[-1])
             if gate and not self.server.stream_gates.event(gate[1]).wait(30):
                 return self.reply(503, {})
@@ -398,6 +474,57 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    def recovery_audio(self, token):
+        match = re.fullmatch(r"bytes=(\d+)-(\d*)", self.headers.get("Range", "bytes=0-"))
+        if not match:
+            return self.reply(400, {})
+        requested = int(match[1])
+        scenario = self.server.stream_recovery.begin(token, requested)
+        if scenario is None:
+            return self.reply(404, {})
+        index = scenario["attempt"]
+        if scenario["status"]:
+            self.server.stream_recovery.finish(scenario, 0, False)
+            return self.reply(scenario["status"], {})
+        data = (self.server.fixtures / "tone.flac").read_bytes()
+        start = 0 if scenario["ignoreRange"] else requested
+        if start >= len(data):
+            self.server.stream_recovery.finish(scenario, 0, False)
+            return self.reply(416, b"", headers={"Content-Range": f"bytes */{len(data)}"})
+        self.send_response(200 if scenario["ignoreRange"] else 206)
+        self.send_header("Content-Type", "audio/flac")
+        self.send_header("Content-Length", str(len(data) - start))
+        self.send_header("Connection", "close")
+        if not scenario["ignoreRange"]:
+            self.send_header("Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}")
+        self.end_headers()
+        # Only the first broken response provides bytes; later failures model
+        # an outage without granting the decoder more data on every retry.
+        end = len(data)
+        if scenario["drop"]:
+            end = min(len(data), start + scenario["prefix"]) if index == 0 else start
+        sent = 0
+        try:
+            for position in range(start, end, 4096):
+                chunk = data[position:min(position + 4096, end)]
+                self.wfile.write(chunk)
+                self.wfile.flush()
+                sent += len(chunk)
+                time.sleep(0.002)
+            if scenario["drop"]:
+                if index == 0 and scenario["interruptWhenRequested"]:
+                    # A playback test decides when to cut the established
+                    # stream, after the decoder has actually started playing.
+                    scenario["interruptGate"].wait(15)
+                # An incomplete body with a valid full Content-Length produces
+                # a transport loss, not an HTTP status or decoder corruption.
+                self.connection.shutdown(socket.SHUT_RDWR)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.close_connection = True
+            self.server.stream_recovery.finish(scenario, sent, scenario["drop"])
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -408,12 +535,14 @@ def main():
     state = State()
     media_cookies = []
     stream_gates = StreamGates()
+    stream_recovery = StreamRecovery()
     servers = [ThreadingHTTPServer(("127.0.0.1", port), Handler) for port in (args.port, args.port + 1)]
     for server in servers:
         server.fixtures = root
         server.state = state
         server.media_cookies = media_cookies
         server.stream_gates = stream_gates
+        server.stream_recovery = stream_recovery
         server.cover = root.parent / "Resources/Assets.xcassets/Logo.imageset/logo.png"
     # The second port stands in for a storage host on a different origin.
     threading.Thread(target=servers[1].serve_forever, daemon=True).start()
