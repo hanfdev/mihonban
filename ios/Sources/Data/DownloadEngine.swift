@@ -45,6 +45,10 @@ nonisolated enum DownloadEvent: Sendable {
     }
 }
 
+// Observation points let native tests hold real filesystem operations at the
+// cancellation boundary without replacing the URLSession delegate path.
+nonisolated enum DownloadFileStage: Sendable { case validated, committing, removing }
+
 // Owns the background URLSession. Transfers continue while the app is
 // suspended; the system relaunches the app to deliver results. A user force
 // quit cancels them, which the store reports as interrupted on next launch.
@@ -62,9 +66,16 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
     private var failures: [Int: Int] = [:]
     private var lastProgress: [Int: Date] = [:]
     private var finishEvents: (@Sendable () -> Void)?
+    private let files = DispatchQueue(label: "org.mihonban.download-files", qos: .utility)
+    // Only the file queue accesses ownership. One latest claim per destination
+    // rejects retired callbacks without retaining every previous attempt.
+    private var fileOwners: [URL: (key: DownloadKey, retired: Bool)] = [:]
+    private let observeFileStage: @Sendable (DownloadKey, DownloadFileStage) -> Void
 
-    init(configuration: URLSessionConfiguration, root: URL) {
+    init(configuration: URLSessionConfiguration, root: URL,
+         observeFileStage: @escaping @Sendable (DownloadKey, DownloadFileStage) -> Void = { _, _ in }) {
         self.root = root
+        self.observeFileStage = observeFileStage
         super.init()
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
@@ -109,7 +120,16 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
         target?(event)
     }
 
+    func prepare(_ key: DownloadKey) {
+        // Claim queued attempts too: resolving their stream address can fail or
+        // be cancelled before start, but removal must still clear older bytes.
+        files.async { self.fileOwners[self.destination(key)] = (key, false) }
+    }
+
     func start(_ request: URLRequest, key: DownloadKey) {
+        // Enqueue synchronously before resuming; an earlier removal must finish
+        // before this attempt can own or replace the destination.
+        prepare(key)
         let task = session.downloadTask(with: request)
         task.taskDescription = key.text
         lock.lock(); running[key] = task; lock.unlock()
@@ -117,12 +137,28 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
     }
 
     func cancel(_ key: DownloadKey) {
+        // URLSession cancellation cannot interrupt a completion delegate that
+        // already passed validation. Order its file retirement with that commit
+        // without making the caller wait for disk work.
+        files.async {
+            let target = self.destination(key)
+            if let owner = self.fileOwners[target], owner.key != key { return }
+            self.fileOwners[target] = (key, true)
+            self.observeFileStage(key, .removing)
+            try? FileManager.default.removeItem(at: target)
+        }
         lock.lock()
         let task = running.removeValue(forKey: key)
         lock.unlock()
         if let task { task.cancel(); return }
         session.getAllTasks { tasks in
             tasks.filter { $0.taskDescription == key.text }.forEach { $0.cancel() }
+        }
+    }
+
+    func waitForFileOperations() async {
+        await withCheckedContinuation { continuation in
+            files.async { continuation.resume() }
         }
     }
 
@@ -199,20 +235,31 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
             lock.lock(); failures[downloadTask.taskIdentifier] = status == 0 || (200..<300).contains(status) ? -1 : status; lock.unlock()
             return
         }
-        do {
-            try manager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true,
-                                        attributes: MediaPaths.protection)
-            if manager.fileExists(atPath: target.path) { try manager.removeItem(at: target) }
-            try manager.moveItem(at: location, to: target)
-            try manager.setAttributes(MediaPaths.protection, ofItemAtPath: target.path)
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            var file = target
-            try? file.setResourceValues(values)
-            lock.lock(); failures[downloadTask.taskIdentifier] = 0; lock.unlock()
-        } catch {
-            lock.lock(); failures[downloadTask.taskIdentifier] = -1; lock.unlock()
+        observeFileStage(key, .validated)
+        // The delegate is off MainActor and must keep the temporary file alive
+        // until the move finishes. No state lock is held during filesystem I/O.
+        let outcome = files.sync { () -> Int in
+            if let owner = fileOwners[target], owner.key != key || owner.retired {
+                return URLError.cancelled.rawValue
+            }
+            // A restored background task may complete before a store attaches
+            // or liveKeys runs, so an unclaimed destination is still eligible.
+            fileOwners[target] = (key, false)
+            observeFileStage(key, .committing)
+            do {
+                try manager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                            attributes: MediaPaths.protection)
+                if manager.fileExists(atPath: target.path) { try manager.removeItem(at: target) }
+                try manager.moveItem(at: location, to: target)
+                try manager.setAttributes(MediaPaths.protection, ofItemAtPath: target.path)
+                var values = URLResourceValues()
+                values.isExcludedFromBackup = true
+                var file = target
+                try? file.setResourceValues(values)
+                return 0
+            } catch { return -1 }
         }
+        lock.lock(); failures[downloadTask.taskIdentifier] = outcome; lock.unlock()
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -222,7 +269,9 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
         lastProgress.removeValue(forKey: task.taskIdentifier)
         if running[key] === task { running.removeValue(forKey: key) }
         lock.unlock()
-        if let error = error as? URLError, error.code == .cancelled { emit(.cancelled(key)); return }
+        if (error as? URLError)?.code == .cancelled || outcome == URLError.cancelled.rawValue {
+            emit(.cancelled(key)); return
+        }
         if error == nil, outcome == 0 { emit(.finished(key, bytes: task.countOfBytesReceived)) }
         else {
             // HTTP statuses are positive; transport failures keep their negative
@@ -252,7 +301,9 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
         let finish = finishEvents
         finishEvents = nil
         lock.unlock()
-        if let finish { DispatchQueue.main.async { finish() } }
+        // Complete already-enqueued retirements before the system can suspend
+        // us again. The main queue receives only the final notification.
+        if let finish { files.async { DispatchQueue.main.async { finish() } } }
     }
 }
 

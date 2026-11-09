@@ -203,15 +203,19 @@ final class DownloadStore {
 
     private func enqueue(_ track: Track, album: String) {
         if let existing = records[track.id], existing.state != .failed && existing.state != .interrupted { return }
-        records[track.id] = DownloadRecord(track: track, albumID: album, file: MediaPaths.audioName(track),
-                                           attempt: DownloadKey.newAttempt(), state: .queued, added: Date())
+        let record = DownloadRecord(track: track, albumID: album, file: MediaPaths.audioName(track),
+                                    attempt: DownloadKey.newAttempt(), state: .queued, added: Date())
+        records[track.id] = record
+        engine.prepare(key(record))
         waiting.append(track.id)
     }
 
     func cancel(_ trackID: String) {
         guard active, let record = records.removeValue(forKey: trackID) else { return }
         waiting.removeAll { $0 == trackID }
-        if record.state == .downloading { engine.cancel(key(record)) }
+        // The delegate may have committed bytes before its finished event is
+        // delivered. Retire every removed attempt, including queued or failed.
+        engine.cancel(key(record))
         save()
     }
 
@@ -229,6 +233,7 @@ final class DownloadStore {
         record.written = 0
         record.status = nil
         records[trackID] = record
+        engine.prepare(key(record))
         waiting.append(trackID)
         save()
         pump()
@@ -239,10 +244,8 @@ final class DownloadStore {
     }
 
     func remove(_ trackID: String) {
-        guard active, let record = records[trackID] else { return }
+        guard active, records[trackID] != nil else { return }
         cancel(trackID)
-        let file = engine.destination(key(record))
-        Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: file) }
         pruneAlbums()
     }
 
