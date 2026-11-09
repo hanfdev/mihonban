@@ -1,6 +1,7 @@
 """Apply the reviewed FLAC abort fix to the exact pinned engine checkout."""
 import hashlib
 from pathlib import Path
+import stat
 import subprocess
 import sys
 
@@ -38,7 +39,14 @@ def main():
     original = path.read_bytes()
     patched = patched_source(original)
     if patched != original:
-        path.write_bytes(patched)
+        # SwiftPM makes package sources read-only. Only the verified source
+        # needs temporary owner write permission; preserve all original bits.
+        mode = stat.S_IMODE(path.stat().st_mode)
+        try:
+            path.chmod(mode | stat.S_IWUSR)
+            path.write_bytes(patched)
+        finally:
+            path.chmod(mode)
     print("Verified pinned SFBAudioEngine FLAC abort handling")
 
 
