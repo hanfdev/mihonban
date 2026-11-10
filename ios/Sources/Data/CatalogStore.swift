@@ -28,6 +28,10 @@ final class CatalogStore {
     @ObservationIgnored private var details: [String: Album] = [:]
     @ObservationIgnored private var requests: [String: Task<Album, Error>] = [:]
     @ObservationIgnored private var trackRequest: Task<[Track], Error>?
+    #if DEBUG
+    // Deterministically exercise session changes after suspended snapshot I/O.
+    @ObservationIgnored var albumSnapshotBoundary: (@MainActor () async -> Void)?
+    #endif
 
     init(session: SessionStore, favorites: FavoritesStore) {
         self.session = session
@@ -170,12 +174,23 @@ final class CatalogStore {
             guard album.hidden != true || session.canSeeHidden else { throw ServerError(status: 404, code: nil) }
             details[id] = album
             try? await disk?.save(scope + ":album:" + id, value: album)
+            #if DEBUG
+            await albumSnapshotBoundary?()
+            #endif
+            try Task.checkCancellation()
+            guard token == generation else { throw CancellationError() }
             return album
         } catch {
             // Offline metadata is only available within the previously authorized
             // service and role. Authorization failures never fall back to disk.
             if token == generation, error is URLError {
-                if let saved = await disk?.load(scope + ":album:" + id, as: Album.self) { return saved }
+                let saved = await disk?.load(scope + ":album:" + id, as: Album.self)
+                #if DEBUG
+                await albumSnapshotBoundary?()
+                #endif
+                try Task.checkCancellation()
+                guard token == generation else { throw CancellationError() }
+                if let saved { return saved }
                 if let local = localAlbum?(id), local.hidden != true || session.canSeeHidden { return local }
             }
             throw error

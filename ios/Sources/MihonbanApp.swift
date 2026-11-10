@@ -74,7 +74,7 @@ struct ConnectionView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L10n.text("mobile.address")).foregroundStyle(Theme.dim)
                         TextField(L10n.text("mobile.address"), text: $model.address,
-                                  prompt: Text(verbatim: "https://music.example.com").foregroundStyle(Theme.faint))
+                                  prompt: Text(verbatim: "https://music.example.com").foregroundStyle(Theme.dim))
                             .keyboardType(.URL).textContentType(.URL).textInputAutocapitalization(.never)
                             .autocorrectionDisabled().accessibilityIdentifier("connection.address")
                             .padding(14).background(Theme.raised, in: RoundedRectangle(cornerRadius: 10))
@@ -82,7 +82,7 @@ struct ConnectionView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L10n.text("login.password")).foregroundStyle(Theme.dim)
                         SecureField(L10n.text("login.password"), text: $model.password,
-                                    prompt: Text(L10n.text("mobile.optionalPassword")).foregroundStyle(Theme.faint))
+                                    prompt: Text(L10n.text("mobile.optionalPassword")).foregroundStyle(Theme.dim))
                             .textContentType(.password).accessibilityIdentifier("connection.password")
                             .padding(14).background(Theme.raised, in: RoundedRectangle(cornerRadius: 10))
                     }

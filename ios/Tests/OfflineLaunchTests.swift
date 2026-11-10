@@ -212,7 +212,7 @@ final class OfflineLaunchTests: XCTestCase {
         var cleared = false
     }
 
-    func testStartupBrandUsesNativeLogoWithoutMotion() throws {
+    func testStartupBrandUsesNativeLogoWithoutMotion() async throws {
         XCTAssertNotNil(UIImage(named: "Logo"))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.windows.first(where: \.isKeyWindow)
@@ -233,6 +233,26 @@ final class OfflineLaunchTests: XCTestCase {
             }
             let attachment = XCTAttachment(image: image)
             attachment.name = style == .dark ? "71-startup-brand-dark" : "71-startup-brand-light"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        let (defaults, name) = try suite()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let model = AppModel(defaults: defaults)
+        model.player.setForeground(false)
+        defer { model.player.stop() }
+        let connection = UIHostingController(rootView: ConnectionView(model: model)
+            .foregroundStyle(Theme.ink).font(Theme.body()))
+        window.rootViewController = connection
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            connection.overrideUserInterfaceStyle = style
+            connection.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = style == .dark ? "90-connection-prompts-dark" : "90-connection-prompts-light"
             attachment.lifetime = .keepAlways
             add(attachment)
         }
