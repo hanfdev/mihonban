@@ -70,11 +70,15 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
     // Only the file queue accesses ownership. One latest claim per destination
     // rejects retired callbacks without retaining every previous attempt.
     private var fileOwners: [URL: (key: DownloadKey, retired: Bool)] = [:]
+    private var coverOwners: [URL: UUID] = [:]
+    private let observeCoverStage: @Sendable (URL, DownloadFileStage) -> Void
     private let observeFileStage: @Sendable (DownloadKey, DownloadFileStage) -> Void
 
     init(configuration: URLSessionConfiguration, root: URL,
+         observeCoverStage: @escaping @Sendable (URL, DownloadFileStage) -> Void = { _, _ in },
          observeFileStage: @escaping @Sendable (DownloadKey, DownloadFileStage) -> Void = { _, _ in }) {
         self.root = root
+        self.observeCoverStage = observeCoverStage
         self.observeFileStage = observeFileStage
         super.init()
         let queue = OperationQueue()
@@ -159,6 +163,48 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
     func waitForFileOperations() async {
         await withCheckedContinuation { continuation in
             files.async { continuation.resume() }
+        }
+    }
+
+    // Covers share the audio file queue so removal, a replacement request and
+    // its eventual write keep the order in which the store requested them.
+    func prepareCover(_ target: URL, attempt: UUID) {
+        files.async { self.coverOwners[target] = attempt }
+    }
+
+    func needsCover(_ target: URL, attempt: UUID) async -> Bool {
+        await withCheckedContinuation { continuation in
+            files.async {
+                continuation.resume(returning: self.coverOwners[target] == attempt
+                    && !FileManager.default.fileExists(atPath: target.path))
+            }
+        }
+    }
+
+    func saveCover(_ data: Data, to target: URL, attempt: UUID) async {
+        await withCheckedContinuation { continuation in
+            files.async {
+                defer { continuation.resume() }
+                guard self.coverOwners[target] == attempt else { return }
+                self.observeCoverStage(target, .committing)
+                try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                         attributes: MediaPaths.protection)
+                try? data.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            }
+        }
+    }
+
+    func retireCover(_ target: URL, attempt: UUID) {
+        files.async {
+            if self.coverOwners[target] == attempt { self.coverOwners.removeValue(forKey: target) }
+        }
+    }
+
+    func removeCover(_ target: URL) {
+        files.async {
+            self.coverOwners.removeValue(forKey: target)
+            self.observeCoverStage(target, .removing)
+            try? FileManager.default.removeItem(at: target)
         }
     }
 

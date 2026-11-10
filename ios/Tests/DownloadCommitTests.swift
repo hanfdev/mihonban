@@ -102,7 +102,8 @@ private final class DownloadCommitFixture {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
-        engine = DownloadEngine(configuration: configuration, root: root) { key, stage in gate.observe(key, stage) }
+        engine = DownloadEngine(configuration: configuration, root: root,
+                                observeFileStage: { key, stage in gate.observe(key, stage) })
         directory = MediaPaths.downloads(root: root, service: MediaPaths.service(api.baseURL))
         let source = try XCTUnwrap(Bundle(for: OfflineLaunchTests.self).url(forResource: "tone", withExtension: "flac"))
         audio = try Data(contentsOf: source)

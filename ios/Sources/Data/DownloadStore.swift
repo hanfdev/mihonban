@@ -91,6 +91,7 @@ final class DownloadStore {
     @ObservationIgnored private var waiting: [String] = []
     @ObservationIgnored private var resolving = 0
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private var coverAttempts: [String: UUID] = [:]
     private static let parallelResolves = 3
 
     init(client: APIClient, engine: DownloadEngine = .shared, storage: DownloadManifestStorage = .shared) {
@@ -141,6 +142,8 @@ final class DownloadStore {
         guard active else { return }
         active = false
         generation = UUID()
+        for (album, attempt) in coverAttempts { engine.retireCover(coverURL(album), attempt: attempt) }
+        coverAttempts.removeAll()
         engine.attach(nil)
         saveTask?.cancel()
         // Preserve edits still inside the debounce interval before a replacement
@@ -181,6 +184,7 @@ final class DownloadStore {
             record.status = status
         case .cancelled:
             records.removeValue(forKey: target.track)
+            pruneAlbums()
             save()
             return
         }
@@ -216,6 +220,7 @@ final class DownloadStore {
         // The delegate may have committed bytes before its finished event is
         // delivered. Retire every removed attempt, including queued or failed.
         engine.cancel(key(record))
+        pruneAlbums()
         save()
     }
 
@@ -253,8 +258,8 @@ final class DownloadStore {
         guard active else { return }
         records.values.filter { $0.albumID == albumID }.forEach { remove($0.id) }
         albums.removeValue(forKey: albumID)
-        let cover = MediaPaths.pinnedCover(baseURL: client.baseURL, album: albumID, root: engine.root)
-        Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: cover) }
+        coverAttempts.removeValue(forKey: albumID)
+        engine.removeCover(coverURL(albumID))
         save()
     }
 
@@ -335,23 +340,39 @@ final class DownloadStore {
 
     private func pruneAlbums() {
         let used = Set(records.values.map(\.albumID))
-        for id in albums.keys where !used.contains(id) { albums.removeValue(forKey: id) }
+        for id in Array(albums.keys) where !used.contains(id) {
+            albums.removeValue(forKey: id)
+            coverAttempts.removeValue(forKey: id)
+            engine.removeCover(coverURL(id))
+        }
+    }
+
+    private func coverURL(_ albumID: String) -> URL {
+        MediaPaths.pinnedCover(baseURL: client.baseURL, album: albumID, root: engine.root)
     }
 
     private func saveCover(_ albumID: String) async {
-        let target = MediaPaths.pinnedCover(baseURL: client.baseURL, album: albumID, root: engine.root)
+        guard active, records.values.contains(where: { $0.albumID == albumID }) else { return }
+        let target = coverURL(albumID)
+        let token = generation
+        let attempt = UUID()
+        coverAttempts[albumID] = attempt
+        engine.prepareCover(target, attempt: attempt)
+        defer {
+            if coverAttempts[albumID] == attempt { coverAttempts.removeValue(forKey: albumID) }
+            engine.retireCover(target, attempt: attempt)
+        }
+        guard await engine.needsCover(target, attempt: attempt), active, generation == token,
+              coverAttempts[albumID] == attempt else { return }
         let source = client.artworkURL(albumID, size: 1200)
-        let session = client.session
-        await Task.detached(priority: .utility) {
-            guard !FileManager.default.fileExists(atPath: target.path),
-                  let result = try? await session.data(from: source),
-                  (try? APIClient.validate(result.1)) != nil else { return }
-            let data = result.0
-            guard !data.isEmpty, data.count < 20 * 1024 * 1024 else { return }
-            try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true,
-                                                     attributes: MediaPaths.protection)
-            try? data.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        }.value
+        guard let result = try? await client.session.data(from: source),
+              (try? APIClient.validate(result.1)) != nil, active, generation == token,
+              coverAttempts[albumID] == attempt else { return }
+        let data = result.0
+        guard !data.isEmpty, data.count < 20 * 1024 * 1024 else { return }
+        // The file queue checks ownership again: deletion can run after this
+        // actor check but before the queued commit begins.
+        await engine.saveCover(data, to: target, attempt: attempt)
     }
 
     private func save() {
