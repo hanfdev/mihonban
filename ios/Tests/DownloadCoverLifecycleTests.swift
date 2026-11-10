@@ -27,19 +27,28 @@ private final class DownloadCoverProtocol: URLProtocol {
         }
 
         func stop(_ request: DownloadCoverProtocol) {
-            lock.withLock { _ = stopped.insert(ObjectIdentifier(request)) }
+            lock.withLock {
+                // Only held requests have a stable lifetime here. Recording a
+                // completed stream request would let its reused object address
+                // mark a later cover request as stopped.
+                guard let host = request.request.url?.host,
+                      requests[host]?.contains(where: { $0 === request }) == true else { return }
+                stopped.insert(ObjectIdentifier(request))
+            }
         }
 
         func count(_ host: String) -> Int { lock.withLock { requests[host]?.count ?? 0 } }
 
-        func finish(_ host: String, index: Int, data: Data) {
+        func finish(_ host: String, index: Int, data: Data) -> Bool {
             let request = lock.withLock { () -> DownloadCoverProtocol? in
                 guard let values = requests[host], values.indices.contains(index) else { return nil }
                 let value = values[index]
                 guard stopped.insert(ObjectIdentifier(value)).inserted else { return nil }
                 return value
             }
-            request?.respond(data, status: 200)
+            guard let request else { return false }
+            request.respond(data, status: 200)
+            return true
         }
 
         func remove(_ host: String) {
@@ -188,7 +197,12 @@ private final class DownloadCoverFixture {
         return (task, arrived, index)
     }
 
-    func finish(_ index: Int, data: Data) { DownloadCoverProtocol.gate.finish(host, index: index, data: data) }
+    func finish(_ index: Int, data: Data, file: StaticString = #filePath, line: UInt = #line) throws {
+        guard DownloadCoverProtocol.gate.finish(host, index: index, data: data) else {
+            XCTFail("The held cover response must remain deliverable", file: file, line: line)
+            throw NSError(domain: "DownloadCoverLifecycleTests", code: 3)
+        }
+    }
 
     func cleanup() async {
         fileGate.release()
@@ -228,7 +242,7 @@ extension OfflineLaunchTests {
         XCTAssertFalse(store.records.isEmpty)
         store.remove(album: fixture.album.id)
         await fixture.engine.waitForFileOperations()
-        fixture.finish(index, data: fixture.red)
+        try fixture.finish(index, data: fixture.red)
         await pending.value
         await fixture.engine.waitForFileOperations()
 
@@ -247,10 +261,10 @@ extension OfflineLaunchTests {
         store.remove(album: fixture.album.id)
         let (new, newArrival, newIndex) = fixture.begin(store)
         try await waitForCoverRequest(newArrival, fixture: fixture, index: newIndex)
-        fixture.finish(newIndex, data: fixture.green)
+        try fixture.finish(newIndex, data: fixture.green)
         await new.value
         XCTAssertEqual(try Data(contentsOf: fixture.cover), fixture.green)
-        fixture.finish(oldIndex, data: fixture.red)
+        try fixture.finish(oldIndex, data: fixture.red)
         await old.value
         await fixture.engine.waitForFileOperations()
 
@@ -311,9 +325,9 @@ extension OfflineLaunchTests {
         let replacement = await fixture.store()
         let (new, newArrival, newIndex) = fixture.begin(replacement)
         try await waitForCoverRequest(newArrival, fixture: fixture, index: newIndex)
-        fixture.finish(newIndex, data: fixture.green)
+        try fixture.finish(newIndex, data: fixture.green)
         await new.value
-        fixture.finish(oldIndex, data: fixture.red)
+        try fixture.finish(oldIndex, data: fixture.red)
         await old.value
         await fixture.engine.waitForFileOperations()
 

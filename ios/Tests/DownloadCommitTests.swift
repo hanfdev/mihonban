@@ -191,7 +191,8 @@ extension OfflineLaunchTests {
         addTeardownBlock { await fixture.cleanup() }
         _ = try await fixture.api.login(password: "fixture-password")
         let store = await fixture.store()
-        await store.download(album: fixture.album)
+        let request = Task { await store.download(album: fixture.album) }
+        addTeardownBlock { fixture.gate.release(); await request.value }
         try await waitForDownloadCommit { fixture.gate.state.holding }
         let key = fixture.key(try XCTUnwrap(store.records[fixture.target.id]))
         let destination = fixture.engine.destination(key)
@@ -203,6 +204,7 @@ extension OfflineLaunchTests {
         XCTAssertNil(store.records[fixture.target.id])
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
         fixture.gate.release()
+        await request.value
         try await waitForDownloadCommit { fixture.events.event(for: key) != nil }
         await fixture.engine.waitForFileOperations()
 
@@ -218,7 +220,8 @@ extension OfflineLaunchTests {
         addTeardownBlock { await fixture.cleanup() }
         _ = try await fixture.api.login(password: "fixture-password")
         let store = await fixture.store()
-        await store.download(album: fixture.album)
+        let request = Task { await store.download(album: fixture.album) }
+        addTeardownBlock { fixture.gate.release(); await request.value }
         try await waitForDownloadCommit { fixture.gate.state.holding }
         let key = fixture.key(try XCTUnwrap(store.records[fixture.target.id]))
         let destination = fixture.engine.destination(key)
@@ -239,6 +242,7 @@ extension OfflineLaunchTests {
         await fulfillment(of: [prematureDrain], timeout: 0.2)
         observingDrain = false
         fixture.gate.release()
+        await request.value
         await drain.value
         try await waitForDownloadCommit { fixture.events.event(for: key) != nil }
 
@@ -256,12 +260,17 @@ extension OfflineLaunchTests {
         store.remove(fixture.target.id)
         try await waitForDownloadCommit { fixture.gate.state.holding }
 
-        await store.download(album: fixture.album)
+        // Cover work shares the held file queue, so finish the user action
+        // only after releasing the old audio removal below.
+        let request = Task { await store.download(album: fixture.album) }
+        addTeardownBlock { fixture.gate.release(); await request.value }
+        try await waitForDownloadCommit { store.records[fixture.target.id] != nil }
         let newKey = fixture.key(try XCTUnwrap(store.records[fixture.target.id]))
         XCTAssertNotEqual(oldKey.attempt, newKey.attempt)
         try await waitForDownloadCommit { fixture.gate.state.validated.contains(newKey) }
         XCTAssertEqual(store.records[fixture.target.id]?.state, .downloading)
         fixture.gate.release()
+        await request.value
         try await waitForDownloadCommit { store.records[fixture.target.id]?.state == .done }
         await fixture.engine.waitForFileOperations()
         let destination = try XCTUnwrap(store.localFile(fixture.target))
