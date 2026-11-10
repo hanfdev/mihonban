@@ -182,7 +182,7 @@ nonisolated final class DownloadEngine: NSObject, URLSessionDownloadDelegate, @u
     }
 
     func saveCover(_ data: Data, to target: URL, attempt: UUID) async {
-        await withCheckedContinuation { continuation in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             files.async {
                 defer { continuation.resume() }
                 guard self.coverOwners[target] == attempt else { return }
