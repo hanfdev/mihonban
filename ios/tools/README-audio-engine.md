@@ -1,13 +1,24 @@
-# Audio engine source fix
+# Audio engine source fixes
 
 SFBAudioEngine is pinned to `8455c970de34a63422857c4b4d6fffc85b822b47`.
 Its FLAC decode loop does not handle libFLAC's `ABORTED` state when
 `FLAC__stream_decoder_process_single` returns success. A terminal input read
 failure can therefore loop indefinitely without producing audio or notifying
 the player. `apply-audio-engine-fixes.py` adds the missing abort-state check
-and uses the existing decoding-error path. It verifies both the revision and
-the complete source checksum, and accepts only the original source or this
-exact patch.
+and uses the existing decoding-error path.
+
+The player's cancellation path also clears the shared audio buffer whenever
+a decoder has started, even when it fails before producing its first chunk.
+For a prefetched next track, this can discard the current track's remaining
+audio and EOF descriptor and prevent normal queue advancement. The patch
+tracks whether each decoder has ever contributed a chunk and only then lets
+cancellation invalidate the shared buffers. Empty EOF descriptors count;
+the flag is never reset on seek. Existing cleanup for contributing decoders
+and all cancellation callbacks remain in place.
+
+The script verifies the revision and complete source checksums of both files
+before writing either one, accepting only original or exactly patched source.
+Each modified file's original permissions are restored after writing.
 
 After preparing the project and synthetic audio, run from the repository root
 on macOS with Xcode. If supplying `ios/Package.resolved`, copy it into the

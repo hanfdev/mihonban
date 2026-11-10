@@ -70,7 +70,7 @@ private final class PrefetchDecoderFixture {
 }
 
 // Both native suites select PlaybackCompletionTests. The server sends valid
-// FLAC metadata, then holds every PCM frame until A has actually rendered EOF.
+// FLAC metadata, then holds every PCM frame until the test releases its gate.
 extension PlaybackCompletionTests {
     private func prefetchedDecoderAtRealEOF() async throws -> PrefetchDecoderFixture {
         let fixture = try PrefetchDecoderFixture()
@@ -94,6 +94,85 @@ extension PlaybackCompletionTests {
         XCTAssertFalse(fixture.player.hasEnded)
         XCTAssertNil(fixture.player.error)
         return fixture
+    }
+
+    private func earlyFailedPrefetchWithPausedCurrent() async throws -> PrefetchDecoderFixture {
+        let fixture = try PrefetchDecoderFixture()
+        addTeardownBlock { await fixture.cleanup() }
+        try await fixture.start()
+        try await waitForPrefetchedDecoder {
+            fixture.player.lastDecodingTrackIDForTesting == fixture.next.id &&
+                fixture.player.preparedNextID == fixture.next.id
+        }
+        // B starts decoding while A's final chunks remain in the shared ring
+        // buffer. Pause immediately so the real network retry cannot outlast
+        // that tail and accidentally turn this into an after-EOF regression.
+        fixture.player.pause()
+        let pausedPosition = fixture.player.elapsed
+        guard fixture.player.current?.id == fixture.current.id,
+              fixture.player.lastCompletedTrackIDForTesting != fixture.current.id,
+              fixture.player.duration - pausedPosition > 0.05 else {
+            XCTFail("Pause must retain unrendered A audio before releasing B's first PCM read")
+            throw NSError(domain: "PrefetchedDecoderFailureTests", code: 2)
+        }
+        XCTAssertGreaterThan(pausedPosition, 0.1)
+        let held = try await fixture.snapshot()
+        XCTAssertGreaterThan(held.metadataBytes, 42)
+        XCTAssertGreaterThan(held.active, 0)
+        XCTAssertEqual(held.drops, 0)
+        XCTAssertNil(fixture.player.error)
+
+        try await fixture.release(failing: true, recoverCurrent: true)
+        try await waitForPrefetchedDecoder { fixture.player.preparedNextID == nil }
+        let failure = try await fixture.snapshot()
+        XCTAssertEqual(failure.requests.map(\.status), [206, 404],
+                       "B must fail its first PCM read and ranged retry before A resumes")
+        XCTAssertEqual(failure.drops, 1)
+        XCTAssertEqual(failure.active, 0)
+        XCTAssertEqual(fixture.player.current?.id, fixture.current.id)
+        XCTAssertNotEqual(fixture.player.lastCompletedTrackIDForTesting, fixture.current.id)
+        XCTAssertEqual(fixture.player.elapsed, pausedPosition, accuracy: 0.05)
+        XCTAssertFalse(fixture.player.wantsPlayback)
+        XCTAssertFalse(fixture.player.hasEnded)
+        XCTAssertFalse(fixture.player.isLoading)
+        XCTAssertNil(fixture.player.error)
+        return fixture
+    }
+
+    func testEarlyPrefetchedDecoderFailurePreservesPausedCurrentAudioUntilRealEOF() async throws {
+        let fixture = try await earlyFailedPrefetchWithPausedCurrent()
+        fixture.player.resume()
+        XCTAssertEqual(fixture.player.current?.id, fixture.current.id,
+                       "Resuming must first play A's remaining audio")
+        try await waitForPrefetchedDecoder {
+            fixture.player.current?.id == fixture.next.id && fixture.player.elapsed > 0.3 && !fixture.player.isLoading
+        }
+        XCTAssertTrue(fixture.player.wantsPlayback)
+        XCTAssertFalse(fixture.player.hasEnded)
+        XCTAssertNil(fixture.player.error)
+        let recovered = try await fixture.snapshot()
+        XCTAssertEqual(recovered.requests.map(\.status), [206, 404, 206],
+                       "B is retried once as current after A finishes its retained audio")
+        XCTAssertEqual(recovered.requests.last?.start, 0)
+    }
+
+    func testRemovingEarlyFailedPrefetchAllowsPausedCurrentAudioToFinish() async throws {
+        let fixture = try await earlyFailedPrefetchWithPausedCurrent()
+        fixture.player.removeUpcoming(at: IndexSet(integer: 0))
+        XCTAssertFalse(fixture.player.hasEnded, "Removing B must preserve A's unrendered tail")
+        XCTAssertFalse(fixture.player.wantsPlayback)
+        fixture.player.resume()
+        try await waitForPrefetchedDecoder { fixture.player.hasEnded }
+
+        XCTAssertEqual(fixture.player.current?.id, fixture.current.id)
+        XCTAssertEqual(fixture.player.lastCompletedTrackIDForTesting, fixture.current.id,
+                       "A must reach a real renderingComplete after the early B failure")
+        XCTAssertEqual(fixture.player.elapsed, fixture.player.duration, accuracy: 0.05)
+        XCTAssertFalse(fixture.player.wantsPlayback)
+        XCTAssertFalse(fixture.player.isLoading)
+        XCTAssertNil(fixture.player.error)
+        let finished = try await fixture.snapshot()
+        XCTAssertEqual(finished.requests.map(\.status), [206, 404], "Removed B must not be retried")
     }
 
     func testPrefetchedDecoderFailureAfterActualEOFAdvancesToARetriableCurrentError() async throws {
