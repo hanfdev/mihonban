@@ -39,6 +39,44 @@ struct PlaybackQueue: Sendable {
         let track: Track
     }
 
+    // List inspects every identity even when it only renders a few rows. Keep
+    // that pass lightweight, and resolve Track values only for rendered rows.
+    // Shared array storage also preserves the exact snapshot used by drag and
+    // delete callbacks while playback continues to advance the live queue.
+    struct UpcomingRows: RandomAccessCollection, Sendable {
+        struct Row: Identifiable, Sendable {
+            let id: Entry.ID
+            let offset: Int
+        }
+
+        private let tracks: [Track]
+        private let slots: ArraySlice<Int>
+        private let identity: UUID
+
+        fileprivate init(tracks: [Track], slots: ArraySlice<Int>, identity: UUID) {
+            self.tracks = tracks
+            self.slots = slots
+            self.identity = identity
+        }
+
+        var startIndex: Int { 0 }
+        var endIndex: Int { slots.count }
+        func index(after i: Int) -> Int { i + 1 }
+        func index(before i: Int) -> Int { i - 1 }
+
+        subscript(position: Int) -> Row {
+            Row(id: Entry.ID(queue: identity, slot: slots[slots.startIndex + position]), offset: position)
+        }
+
+        func track(at offset: Int) -> Track {
+            tracks[slots[slots.startIndex + offset]]
+        }
+    }
+
+    var upcomingRows: UpcomingRows {
+        UpcomingRows(tracks: tracks, slots: order.dropFirst(cursor + 1), identity: identity)
+    }
+
     // Storage slots survive moves and distinguish repeated copies of a song.
     // A new queue gets a new identity so stale drag actions cannot edit it.
     var upcomingEntries: [Entry] {

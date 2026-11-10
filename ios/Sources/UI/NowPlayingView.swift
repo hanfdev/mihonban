@@ -260,18 +260,18 @@ struct QueueView: View {
                     Section { QueueTrackRow(track: current).foregroundStyle(Theme.accent).listRowBackground(Theme.surface) } header: { header(L10n.text("mobile.nowPlaying")) }
                 }
                 Section {
-                    let entries = player.queue.upcomingEntries
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { offset, entry in
-                        Button { player.jumpToUpcoming(entry.id) } label: { QueueTrackRow(track: entry.track) }
-                            .buttonStyle(.plain).listRowBackground(Theme.background).accessibilityIdentifier("queue.\(offset)")
+                    let rows = player.queue.upcomingRows
+                    ForEach(rows) { row in
+                        Button { player.jumpToUpcoming(row.id) } label: { QueueTrackRow(track: track(for: row, in: rows)) }
+                            .buttonStyle(.plain).listRowBackground(Theme.background).accessibilityIdentifier("queue.\(row.offset)")
                     }
                     .onMove { source, destination in
-                        let ids = source.filter { entries.indices.contains($0) }.map { entries[$0].id }
-                        let anchor = entries.indices.contains(destination) ? entries[destination].id : nil
+                        let ids = source.filter { rows.indices.contains($0) }.map { rows[$0].id }
+                        let anchor = rows.indices.contains(destination) ? rows[destination].id : nil
                         player.moveUpcoming(entries: ids, before: anchor)
                     }
                     .onDelete { source in
-                        player.removeUpcoming(entries: source.filter { entries.indices.contains($0) }.map { entries[$0].id })
+                        player.removeUpcoming(entries: source.filter { rows.indices.contains($0) }.map { rows[$0].id })
                     }
                 } header: { header(L10n.text("mobile.upNext")) }
             }.scrollContentBackground(.hidden).background(Theme.background)
@@ -298,6 +298,18 @@ struct QueueView: View {
     private func header(_ text: String) -> some View {
         Text(text).font(Theme.body(12)).foregroundStyle(Theme.faint).textCase(nil)
     }
+
+    private func track(for row: PlaybackQueue.UpcomingRows.Row, in rows: PlaybackQueue.UpcomingRows) -> Track {
+        #if DEBUG
+        Self.rowTrackLookups += 1
+        #endif
+        return rows.track(at: row.offset)
+    }
+
+    #if DEBUG
+    // Counts actual row materialization in the native large-queue regression.
+    static var rowTrackLookups = 0
+    #endif
 }
 
 // Editing narrows a List row to make room for delete and reorder controls.
