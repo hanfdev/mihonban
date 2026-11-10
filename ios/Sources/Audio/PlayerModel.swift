@@ -443,6 +443,9 @@ final class PlayerModel: NSObject {
 
     func previous() {
         playbackIntent = UUID()
+        // The foreground timer is suspended while locked. Use the live engine
+        // timeline before choosing between restarting and queue history.
+        updateNowPlaying()
         if hasEnded {
             _ = queue.previous()
             wantsPlayback = true
