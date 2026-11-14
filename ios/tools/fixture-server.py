@@ -278,6 +278,19 @@ def artists():
     ]
 
 
+def mp3_with_large_tag(data, cover):
+    """Add synthetic ID3v2.4 artwork and padding without using real music."""
+    def synchsafe(size):
+        return bytes((size >> shift) & 127 for shift in (21, 14, 7, 0))
+
+    if data.startswith(b"ID3"):
+        size = sum(value << shift for value, shift in zip(data[6:10], (21, 14, 7, 0)))
+        data = data[10 + size:]
+    artwork = b"\x03image/png\x00\x03\x00" + cover
+    tag = b"APIC" + synchsafe(len(artwork)) + b"\x00\x00" + artwork + bytes(192 * 1024)
+    return b"ID3\x04\x00\x00" + synchsafe(len(tag)) + tag + data
+
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self, status, data, mime="application/json", headers=None):
         body = json.dumps(data).encode() if isinstance(data, (dict, list)) else data
@@ -551,6 +564,9 @@ class Handler(BaseHTTPRequestHandler):
             self.server.media_cookies.append({"port": self.server.server_address[1],
                                               "cookie": "mihonban_session" in self.headers.get("Cookie", "")})
         data = (self.server.fixtures / name).read_bytes()
+        fragmented = re.fullmatch(r"/fragmented-mp3/([a-fA-F0-9-]+)/tone\.mp3", path)
+        if fragmented:
+            data = mp3_with_large_tag(data, self.server.cover.read_bytes())
         start, end = 0, len(data) - 1
         ranged = "Range" in self.headers and not path.startswith("/no-range/")
         if ranged:
@@ -569,10 +585,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
         self.end_headers()
         try:
+            if fragmented:
+                # Hold after a real partial body so the read test can observe
+                # the decoder waiting, then release it without timing races.
+                boundary = min(start + 1024, end + 1)
+                self.wfile.write(data[start:boundary])
+                self.wfile.flush()
+                if not self.server.stream_gates.event(fragmented[1]).wait(30):
+                    self.close_connection = True
+                    return
+                start = boundary
             for position in range(start, end + 1, 8192):
                 self.wfile.write(data[position:min(position + 8192, end + 1)])
                 self.wfile.flush()
-                time.sleep(0.002)
+                time.sleep(0.01 if fragmented else 0.002)
         except (BrokenPipeError, ConnectionResetError):
             pass
 

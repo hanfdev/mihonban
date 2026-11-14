@@ -29,6 +29,7 @@
     BOOL _rangeSupported;
     BOOL _persistent;
     BOOL _unmeteredOnly;
+    BOOL _requiresCompleteReads;
     BOOL _retryPending;
     NSUInteger _retryGeneration;
     NSUInteger _retryAttempt;
@@ -49,6 +50,9 @@
         _persistent = persistent;
         _remoteURL = url;
         _cacheURL = cacheURL;
+        // MediaPaths retains the format extension even for hashed cache names.
+        // MP3 uses Core Audio file callbacks; FLAC/Vorbis consume short reads.
+        _requiresCompleteReads = [cacheURL.pathExtension.lowercaseString isEqualToString:@"mp3"];
         _partialURL = [cacheURL URLByAppendingPathExtension:[NSUUID.UUID.UUIDString stringByAppendingString:@".part"]];
         _condition = [[NSCondition alloc] init];
         _available = [[NSMutableIndexSet alloc] init];
@@ -233,20 +237,24 @@
     [_condition lock];
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:40];
     while ([self checkFailure:error]) {
-        if (!length || (_length >= 0 && _offset >= _length)) { [_condition unlock]; return YES; }
+        if (*bytesRead == length || (_length >= 0 && _offset >= _length)) { [_condition unlock]; return YES; }
         __block NSRange readable = NSMakeRange(0, 0);
-        [_available enumerateRangesInRange:NSMakeRange((NSUInteger)_offset, (NSUInteger)length)
+        [_available enumerateRangesInRange:NSMakeRange((NSUInteger)_offset, (NSUInteger)(length - *bytesRead))
                                    options:0 usingBlock:^(NSRange range, BOOL *stop) {
             if (range.location == (NSUInteger)self->_offset) readable = range;
             *stop = YES;
         }];
         if (readable.length) {
-            ssize_t count = pread(_fd, buffer, readable.length, _offset);
+            ssize_t count = pread(_fd, (char *)buffer + *bytesRead, readable.length, _offset);
+            if (count < 0 && errno == EINTR) continue;
             if (count > 0) {
                 _offset += count;
-                *bytesRead = count;
-                [_condition unlock];
-                return YES;
+                *bytesRead += count;
+                if (!_requiresCompleteReads) { [_condition unlock]; return YES; }
+                // Core Audio's file callbacks must not mistake a network chunk
+                // boundary for a short file read while parsing MP3 metadata.
+                // Accumulate the requested bytes, returning short only at EOF.
+                continue;
             }
             _failure = [NSError errorWithDomain:NSPOSIXErrorDomain code:count < 0 ? errno : EIO userInfo:nil];
             continue;
